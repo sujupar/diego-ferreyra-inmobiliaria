@@ -311,6 +311,35 @@ describe('POST — guardado repetido y fallo parcial (tarea 6.3)', () => {
     expect(b.tareas).toHaveLength(tareas)
   })
 
+  it('mismo token y autor con OTRO resultado → 409 que lo dice, sin otra fila ni tarea', async () => {
+    await post(llamada('no_atendio'))
+    const tareas = b.tareas.length
+    const res = await post(llamada('no_interesa'))
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'Esa llamada ya se había guardado con otros datos. Revisá la línea de tiempo.' })
+    expect(b.actividades).toHaveLength(1)
+    expect(b.tareas).toHaveLength(tareas)
+  })
+
+  it('mismo token con otro comentario → 409', async () => {
+    await post(llamada('no_atendio', { body: 'Dijo que vuelva' }))
+    const res = await post(llamada('no_atendio', { body: 'Otra cosa' }))
+    expect(res.status).toBe(409)
+    expect(b.actividades[0].body).toBe('Dijo que vuelva')
+  })
+
+  it('mismo token con otra hora de volver a llamar → 409', async () => {
+    await post(llamada('volver_a_llamar', { volver_el: { fecha: '2026-11-26', hora: '10:00' } }))
+    const res = await post(llamada('volver_a_llamar', { volver_el: { fecha: '2026-11-26', hora: '11:00' } }))
+    expect(res.status).toBe(409)
+  })
+
+  it('mismo token, llamada y después "WhatsApp enviado" → 409', async () => {
+    await post(llamada('no_atendio'))
+    const res = await post({ kind: 'whatsapp_sent', client_token: TOKEN })
+    expect(res.status).toBe(409)
+  })
+
   it('token de otro autor → 409 sin datos de la otra', async () => {
     await post(llamada('no_atendio', { body: 'Secreto' }))
     como('coordinador', 'coord-2')

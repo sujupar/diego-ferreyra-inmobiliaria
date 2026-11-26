@@ -10,7 +10,7 @@ import { FiltroPastilla } from '../ui/FiltroPastilla'
 import { OpcionGrande } from '../ui/OpcionGrande'
 import { ALTO_CONTROL, LETRA_CAMPO } from '../ui/medidas'
 import { ORDEN_RESULTADOS, RESULTADOS_UI } from '../ui/resultados'
-import { guardarActividad, nuevoToken, type RespuestaGuardado } from './guardar-actividad'
+import { guardarActividad, firmaDelEnvio, nuevoToken, tokenParaEnviar, type EnvioFallido, type RespuestaGuardado } from './guardar-actividad'
 
 // Registrar una llamada (maqueta `plantillaLlamada`): cinco resultados, "No atendió" se
 // guarda con un toque; "volver a llamar" pide día y hora futuros; comentario opcional;
@@ -19,7 +19,9 @@ import { guardarActividad, nuevoToken, type RespuestaGuardado } from './guardar-
 //
 // `client_token` (D5): nace al montar o limpiar el formulario y se renueva SOLO después de
 // un guardado exitoso. Un doble toque o un reintento tras un error mandan el mismo: si
-// naciera en el toque, un doble toque en "No atendió" serían dos llamadas.
+// naciera en el toque, un doble toque en "No atendió" serían dos llamadas. Pero si después
+// de un error se cambió algún dato, es otro guardado y lleva token nuevo (`tokenParaEnviar`,
+// revisión 12.1): con el mismo, el servidor respondería que ya se guardó con otros datos.
 
 type Atraso = '0' | '15' | '30' | '60'
 const ATRASOS: { valor: Atraso; etiqueta: string }[] = [
@@ -73,6 +75,7 @@ export function FormLlamada({
   const tokenLlamada = useRef(nuevoToken())
   const tokenWhatsapp = useRef(nuevoToken())
   const enCurso = useRef(false)
+  const fallido = useRef<EnvioFallido | null>(null)
   const refGuardar = useRef<HTMLButtonElement>(null)
   const refVolver = useRef<HTMLDivElement>(null)
 
@@ -89,6 +92,7 @@ export function FormLlamada({
     setError(null)
     tokenLlamada.current = nuevoToken()
     tokenWhatsapp.current = nuevoToken()
+    fallido.current = null
   }
 
   /** "Guardar llamada" entero a la vista (D5: en escritorio la página se acomoda). */
@@ -115,10 +119,14 @@ export function FormLlamada({
     enCurso.current = true
     setEnviando(true)
     setError(null)
-    const r = await guardarActividad(contactoId, cuerpo)
+    const refToken = tipo === 'call' ? tokenLlamada : tokenWhatsapp
+    refToken.current = tokenParaEnviar(refToken.current, cuerpo, fallido.current)
+    const conToken = { ...cuerpo, client_token: refToken.current }
+    const r = await guardarActividad(contactoId, conToken)
     enCurso.current = false
     setEnviando(false)
     if (!r.ok) {
+      fallido.current = { token: conToken.client_token, firma: firmaDelEnvio(conToken) }
       setError(r.error)
       return
     }

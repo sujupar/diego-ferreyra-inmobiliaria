@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/require-role'
 import { alcanceContactos } from '@/lib/auth/contact-access'
 import { canAccessContact } from '@/lib/auth/entity-access'
-import { esquemaNuevaActividad, numerarLlamadas, resolverOcurrio, validarVolverEl } from '@/lib/crm/actividades'
+import { esElMismoGuardado, esquemaNuevaActividad, numerarLlamadas, resolverOcurrio, validarVolverEl } from '@/lib/crm/actividades'
 import { armarActividadDeFicha } from '@/lib/crm/actividad-de-ficha'
 import { elegirDealActivo } from '@/lib/crm/deal-activo'
 import { instanteDesdeAR } from '@/lib/crm/horario-laboral'
@@ -26,6 +26,11 @@ import type { UserWithProfile } from '@/types/auth.types'
 const NO_ENCONTRADO = { error: 'No encontramos este contacto' }
 const SIN_ACCESO = { error: 'No tenés acceso a los contactos.' }
 const NO_SE_GUARDO = { error: 'No se pudo guardar. Probá de nuevo.' }
+// Mismo `client_token`, mismo autor y contacto, pero con otros datos (revisión 12.1): no es
+// un reintento de red sino un formulario corregido. Devolver la fila vieja en silencio haría
+// creer que quedó lo corregido.
+const OTROS_DATOS_LLAMADA = { error: 'Esa llamada ya se había guardado con otros datos. Revisá la línea de tiempo.' }
+const OTROS_DATOS_NOTA = { error: 'Esa nota ya se había guardado con otro texto. Revisá la línea de tiempo.' }
 /**
  * Respuesta de una llamada o un WhatsApp (D4): corre `aplicarCadencia` y arma la
  * actividad con su número de intento y la tarea que creó (leída de la base).
@@ -192,6 +197,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (!existente || existente.contact_id !== id || existente.created_by !== user.id || existente.kind === 'note') {
         return NextResponse.json(NO_SE_GUARDO, { status: 409 })
       }
+      const pedida = {
+        kind: nueva.kind,
+        call_outcome: nueva.kind === 'call' ? nueva.call_outcome : null,
+        callback_at: callbackAt,
+        body: nueva.body ?? null,
+      }
+      if (!esElMismoGuardado(existente, pedida)) {
+        return NextResponse.json(OTROS_DATOS_LLAMADA, { status: 409 })
+      }
       // Ya anulada ("Deshacer" antes de que llegara este reintento de red): se devuelve tal
       // cual y NO se corre la cadencia, que volvería a cerrar lo que el deshacer reabrió.
       if (existente.voided_at) {
@@ -219,6 +233,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const existente = await leerActividadPorToken(nueva.client_token)
     if (!existente || existente.contact_id !== id || existente.created_by !== user.id || existente.kind !== 'note') {
       return NextResponse.json(NO_SE_GUARDO, { status: 409 })
+    }
+    if (!esElMismoGuardado(existente, { kind: 'note', call_outcome: null, callback_at: null, body: nueva.body })) {
+      return NextResponse.json(OTROS_DATOS_NOTA, { status: 409 })
     }
     return NextResponse.json(respuestaDeNota(existente, user), { status: 200 })
   } catch (error) {

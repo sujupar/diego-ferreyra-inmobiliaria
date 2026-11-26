@@ -5,7 +5,7 @@ import { TriangleAlert } from 'lucide-react'
 import { MAX_LARGO_TEXTO } from '@/lib/crm/actividades'
 import { cn } from '@/lib/utils'
 import { ALTO_CONTROL, LETRA_CAMPO } from '../ui/medidas'
-import { guardarActividad, nuevoToken, type RespuestaGuardado } from './guardar-actividad'
+import { guardarActividad, firmaDelEnvio, nuevoToken, tokenParaEnviar, type EnvioFallido, type RespuestaGuardado } from './guardar-actividad'
 
 // Nota rápida (maqueta `plantillaNota`). Vacía o con más de 2.000 caracteres no se guarda
 // y lo escrito no se pierde; ante un error del servidor tampoco.
@@ -23,6 +23,9 @@ export function FormNota({
   const [enviando, setEnviando] = useState(false)
   const token = useRef(nuevoToken())
   const enCurso = useRef(false)
+  // Tras un error, el mismo texto reintenta con el mismo token; un texto corregido, con uno
+  // nuevo (revisión 12.1, igual que en FormLlamada).
+  const fallido = useRef<EnvioFallido | null>(null)
 
   const guardar = async () => {
     if (enCurso.current) return
@@ -34,10 +37,17 @@ export function FormNota({
     enCurso.current = true
     setEnviando(true)
     setError(null)
-    const r = await guardarActividad(contactoId, { kind: 'note', body: limpio, client_token: token.current })
+    const cuerpo = { kind: 'note' as const, body: limpio, client_token: token.current }
+    token.current = tokenParaEnviar(token.current, cuerpo, fallido.current)
+    const conToken = { ...cuerpo, client_token: token.current }
+    const r = await guardarActividad(contactoId, conToken)
     enCurso.current = false
     setEnviando(false)
-    if (!r.ok) return setError(r.error)
+    if (!r.ok) {
+      fallido.current = { token: conToken.client_token, firma: firmaDelEnvio(conToken) }
+      return setError(r.error)
+    }
+    fallido.current = null
     token.current = nuevoToken()
     setTexto('')
     onGuardada(r.data)
