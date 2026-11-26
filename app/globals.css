@@ -994,18 +994,21 @@ html:has(.landing-root) {
      márgenes negativos siguen al relleno real de #contenido (p-4 md:p-6, layout.tsx): con
      solo -mx-4, entre 768 y ~930 px quedaba una franja por donde pasaba el contenido. */
   .ficha-cab {
-    position: sticky; top: 0; z-index: 20;
+    /* `top` igual al margen negativo: el pegado se mide desde el borde del CONTENIDO de
+       #contenido (dentro del relleno). Con `top: 0` quedaba 16 px más abajo y tapaba el
+       comienzo de la actividad (visto en la captura a 390 px). */
+    position: sticky; top: -1rem; z-index: 20;
     background: var(--background);
     margin: -1rem -1rem 0; padding: 0.75rem 1rem 0;
     display: flex; flex-direction: column; gap: 0.625rem; min-width: 0;
   }
   @media (min-width: 768px) {
-    .ficha-cab { margin: -1.5rem -1.5rem 0; padding: 0.75rem 1.5rem 0; }
+    .ficha-cab { top: -1.5rem; margin: -1.5rem -1.5rem 0; padding: 0.75rem 1.5rem 0; }
   }
 
   /* El "+": último en la ficha, empujado al fondo con margin-top:auto (si no, con pocos
      registros quedaba flotando a mitad de pantalla) y pegado abajo mientras se desplaza. */
-  .ficha-mas { margin-top: auto; position: sticky; bottom: 1rem; align-self: flex-end; z-index: 30; flex-shrink: 0; }
+  .ficha-mas { margin-top: auto; position: sticky; bottom: 0; align-self: flex-end; z-index: 30; flex-shrink: 0; } /* bottom 0: el relleno de #contenido ya deja 16 px sobre la barra inferior */
 
   .ficha-resaltado { animation: ficha-resaltar 1.6s ease both; border-radius: var(--radius-md); }
 

@@ -1,6 +1,6 @@
 /**
  * Probe de render de la ficha de contacto (crm-ficha-y-llamadas, D10).
- * Correr: npx tsx scripts/ficha-contacto.probe.tsx [salida.html]
+ * Correr: npx tsx scripts/ficha-contacto.probe.tsx [carpeta-de-salida]
  *
  * `FichaContacto` pide sus datos en el navegador, así que acá se arma el MISMO árbol que
  * dibuja (cabecera, tres paneles, "+") con las piezas y datos de prueba, y se revisa:
@@ -72,7 +72,7 @@ const aviso = armarAviso({
 })
 
 // El mismo árbol de `FichaContacto` (clases `ficha`, `ficha-grilla`, `ficha-panel`, `ficha-cab`, `ficha-mas`).
-function Ficha({ conAviso }: { conAviso: boolean }) {
+function Ficha({ conAviso, items = actividades }: { conAviso: boolean; items?: typeof actividades }) {
   return (
     <div className="ficha" data-ficha="c-1">
       <div className="ficha-grilla">
@@ -84,7 +84,7 @@ function Ficha({ conAviso }: { conAviso: boolean }) {
           <Composer contactoId="c-1" pestana="nota" onPestana={nada} onNotaGuardada={nada} onLlamadaGuardada={nada} />
           <div aria-live="polite">{conAviso && <AvisoGuardado aviso={aviso} onAccion={nada} onCerrar={nada} />}</div>
           <Actividad
-            bloque={{ estado: 'ok', items: actividades, hayMas: false, filtro: 'todo', cargandoMas: false, errorMas: null }}
+            bloque={{ estado: 'ok', items, hayMas: false, filtro: 'todo', cargandoMas: false, errorMas: null }}
             contactoId="c-1"
             ahora={ahora}
             nuevoId={null}
@@ -155,7 +155,21 @@ revisar(
   ['opacity:0', 'opacity: 0', 'Sin respuesta', 'Última llamada'],
 )
 
+// Ficha sin ningún registro: el "+" tiene que quedar abajo (10.2) y la actividad dice su vacío.
+const vacia = renderToStaticMarkup(<Ficha conAviso={false} items={[]} />)
+revisar('ficha sin registros', vacia, ['Sin actividad todavía', 'ficha-mas'])
+
+// Más de veinte registros, para desplazar con la cabecera fija.
+const muchos = Array.from({ length: 25 }, (_, i) =>
+  actividadDePrueba({ id: `n${i}`, body: `Registro ${i + 1} de prueba`, occurred_at: new Date(ahora.getTime() - i * 3_600_000).toISOString() }),
+)
+const largo = renderToStaticMarkup(<Ficha conAviso={false} items={muchos} />)
+revisar('ficha con 25 registros', largo, ['Registro 1 de prueba', 'Registro 25 de prueba'])
+
 if (process.argv[2]) {
-  writeFileSync(process.argv[2], html)
-  console.log(`HTML escrito en ${process.argv[2]}`)
+  const dir = process.argv[2]
+  writeFileSync(`${dir}/ficha.html`, html)
+  writeFileSync(`${dir}/ficha-vacia.html`, vacia)
+  writeFileSync(`${dir}/ficha-25.html`, largo)
+  console.log(`HTML escrito en ${dir}`)
 }
