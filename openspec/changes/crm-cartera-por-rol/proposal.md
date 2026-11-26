@@ -69,3 +69,15 @@ nunca digan cosas distintas sobre el mismo proceso.
   nueva y la lista nueva salgan juntas.
 - Permisos: el selector de vista lo valida el servidor (solo admin y dueño); el asesor nunca
   recibe procesos ajenos por la red, aunque la pantalla no los muestre.
+
+## Respuestas del dueño a la maqueta (2026-11-26)
+
+"Ok a las 4, seguí", sobre la maqueta https://claude.ai/artifact/5S3NmLpjX98gm7R1jEinhE:
+
+1. **Sin tablero por columnas (Kanban).** Hoy no existe y no se hace.
+2. **"Seguimiento sin movimiento" = 14 días** sin contacto.
+3. **Las clases gratuitas no aparecen en el CRM de la coordinación** (no las llama ella);
+   admin y dueño las siguen viendo.
+4. **La cabecera de la ficha dice "Último contacto"** en vez de "Última llamada" (una visita
+   también cuenta). Se aplica en `crm-ficha-y-llamadas`, que es el change que construye la
+   ficha, para que la ficha y la lista salgan diciendo lo mismo.

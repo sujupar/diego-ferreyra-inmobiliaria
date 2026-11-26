@@ -79,3 +79,155 @@ capturas eran anteriores al último guardado (`crm-dueno-1280`, `crm-asesor-1280
 ## Cierre
 
 Dos rondas. La ronda 2 no trajo nada de peso: la auditoría se cierra acá.
+
+# Auditoría de los artefactos (spec, diseño y tareas) · 2026-11-26
+
+Artefactos: `specs/crm-cartera/spec.md`, `specs/crm-sistema-diseno/spec.md` (delta), `design.md`,
+`tasks.md`. Método: tres auditores nuevos en paralelo (cobertura de propuesta y maqueta; técnica
+y base contra el código real; producto y claridad para el dueño), después un auditor del
+auditor. Cada hallazgo se verificó contra el código, la maqueta o la base (consultas de solo
+lectura) antes de aplicarlo.
+
+## Ronda 1
+
+Verificado antes de corregir: 13 de las 15 Coordinadas con fecha ya pasada y 3 sin hora; el
+dueño tiene 46 procesos a su nombre (Lucas 16, otro asesor 1); `createTaskForRole` crea una
+copia por coordinador (`lib/supabase/tasks.ts:99`); `useFiltrosUrl` exige claves de texto y
+opciones estables (`use-filtros-url.ts:186-201`); los tests viejos son 23 y 13; la ficha oculta
+los procesos ajenos al asesor (`app/api/contacts/[id]/tasks/route.ts:36`); `ultima-llamada.ts`
+existe; 0 procesos sin origen hoy.
+
+### Auditor técnico (código y base)
+
+| # | Gravedad | Hallazgo | Qué se hizo |
+|---|---|---|---|
+| 1 | ALTA | En Contactos, el asesor recibía el proceso más nuevo de la persona aunque fuera de otro asesor (48 personas con más de un abierto). | Aplicado: `procesoDeContacto(procesos, quienMira)` elige solo entre los suyos; escenario en la spec; casos en 3.8, 4.2 y 5.3. |
+| 2 | MEDIA | Coordinadas con fecha pasada sin regla (13 de 15) y criterio de "agendada" distinto al de la ficha. | Aplicado: mismo criterio que la ficha; tasación pasada = "Cargar el resultado de la tasación" vencida para el asesor y el dueño (Diferencia 12, escenario, tests). |
+| 3 | MEDIA | Tasación sin hora sin regla (3 casos). | Aplicado: todo el día; escenario y test. |
+| 4 | MEDIA | 8 s por lectura con paginación + RPC podía sumar 32 s; `rpcPaginado` sin señal. | Aplicado: un solo plazo de 15 s y opción `senal` en `rpcPaginado` con test (4.1). |
+| 5 | MEDIA | La dirección no encajaba con `useFiltrosUrl` (boolean, opciones dinámicas, parámetros viejos, nombre `leerFiltros` repetido, `ver` por fuera). | Aplicado: claves de texto, `normalizar` de módulo con `ref`, `redirect` del servidor para los parámetros viejos, `leerFiltrosCartera`, `ver` por `aplicar`. |
+| 6 | MEDIA | La receta esperaba "sin movimiento" con una llamada de hace 15 días, que la regla del corte anula. | Aplicado: la receta verifica que NO se marca; la regla de 14 días se prueba en los tests puros. |
+| 7 | MEDIA | D1 no nombraba `ultima-llamada.ts`: quedaban dos formatos de "hace cuánto". | Aplicado: pasa a envoltorio de `ultimoContacto` + `textos-tiempo`; `FechaRelativa` usa `textos-tiempo`. |
+| 8 | MEDIA | Validar `ver_como` necesita el perfil antes de leer. | Aplicado: lectura previa solo con `ver_como`, contada en D4. |
+| 9 | MEDIA | No se decía qué grupos se arman si falla la RPC. | Aplicado: sin "Sin primer contacto" ni sin movimiento; escenario y test. |
+| 10 | BAJA | La RPC y `contact_activities` no están en los tipos. | Aplicado: patrón de Consultas (cliente sin tipar). |
+| 11 | BAJA | `DROP`+`CREATE` deja un instante sin función; `EXPLAIN` sin `ANALYZE`; `coalesce` se quedaba con la fecha vieja. | Aplicado: `CREATE OR REPLACE`, `EXPLAIN ANALYZE`, `greatest`. |
+| 12 | BAJA | Consulta a `appraisals` sin `contact_id` no nulo. | Aplicado. |
+| 13 | BAJA | Conteos de tests y consumidor del `POST` mal; `/contacts` no redirigía al abogado. | Aplicado (23/13, `FormCoordinarTasacion`, redirección nueva declarada). |
+| 14 | BAJA | `AppSidebar.test.tsx` simula solo `usePathname`. | Aplicado en 6.6. |
+| 15 | BAJA | Falta test de cerrado con tarea pendiente. | Aplicado (escenario y 3.5). |
+| 16 | BAJA | `borrar` de la receta tiene que borrar tareas antes que procesos. | Aplicado en 8.1. |
+
+### Auditor de cobertura (propuesta y maqueta)
+
+| # | Gravedad | Hallazgo | Qué se hizo |
+|---|---|---|---|
+| 1 | ALTA | La ficha cambiaba de "Última llamada" a "Último contacto" sin delta de su spec. | Aplicado: requisito previo en 1.1 — se corrige en `crm-ficha-y-llamadas` (spec y código) antes de empezar; este change no toca esa spec. |
+| 2 | MEDIA | Solicitud/Clase gratuita en la barra del asesor, no declarado. | Aplicado: regla escrita y Diferencia 11. |
+| 3 | MEDIA | "Mostrar colegas" quedó solo para el dueño. | Aplicado: requisito "Colegas" para todas las vistas, con el texto de hoy. |
+| 4 | MEDIA | Número en la cabecera sin regla para todos los grupos y en contradicción con la paginación. | Aplicado: grupo por grupo (alerta, neutro, ninguno) y delta del sistema de diseño reescrito. |
+| 5 | MEDIA | Dónde va el pie y qué suma "Cargar 25 más". | Aplicado: "Cargar 25 más" por grupo, un pie por vista, escenarios de las tres vistas. |
+| 6 | MEDIA | "Lo que está trabado" sin tope de nombres. | Aplicado: 5 por columna con su orden. |
+| 7 | MEDIA | Procesos sin origen en el filtro. | Aplicado: no entran en ningún origen (hoy 0). |
+| 8 | MEDIA | Falta el estado "fallan solo las tareas". | Aplicado: escenario con grupos y texto. |
+| 9 | MEDIA | Textos sin fijar (tope, valor inventado, avisos, fecha de lo trabado, rol sin vista). | Aplicado: textos exactos en la spec. |
+| 10 | MEDIA | "Seleccionar" sin test ni QA. | Aplicado: test de componente y paso de QA sin tocar "Eliminar". |
+| 11 | BAJA | Barra inferior sin requisito. | Descartado por ahora con argumento: depende de la pregunta 2 al dueño; la tarea 7.4 escribe el escenario con la respuesta. |
+| 12 | BAJA | Comportamientos sin escenario (limpieza al cambiar de vista, bajar a la lista, filtros que no tocan lo trabado, varias palabras, cabecera "Persona", contacto sin procesos). | Aplicado: un escenario por cada uno. |
+| 13 | BAJA | Diferencia 4 sin escenario y requisito atado a una pregunta abierta. | Aplicado. |
+| 14 | BAJA | El aviso de "Ver como" parecía fijo. | Aplicado: "en su lugar, sin quedar fijo". |
+
+### Auditor de producto y claridad
+
+| # | Gravedad | Hallazgo | Qué se hizo |
+|---|---|---|---|
+| 1 | ALTA | Los 14 días se eligieron con "61 de 100"; con los datos reales y el corte, los 100 seguimientos pasan juntos a rojo a las dos semanas. | Aplicado: la pregunta 1 lo dice con los números reales y vuelve a ofrecer la decisión. |
+| 2 | ALTA | Las copias de la tarea de coordinación (una por coordinador, una es cuenta de prueba) mostrarían tareas ya hechas como vencidas. | Aplicado: se cuentan una vez con "· coordinación" y ninguna si una copia se completó (D3, escenario, Diferencia 13). |
+| 3 | ALTA | La base "De 185 solicitudes" sugería que se llamó a casi todas. | Aplicado: la base son las nuevas y aparte "Además, M anteriores al registro de llamadas, sin dato." |
+| 4 | MEDIA | "hace 150 días" en gris al lado de "hace 14 días" en rojo. | Aplicado: "antes del registro de llamadas" debajo (Diferencia 14). |
+| 5 | MEDIA | Los 113 sin asesor del sistema anterior se decidieron sin preguntar. | Aplicado: pregunta 4 al dueño con opción por defecto. |
+| 6 | MEDIA | 185 solicitudes viejas al final sin orden útil. | Aplicado: de la más vieja a la más nueva, y la pregunta 1 lo explica y ofrece una limpieza aparte. |
+| 7 | MEDIA | Diferencia 8 (Comprador) contradecía "decir lo mismo". | Aplicado: explica qué ve cada pantalla y por qué son dos preguntas distintas. |
+| 8 | MEDIA | Filtro "Asesor" sin procesos del dueño ni dados de baja. | Aplicado (verificado: 46 procesos del dueño): ofrece a toda persona con procesos; "(dado de baja)" cuenta como sin asesor. |
+| 9 | MEDIA | "El total una sola vez" contra el pie. | Aplicado: la regla admite el pie. |
+| 10 | BAJA | Referencias internas en las preguntas. | Aplicado: marcadas "para quien construye" y la tarea 1.5 las saca al presentarlas. |
+| 11 | BAJA | Textos mejorables ("Espera hace … de reloj", "· coordinación"). | Descartado con argumento: son los textos de la maqueta aprobada y de la spec vigente del Inicio. |
+| 12 | BAJA | Rol sin vista sin escenario de pantalla. | Aplicado. |
+| 13 | BAJA | 53 coordinadas sin día se ven como Solicitud. | Aplicado: Diferencia 15. |
+
+`openspec validate crm-cartera-por-rol --strict`: válido después de las correcciones.
+
+### Auditor del auditor (ronda 1)
+
+Confirmó la mayoría de las correcciones; marcó cuatro incompletas (firma de
+`procesoDeContacto`, tasación pasada en la vista de la coordinación, restos de `leerFiltros` y
+`colegas: true`, orden de las 185 viejas) y un descarte que no se cumplía (la tarea 7.4 no
+escribía el escenario de la barra). Verificado: en este mismo worktree, otra sesión ya
+renombró `ultima-llamada.ts` a `lib/crm/ultimo-contacto.ts` con `masReciente` y
+`ultimoContacto(ultimoEn, ahora, etapaCRM)`, y cuenta la visita con `deals.visited_at`.
+
+| # | Gravedad | Hallazgo | Qué se hizo |
+|---|---|---|---|
+| 1 | ALTA | El diseño creaba en `ultimo-contacto.ts` nombres que ya existen con otra forma, y usaba otra fuente de la visita (`greatest(visit_completed_at, visited_at)`) que la ficha (`visited_at`): ficha y lista dirían fechas distintas. | Aplicado: este change **extiende** el módulo de la ficha con `contactoRegistrado`, `ContactoRegistrado`, `textoQueFue`, `anteriorAlRegistro` y la fecha de inicio, elige con su `masReciente`, y la función SQL usa `deals.visited_at` como la ficha (D1, D2, D5, 1.2, 3.2). Revierte la corrección técnica 11 sobre `greatest`. |
+| 2 | MEDIA | "Los 3.000 más recientes" con lectura ordenada por `id`. | Aplicado: procesos y contactos por `created_at desc, id`. |
+| 3 | MEDIA | La página no decía qué hace con un `ver` prohibido o inválido. | Aplicado: prohibido → se ignora y vista propia sin leer nada ajeno; inválido → vista propia con el mensaje (D6 y test en 6.4). |
+| 4 | MEDIA | Coordinada vencida en la vista de la coordinación sin regla. | Aplicado: "Cargar el resultado de la tasación" con el asesor, sin entrar en su grupo de vencidas (D3 y escenario). |
+| — | MEDIA | Correcciones incompletas de la ronda (firma, `colegas`, `leerFiltros`, orden de las viejas, "tasación futura" en el requisito, 7.4). | Aplicado todo; el escenario no verificable "Depende de la pregunta 1" se sacó. |
+| 5 | BAJA | "diez diferencias" en 10.5. | Aplicado (quince). |
+| 6 | BAJA | D4 no listaba la lectura de tareas completadas. | Aplicado. |
+| 7 | BAJA | El delta exigía "único enlace" también en modo selección. | Aplicado: excepción escrita. |
+| 8 | BAJA | Base de "sin asesor" ambigua; dado de baja en el filtro. | Aplicado: base con las cinco etapas; el filtro lo ofrece con "(dado de baja)". |
+| 9 | BAJA | "Sin contacto todavía" y "Sin contacto registrado" sin referencia cruzada. | Aplicado. |
+
+`openspec validate crm-cartera-por-rol --strict`: válido.
+
+## Ronda 2 (auditor nuevo, todo el change)
+
+Verificado antes de corregir: la cadencia crea "Llamar a…" y "Enviar WhatsApp a…" repetidas
+en el mismo proceso (`lib/crm/cadencia.ts:150` y `:185`); la tarea de entrada del embudo es
+`update_contact` sin fecha (`lib/funnel/side-effect-handlers.ts:45`); la cabecera de la ficha
+devuelve "Sin contacto todavía" con alerta en Solicitud (`lib/crm/ultimo-contacto.ts:44`).
+
+| # | Gravedad | Hallazgo | Qué se hizo |
+|---|---|---|---|
+| 1 | ALTA | Juntar copias por mismo título escondía tareas reales de la cadencia (una "Enviar WhatsApp" completada anulaba la pendiente de hoy). | Aplicado: copias = solo las de `createTaskForRole` (sin `source_activity_id`, mismo proceso, tipo, título y minuto); la lectura suma `created_at` y `source_activity_id`; test en 3.5. |
+| 2 | MEDIA | La primera llamada real no tiene fecha: toda solicitud nueva diría "Sin fecha" y quedaría al final. | Aplicado: regla de vencimiento desde el registro (o las 9:00 del día hábil siguiente) para solicitudes desde la fecha de inicio, con escenario y test; las anteriores siguen "Sin fecha". |
+| 3 | MEDIA | La tarea 4.1 seguía con orden por `id`. | Aplicado: el orden de D4 y un test. |
+| 4 | MEDIA | Ficha y lista dirían cosas distintas de las solicitudes anteriores al registro. | Aplicado: Diferencia 16 y pedido a `crm-ficha-y-llamadas` en la tarea 1.2 (que la cabecera use `anteriorAlRegistro`). |
+| 5 | BAJA | `traducirParametrosViejos` podía redirigir en bucle. | Aplicado: solo `origin`, `from`, `to`; `etapa=descartado` suma `seg=cerrados`; idempotente con test. |
+| 6 | BAJA | La spec decía 403 desde la dirección y el diseño, vista propia. | Aplicado: dos escenarios (dirección → vista propia; red → 403). |
+| 7 | BAJA | "Una sola vez" contra el pie. | Aplicado. |
+
+`openspec validate crm-cartera-por-rol --strict`: válido.
+
+## Ronda 3 (auditor nuevo, verificación de la ronda 2 y búsqueda final)
+
+Confirmó bien hechas las correcciones 2, 3, 4 y 6 de la ronda 2 contra el código (la ficha y
+la función SQL leen las mismas fuentes del último contacto) y marcó 1, 5 y 7 a medias.
+
+| # | Gravedad | Hallazgo | Qué se hizo |
+|---|---|---|---|
+| 1 | MEDIA | La regla de las copias pedía `source_activity_id` y `created_at`, que la lectura de pendientes y el texto de D3 no traían. | Aplicado: D3, D4 (b) y (d) con las mismas columnas; test en 4.2. |
+| 2 | MEDIA | La ventana fija de 90 días dejaba afuera la copia completada de un lead viejo: la copia de la cuenta de prueba aparecería pendiente. | Aplicado (verificado por la regla de `createTaskForRole`): la lectura de completadas arranca en la copia pendiente más vieja; test de una hermana de hace 120 días. |
+| 5 | MEDIA | "Tasación cercana" por persona podía mostrarle al asesor la tasación de otro asesor (horario, dirección, nombre). | Aplicado: es la del proceso de la fila; el test 4.2 busca también horario, dirección y asesor de la tasación ajena. |
+| 3 | BAJA | "Ninguna lista paginada lleva número" contra grupos que paginan con número. | Aplicado: se nombra la lista larga de abajo. |
+| 4 | BAJA | Parámetros viejos: D9 seguía con `etapa` y `asesor`; `?etapa=descartado` caía en abiertos. | Aplicado: viejos = `origin`, `from`, `to` o etapa cerrada sin `seg`; D5, D9 y 3.9 iguales. |
+| 6 | BAJA | `proximoPaso` sin `ahora` ni etapa. | Aplicado: firma con objeto que los incluye. |
+| 7 | BAJA | 8.2 esperaba "sin marcar" sin condicionar al plazo de 14 días. | Aplicado. |
+| 8 | BAJA | D1 decía "sin commitear". | Aplicado (commit `3af9e1db`). |
+
+`openspec validate crm-cartera-por-rol --strict`: válido.
+
+## Cierre de la auditoría de los artefactos
+
+Tres rondas (el máximo pedido). La ronda 3 todavía trajo tres hallazgos medios, los tres
+corregidos y verificados contra el código; ninguno cambia la arquitectura (eran columnas de una
+lectura, el borde de una ventana de tiempo y de qué proceso sale un renglón). Como no hubo una
+ronda limpia después de esas correcciones, la auditoría doble del código (grupo 11 de
+`tasks.md`) tiene que revisar expresamente: las copias de las tareas de coordinación, la
+tasación cercana en Contactos del asesor y la lectura de completadas.
+
+Ajuste posterior, encontrado al cerrar (no lo trajo un auditor): la sesión de la ficha creó en
+este worktree `lib/crm/formato-fecha.ts` (`fechaRelativa`, `fechaExacta`, `cuandoEs`,
+`textoVencimiento`). El diseño ya no crea `textos-tiempo.ts`: amplía ese módulo con
+`haceCuanto` y `duracion` (D5 y tarea 3.3), para que haya un solo módulo de fechas.
