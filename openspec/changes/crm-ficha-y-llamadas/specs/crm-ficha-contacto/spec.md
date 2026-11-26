@@ -70,6 +70,31 @@ servidor, no en el menú ni en la pantalla.
 - **WHEN** alguien sin sesión pide los datos de una ficha
 - **THEN** recibe 401 y la pantalla lo manda a iniciar sesión
 
+#### Scenario: Asesor coordina una tasación con el teléfono de una persona ya cargada
+- **WHEN** un asesor coordina una tasación nueva escribiendo el teléfono o el email de una persona que ya está cargada como contacto y con la que no tenía ningún vínculo
+- **THEN** el proceso nuevo queda a su nombre ligado a ese contacto, y desde ese momento puede abrir la ficha de esa persona, porque tiene un proceso de ese contacto a su nombre
+
+### Requirement: Un asesor no se da el permiso solo
+Un asesor MUST NOT poder darse acceso a un contacto vinculándolo él mismo: para vincular
+un contacto a un proceso o a una tasación suyos SHALL tener que poder verlo antes.
+Desvincular, y todo lo que hace la coordinación, SHALL seguir como hoy.
+
+#### Scenario: Asesor intenta vincular un contacto ajeno a su proceso
+- **WHEN** un asesor pide por la red vincular a un proceso asignado a él un contacto que no tiene asignado, no creó y del que no tiene ningún proceso ni tasación a su nombre
+- **THEN** recibe 404, el proceso queda con el contacto que tenía, y la ficha de ese contacto le sigue respondiendo "No encontramos este contacto"
+
+#### Scenario: Asesor intenta vincular un contacto ajeno a su tasación
+- **WHEN** un asesor pide por la red vincular a una tasación suya un contacto que no puede ver
+- **THEN** recibe 404 y la tasación queda con el contacto que tenía
+
+#### Scenario: Asesor vincula el contacto que acaba de crear
+- **WHEN** un asesor crea un contacto desde el editor de contacto de un proceso o de una tasación suyos que no tenían persona vinculada
+- **THEN** el contacto queda creado por él, se vincula sin error y puede abrir su ficha
+
+#### Scenario: Desvincular y vincular desde la coordinación siguen igual
+- **WHEN** un asesor desvincula el contacto de un proceso suyo, o una coordinadora vincula a un proceso un contacto asignado a un asesor
+- **THEN** los dos pedidos se guardan como hoy
+
 ### Requirement: Editar un contacto respeta el mismo permiso
 Los datos de un contacto SHALL poder editarlos solo quienes pueden abrir su ficha, y solo
 coordinador, admin y dueño SHALL poder cambiar a quién está asignado. Un campo que no es

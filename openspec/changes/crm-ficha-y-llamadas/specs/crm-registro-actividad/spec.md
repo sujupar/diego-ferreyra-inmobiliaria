@@ -139,7 +139,8 @@ rojo en cuanto se completan.
 ### Requirement: La hora de la llamada se puede corregir hacia atrás
 Al registrar una llamada o un WhatsApp, SHALL poder indicarse que ocurrió antes ("Hace 15
 min", "Hace 30 min", "Hace 1 hora"), hasta siete días atrás como máximo y nunca en el
-futuro. La hora real de carga MUST guardarse aparte.
+futuro. La hora real de carga MUST guardarse aparte. En escritorio, al abrir esa
+corrección el botón "Guardar llamada" SHALL quedar entero a la vista.
 
 #### Scenario: Por defecto es ahora
 - **WHEN** se guarda una llamada sin tocar "¿Fue hace un rato? Corregir la hora"
@@ -148,6 +149,10 @@ futuro. La hora real de carga MUST guardarse aparte.
 #### Scenario: Hace 30 minutos
 - **WHEN** se elige "Hace 30 min" y se guarda
 - **THEN** la actividad muestra la llamada con la hora de hace 30 minutos, y en la base `occurred_at` es 30 minutos anterior a `created_at`
+
+#### Scenario: En escritorio "Guardar llamada" queda a la vista al corregir la hora
+- **WHEN** a 1280 px se toca "¿Fue hace un rato? Corregir la hora" y las opciones empujan el formulario hacia abajo
+- **THEN** la página se acomoda y el botón "Guardar llamada" se ve entero
 
 #### Scenario: Más de siete días atrás
 - **WHEN** llega por la red un pedido que indica que la llamada fue hace más de siete días
@@ -375,6 +380,19 @@ foco SHALL pasar al aviso o, si no hay aviso, al registro nuevo.
 #### Scenario: Cerrar el aviso
 - **WHEN** se toca la X del aviso
 - **THEN** el aviso desaparece y la actividad queda como estaba
+
+### Requirement: Un solo aviso con "Deshacer" a la vista
+El aviso breve con "Deshacer" (el de una nota, una llamada, un WhatsApp o un proceso
+perdido) SHALL ser uno solo a la vez en la ficha, y SHALL cerrarse al salir de la ficha y,
+en celular, al abrir la hoja "+". Que se cierre MUST NOT deshacer nada.
+
+#### Scenario: Un solo aviso con "Deshacer" a la vista
+- **WHEN** se guarda una nota y, antes de que "Nota guardada." se vaya, se guarda una llamada
+- **THEN** queda a la vista solo "Llamada 1 guardada." con su "Deshacer"; la nota sigue guardada y se puede borrar desde su menú "⋯"
+
+#### Scenario: El aviso con "Deshacer" se cierra al salir o al abrir la hoja
+- **WHEN** con "Nota guardada." a la vista se pasa a otra pantalla, o en celular se toca "+"
+- **THEN** ese aviso se cierra y lo guardado no cambia
 
 ### Requirement: Registrar no envía mensajes ni cambia etapas
 Guardar una nota, una llamada o una marca de WhatsApp SHALL NOT enviar ningún mensaje ni

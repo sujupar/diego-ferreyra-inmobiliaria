@@ -154,3 +154,56 @@ Menores (15):
   `crm-sistema-diseno` (12.3, 14.1 y el follow-up).
 - Convertir un proceso que ya estaba en "agendada" sin día no suma fila al historial ni
   cambia `scheduled_at`: en D9, Risks, y con una tercera corrida en 8.4.
+
+### Verificación final, ronda 4 (2026-11-25)
+
+Dos niveles de auditoría revisaron otra vez el change completo. Cada hallazgo se comprobó
+contra el código o el documento antes de corregir. Los 13 eran ciertos; ninguno se
+descartó. Ninguna corrección cambia una decisión confirmada por el dueño.
+
+De peso (2):
+
+1. **El asesor se podía dar solo el permiso nuevo.** `PATCH /api/deals/[id]/contact` y
+   `PATCH /api/appraisals/[id]/contact` miran solo que el proceso o la tasación sea suyo y
+   escriben el `contact_id` que venga. Con la regla "ve el contacto de un proceso suyo",
+   alcanzaba con el id de un contacto ajeno. Ahora las dos rutas le exigen poder ver el
+   contacto antes de vincularlo (D4, tarea 5.4, escenarios nuevos en `crm-ficha-contacto`).
+   Queda dicho lo que no se cierra acá: la API directa de la base (la política de `deals`
+   deja al asesor editar sus procesos) y que crear un proceso con el teléfono o el email
+   de una persona le abre su ficha, que es la regla confirmada (Context, D2, Risks,
+   propuesta, 13.1 y 13.5).
+2. **El QA de permisos pedía un resultado que contradice la regla.** Con `crear solicitud`
+   la cuenta "Claude · pruebas" recibe una tarea de entrada; cuando hace de asesor y
+   registra "No atendió" sobre ese proceso, `soloPropias` se la cierra por estar a su
+   nombre. La tarea 12.5 pedía verla pendiente. Situación nueva `solicitud-para-asesor`
+   (tarea de entrada solo de "Julian Coordinador") en 2.5, 12.5 y 14.5; D2 aclara que
+   decide a nombre de quién está la tarea, no su tipo, con su caso en 3.4.
+
+Menores (11):
+
+- "Corregir la hora" en escritorio acomoda la página para que "Guardar llamada" quede
+  entero (GUIA sección 12): en D5, escenario nuevo en `crm-registro-actividad`, 9.4 y 12.6.
+- Un solo toast a la vez, que se cierra al salir de la ficha y al abrir la hoja: la ficha
+  lo cumple con sus propios toasts, sin tocar el `Toaster` global (D5, dos escenarios, 9.7
+  y 12.6). No hace falta una diferencia nueva con lo aprobado.
+- La entrada que abre la ficha con "Registrar llamada" ya abierto (botón "Registrar" del
+  Inicio) no la construye este change: queda anotada para `crm-inicio` en 13.1.
+- `convertirSolicitud` existe y va primero, con su test, y `syncMailchimpBestEffort` se
+  exporta: los tres documentos dicen lo mismo (D9 sin condicional, propuesta, 8.1).
+- Escenarios sin prueba nombrada: `occurred_at` propio que se ignora y "Sin sesión" (6.2),
+  "volver a llamar" fuera de orden con su frase (9.6 y D2), y la lista `scheduled` filtrada
+  para un asesor, sumando `assigned_to` al `select` (5.2 y D4).
+- El commit con la fecha del deploy entra por un PR chico de documentos, desde un worktree
+  aparte, y se espera su deploy antes de 14.5 (13.3).
+- `assigned_role` no es una columna de `tasks`: es el rol del perfil asignado y lo
+  completa `getPendingTasksForContact`; `TareaDeFicha` quedó definido (D2, D3, 4.1 y 3.4).
+- El motivo de exigir el día al convertir estaba mal escrito (el email no se repite:
+  `sendEmail` no reenvía el mismo aviso). Corregido en D9. En Risks: al convertir un
+  proceso "agendada sin día" el email con el día real puede no salirle a quien ya recibió
+  el primero. Precisión sobre lo que decía el hallazgo: la tarea `new_assignment` se crea
+  salvo que ese asesor ya tenga una pendiente de ese proceso (`createTask` no duplica).
+- Las precisiones 21 a 25 no frenan todo: solo esperan la respuesta del dueño las tareas
+  que construyen cada una (1.5 y el párrafo de "Diferencias con lo aprobado").
+- La constante del horario laboral ya no lleva hora de fin: ninguna regla la usaba (D2).
+- A 390 px se miran en el navegador el error del pedido de la persona (bloqueando el
+  pedido), la pantalla del abogado y la de contacto no encontrado (12.4 y 12.5).
