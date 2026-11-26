@@ -327,8 +327,8 @@ otra persona. Ningún botón del aviso lleva a ese proceso.
 - **THEN** pasa lo mismo: la llamada queda, no hay tarea nueva y no cambia ninguna tarea del otro asesor ni de la coordinación
 
 #### Scenario: Volver a llamar sobre un proceso ajeno
-- **WHEN** ese asesor registra "Atendió · volver a llamar" con día y hora
-- **THEN** se crea la tarea "Llamar a {nombre}" asignada a él, la ve en el bloque Tareas de su ficha sin recargar, y las tareas de otras personas siguen como estaban; si abre esa tarea desde `/tasks`, llega a la ficha de la persona y no a la pantalla del proceso ajeno
+- **WHEN** ese asesor registra "Atendió · volver a llamar" con el día de hoy y una hora que todavía no pasó
+- **THEN** se crea la tarea "Llamar a {nombre}" asignada a él, la ve en el bloque Tareas de su ficha sin recargar, y las tareas de otras personas siguen como estaban; si abre esa tarea desde `/tasks` (que lista las pendientes de hoy o anteriores, no las de mañana), llega a la ficha de la persona y no a la pantalla del proceso ajeno
 
 #### Scenario: Cierra solo lo suyo
 - **WHEN** ese asesor tiene pendiente esa tarea "Llamar a {nombre}" y registra otra llamada sobre el mismo proceso ajeno

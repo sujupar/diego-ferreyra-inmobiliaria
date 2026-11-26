@@ -41,8 +41,12 @@ hay tiempos, ni tasas, ni forma de mejorar ese paso.
   vínculo. (Lo que no se cierra acá: con la dirección de un proceso, el abogado todavía
   puede leer los datos de esa persona por la pantalla de procesos; es anterior a este
   cambio y queda anotado.) También se cierra el atajo por el que un asesor se daba ese
-  vínculo solo: las dos rutas que vinculan un contacto a un proceso o a una tasación le
-  exigen que ya pueda ver ese contacto. (Dos cosas más que quedan dichas: por la API
+  vínculo solo: las dos rutas que vinculan un contacto a un proceso o a una tasación por
+  su id le exigen que ya pueda ver ese contacto. Y la que completa los datos del cliente
+  de un proceso (`PUT /api/deals/[id]/cliente`), que busca a la persona por email o
+  teléfono, no se bloquea pero deja rastro: si un asesor queda enganchado así a un
+  contacto que ya existía y que no podía ver, queda una nota automática en la ficha de esa
+  persona, a su nombre, que él no puede borrar. (Dos cosas más que quedan dichas: por la API
   directa de la base un asesor todavía puede cambiar el contacto de un proceso suyo, y
   eso queda para el change que revise los permisos de procesos; y un asesor que crea un
   proceso con el teléfono o el email de una persona ya cargada pasa a ver su ficha,

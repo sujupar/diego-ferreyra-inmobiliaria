@@ -39,18 +39,27 @@ que fue editada.
 - **WHEN** una coordinadora mira una nota escrita por un asesor
 - **THEN** el menú de esa nota no ofrece "Editar", y un pedido de edición hecho por la red responde 403 sin cambiar la base
 
+#### Scenario: La nota automática no se edita
+- **WHEN** cualquier persona, incluido el asesor que figura como autor, mira una nota automática (la que deja el sistema cuando un asesor queda vinculado a un contacto al completar los datos del cliente)
+- **THEN** el menú de esa nota no ofrece "Editar", y un pedido de edición hecho por la red responde 403
+
 #### Scenario: Editar y dejarla vacía
 - **WHEN** el autor edita su nota y borra todo el texto
 - **THEN** se lee "Escribí algo para guardar la nota" y la nota conserva el texto anterior
 
 ### Requirement: Borrar una nota
 Una nota SHALL poder borrarla quien la escribió, y también un coordinador, un admin o un
-dueño. La nota borrada desaparece de la ficha pero MUST conservarse en la base con quién y
+dueño. La nota automática es la excepción: SHALL poder borrarla solo un coordinador, un
+admin o un dueño, nunca el asesor que figura como autor. La nota borrada desaparece de la ficha pero MUST conservarse en la base con quién y
 cuándo la borró.
 
 #### Scenario: El autor borra su nota
 - **WHEN** el autor toca "Borrar" en el menú de su nota y confirma
 - **THEN** la nota desaparece de la actividad, y en la base la fila sigue existiendo con `voided_at` y `voided_by` completos
+
+#### Scenario: El asesor no borra la nota automática que lleva su nombre
+- **WHEN** un asesor abre el menú de una nota automática que lo tiene como autor
+- **THEN** el menú no ofrece "Borrar" y el pedido hecho por la red responde 403; a una coordinadora sí se le ofrece
 
 #### Scenario: Un asesor no puede borrar la nota de otro
 - **WHEN** un asesor mira, en un contacto suyo, una nota escrita por la coordinadora

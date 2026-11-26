@@ -112,7 +112,8 @@ CREATE TABLE IF NOT EXISTS public.contact_activities (
   updated_at    timestamptz,                -- solo notas editadas
   voided_at     timestamptz,
   voided_by     uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
-  client_token  uuid                        -- anti doble guardado
+  client_token  uuid,                       -- anti doble guardado
+  automatic     boolean NOT NULL DEFAULT false   -- nota escrita por el sistema (D4, `/cliente`)
 );
 
 -- Los 8 CHECK van aparte, cada uno con DROP + ADD (como en 20260806000001): dentro de
@@ -224,6 +225,15 @@ Por qué así y no de otra forma:
 - **Las tres FK a `profiles` son `ON DELETE SET NULL`** (regla del proyecto). Por eso **no
   hay CHECK que ate `voided_at` con `voided_by`**: al borrar un usuario, `voided_by` pasa a
   NULL y ese CHECK haría fallar el borrado.
+- **`automatic`** marca la única nota que no escribe una persona: la que deja
+  `PUT /api/deals/[id]/cliente` cuando un asesor queda vinculado a un contacto que antes no
+  podía ver (D4). Es una columna y no un texto reconocido por su comienzo, porque de ella
+  depende un permiso: el asesor que figura como autor **no** puede editarla ni borrarla
+  (`puedeEditarNota` y `puedeAnular`, D2). Sin la marca, la borraba desde su menú y el
+  rastro desaparecía de la pantalla. Tiene valor por defecto: ningún insert de las rutas de
+  actividad la nombra, y el esquema Zod de `POST …/activities` no la acepta. No lleva CHECK
+  propio (siguen siendo 8): solo la escribe una función del servidor, siempre con
+  `kind = 'note'`.
 - **`occurred_at` con 5 minutos de margen:** cuando se corrige la hora, `occurred_at` lo
   calcula el servidor de la app y `created_at` lo pone la base; sin margen, un desfase de
   relojes rechazaría guardados válidos. Cuando no se corrige, la app no manda `occurred_at`
@@ -246,7 +256,7 @@ algo de esto no se cumple; todo lo que inserta va dentro de una transacción que
 `ROLLBACK`:
 
 1. La base es la de la app: `current_database()` y un `select` de un contacto conocido.
-2. Existen la tabla, las 14 columnas, los 8 CHECK (`pg_constraint`), los 3 índices de la
+2. Existen la tabla, las 15 columnas, los 8 CHECK (`pg_constraint`), los 3 índices de la
    tabla y los 4 de `tasks` (`pg_indexes`), y `relrowsecurity = true` con **una sola**
    policy (la de SELECT).
 3. `tasks` tiene `source_activity_id` y `closed_by_activity_id`. Antes de insertar la tarea
@@ -257,7 +267,8 @@ algo de esto no se cumple; todo lo que inserta va dentro de una transacción que
    prueba, insertada sin esa columna, queda con `created_at` cargado: el corte
    `creadasAntesDe` de `tareasACerrar` (D2) depende de eso. Si no se cumple, aborta.
 4. Entran: una nota, una llamada `no_atendio`, una `volver_a_llamar` con `callback_at`, un
-   `whatsapp_sent`.
+   `whatsapp_sent`, y una nota con `automatic = true`; la primera nota, insertada sin
+   nombrar esa columna, queda con `automatic = false`.
 5. Son rechazadas (23514): llamada sin resultado, nota con resultado, nota vacía,
    `kind` desconocido, resultado desconocido, `occurred_at` un día en el futuro,
    `occurred_at` de hace 8 días, texto de 2.001 caracteres, `volver_a_llamar` sin
@@ -322,6 +333,7 @@ export interface Actividad {
   kind: TipoActividad; call_outcome: ResultadoLlamada | null; body: string | null
   occurred_at: string; callback_at: string | null; created_at: string; updated_at: string | null
   created_by: string | null; voided_at: string | null; voided_by: string | null
+  automatic: boolean                          // nota escrita por el sistema (D1)
 }
 export type Intento = Pick<Actividad, 'id' | 'deal_id' | 'kind' | 'call_outcome' | 'occurred_at' | 'created_at'>
 export interface UsuarioMinimo { id: string; role: string }
@@ -423,6 +435,7 @@ export function numerarLlamadas(intentos: Intento[]): Map<string, number>
 export function tituloActividad(a: Pick<Actividad, 'kind' | 'call_outcome'>, intento: number | null): string
 export function puedeEditarNota(a: Actividad, u: UsuarioMinimo): boolean
 export function puedeAnular(a: Actividad, u: UsuarioMinimo): boolean
+export function textoNotaDeVinculo(direccion: string | null): string
 export function esUltimoIntento(a: Intento, intentosDelProceso: Intento[]): boolean
 export function intentosHasta(a: Intento, intentosDelProceso: Intento[]): Intento[]
 ```
@@ -431,12 +444,24 @@ export function intentosHasta(a: Intento, intentosDelProceso: Intento[]): Intent
 su mismo valor por defecto (`now()`, que dentro de una misma sentencia da el mismo
 instante). Así "Por defecto es ahora" se cumple exacto, sin depender de dos relojes. Con
 `haceMinutos` mayor que 0 devuelve `ahora − haceMinutos`.
+**La nota automática (`automatic = true`, D1) tiene sus propias reglas:** `puedeEditarNota`
+da falso para todos (nadie la reescribe) y `puedeAnular` da verdadero solo con alcance
+`todos` (admin, dueño, coordinador): el asesor que figura como autor no la puede borrar. El
+resto de las notas sigue igual (edita el autor; anula el autor u operaciones).
+`textoNotaDeVinculo` es **el único lugar donde está escrito ese texto**:
+`Nota automática: vinculó este contacto a su proceso de {dirección} al completar los datos del cliente.`,
+con la dirección del proceso recortada a 200 caracteres; si el proceso no tiene dirección,
+`Nota automática: vinculó este contacto a un proceso suyo al completar los datos del
+cliente.` La usan la ruta (D4) y sus tests; ningún otro archivo repite la frase.
 `numerarLlamadas` ordena por `occurred_at` y desempata por `created_at`; numera por proceso
 (las llamadas sin proceso se numeran entre sí, como un grupo aparte). `esUltimoIntento` usa
 el mismo orden: es verdadero si no hay otro intento no anulado posterior del mismo proceso.
 `intentosHasta` devuelve los intentos no anulados del proceso que ocurrieron hasta `a`
 inclusive. Tests: los escenarios de "El número de intento se calcula" (incluido el de
-llamadas sin proceso) y de permisos de la spec `crm-registro-actividad`; texto solo con
+llamadas sin proceso) y de permisos de la spec `crm-registro-actividad`; **nota automática:
+el autor asesor no la edita ni la anula, la coordinadora la anula y no la edita**;
+`textoNotaDeVinculo` con dirección, sin dirección y con una dirección de 500 caracteres
+(el texto no pasa de 2.000); texto solo con
 espacios; texto en NFD; 2.000 y 2.001 caracteres; `hace_minutos` 0, 10.080, 10.081, −1 y
 decimal; `resolverOcurrio` sin minutos y con 0 → `null`, con 30 → 30 minutos antes; `volver_el` un minuto en el pasado; rol desconocido no puede nada; dos intentos con
 el mismo `occurred_at` (desempata `created_at`).
@@ -722,13 +747,29 @@ proceso o una tasación de ese contacto a su nombre**. Sin esa segunda parte el 
 hace hasta tres lecturas cortas con service role (contacto; `deals` por `contact_id` y
 `assigned_to`; `appraisals` por `contact_id`) y corta en la primera que da acceso; un error
 de lectura devuelve `false`.
-**El vínculo por proceso o por tasación no se lo puede dar el propio asesor desde las
-rutas:** las dos que escriben `contact_id` en un proceso o en una tasación
-(`PATCH …/contact`) le exigen `canAccessContact` sobre ese contacto **antes** del cambio
-(D4). Lo que sigue siendo cierto, y es la regla confirmada: un asesor que crea un proceso
-con el teléfono o el email de una persona ya cargada (`POST /api/deals` y
-`POST /api/deals/manual` reutilizan el contacto) queda con un proceso a su nombre y desde
-ahí ve su ficha (Risks).
+**Quién escribe `contact_id` en un proceso o en una tasación** (son cinco rutas, no dos):
+
+- **Por id, dos:** `PATCH /api/deals/[id]/contact` y `PATCH /api/appraisals/[id]/contact`.
+  Le exigen al asesor `canAccessContact` sobre ese contacto **antes** del cambio (D4, tarea
+  5.4): por acá no se puede dar el vínculo solo.
+- **Por email o teléfono, tres:** `POST /api/deals`, `POST /api/deals/manual` y
+  `PUT /api/deals/[id]/cliente` buscan a la persona con lo tipeado y reutilizan el contacto
+  que ya existe. Las dos primeras crean un proceso a nombre del asesor: es la regla
+  confirmada (ve los contactos de sus procesos) y el proceso queda a la vista de la
+  coordinación (Risks). La tercera es distinta: engancha el contacto a un proceso **que ya
+  era suyo** y que él mismo puede dejar antes sin persona (desvincular sigue permitido), y
+  después puede volver a dejar todo como estaba. Sin nada más, eso no dejaba rastro. Por
+  eso `/cliente` deja una **nota automática** en la ficha del contacto cuando el asesor
+  queda vinculado a una persona que antes no podía ver (D4, tarea 5.5). No se bloquea:
+  completar los datos de un referido que ya estaba cargado es el uso normal de esa ruta.
+
+**Dueño del proceso y acceso al contacto no son la misma regla, y no se unifican.**
+`canAccessContact` mira solo `deals.assigned_to`. `PATCH /api/deals/[id]/contact` acepta
+además como dueño del proceso a quien lo creó (`created_by`, `route.ts:38`), y `/cliente`
+usa `canAccessDeal`, que mira solo `assigned_to`. Quien coordinó un proceso que hoy lleva
+otro asesor puede corregirle la persona, pero eso no le abre la ficha: ampliar
+`canAccessContact` a `created_by` le daría a un asesor el acceso a contactos de procesos
+que ya no lleva.
 La lista de roles es explícita y **falla cerrado** (un rol nuevo o `agent`/`viewer` no ve
 nada), igual que `appraisal-access.ts`. Tests: cada rol; contacto sin dueño; asignado;
 creado por él; **contacto sin dueño con un proceso asignado al asesor → puede**; con una
@@ -814,6 +855,11 @@ export async function getTasksOfActivity(activityId: string): Promise<{
   cerradas: { id: string; title: string }[]
 }>
 ```
+**`due_time` es una columna de tipo `time`** (`20260516000001`): se guarda `09:00` y
+PostgREST lo devuelve como `09:00:00`. El aviso y el bloque Tareas lo muestran recortado,
+sin segundos y sin el cero de adelante (`9:00`, `16:00`); el recorte se hace en un solo
+lugar, donde se arma el texto de la hora, y los tests de la respuesta usan el valor con
+segundos, que es el que llega de verdad.
 Lee `tasks` por `source_activity_id` (sin las `dismissed`) y por `closed_by_activity_id`
 **con `status='completed'`** (una tarea reabierta ya no figura como cerrada; además, al
 reabrirla se le vació esa columna).
@@ -853,7 +899,8 @@ para todas:
 | `GET /api/contacts` (existente, la lista) | Se le agrega el corte por rol: **403** cuando `alcanceContactos(role)` es `ninguno` (hoy el abogado recibe 200 con la lista vacía). Para los demás no cambia: el asesor sigue recibiendo solo los asignados a él (`resolverAlcanceAsignado`). El menú del abogado no tiene "Contactos", así que ninguna pantalla suya la pide. |
 | `POST /api/contacts` (existente) | **403** cuando `alcanceContactos(role)` es `ninguno`. Deja de pasar el cuerpo crudo a `createContact`: arma el insert con una **lista cerrada** (`full_name`, `phone`, `email`, `origin`, `notes`). `created_by` lo pone **siempre el servidor** (= usuario). `assigned_to`: si quien crea es asesor, el servidor pone su id y descarta lo que venga; si es de operaciones, se acepta el que mande (o vacío). |
 | `DELETE /api/contacts/[id]` (existente) | Pasa a `requireAuth()` + chequeo explícito del rol: quien no es admin ni dueño recibe **403** en JSON (`{ error }`) y no se borra nada. **No se usa `requireRole`:** no devuelve un error, hace `redirect('/')` (`lib/auth/require-role.ts`). Adentro del `try`, como hoy, eso termina en un 500; afuera del `try` sería una redirección que el `fetch` sigue hasta un 200, y la lista `/contacts` —que decide por `r.value.ok` (`contacts/page.tsx:234-236`)— sacaría de la pantalla un contacto que no se borró. |
-| `PATCH /api/deals/[id]/contact` y `PATCH /api/appraisals/[id]/contact` (existentes) | Vinculan o desvinculan un contacto de un proceso o de una tasación; las usa `ContactEditor` (`ContactEditor.tsx:175` y `:186`) después de crear un contacto. Hoy miran solo que el proceso o la tasación sea de quien pide y escriben el `contact_id` que venga. Como un proceso o una tasación a su nombre le da al asesor acceso al contacto (D2), así se abriría la ficha de cualquier contacto del que conozca el id. Se agrega, **antes del `update`**: `alcanceContactos(role)` = `ninguno` → **403**; y con `contact_id` distinto de `null` y alcance `propios` → se exige `canAccessContact(user, contact_id)`, **calculado con los vínculos de antes del cambio**; si da falso, **404** `{ error: 'No encontramos este contacto' }` (lo mismo si el contacto no existe) y el proceso o la tasación no cambia. Desvincular (`contact_id: null`), operaciones y el chequeo de hoy de que el proceso o la tasación sea suyo no cambian. `ContactEditor` no se rompe: vincula el contacto que acaba de crear con `POST /api/contacts`, que desde este change queda con `created_by` = él. Lo que estas rutas no cubren (la API directa de la base, y crear un proceso con el teléfono o el email de la persona) está en Risks. |
+| `PATCH /api/deals/[id]/contact` y `PATCH /api/appraisals/[id]/contact` (existentes) | Vinculan o desvinculan un contacto de un proceso o de una tasación; las usa `ContactEditor` (`ContactEditor.tsx:175` y `:186`) después de crear un contacto. Hoy miran solo que el proceso o la tasación sea de quien pide y escriben el `contact_id` que venga. Como un proceso o una tasación a su nombre le da al asesor acceso al contacto (D2), así se abriría la ficha de cualquier contacto del que conozca el id. Se agrega, **antes del `update`** y **en este orden**: `alcanceContactos(role)` = `ninguno` → **403**; después el chequeo de hoy de que el proceso o la tasación sea de quien pide → **403** como hoy (va antes que el del contacto: si no, un asesor sabría, por la diferencia entre 404 y 403, algo de un contacto aunque el proceso no sea suyo); y recién entonces, con `contact_id` distinto de `null` y alcance `propios` → se exige `canAccessContact(user, contact_id)`, **calculado con los vínculos de antes del cambio**; si da falso, **404** `{ error: 'No encontramos este contacto' }` (lo mismo si el contacto no existe) y el proceso o la tasación no cambia. Desvincular (`contact_id: null`), operaciones y el chequeo de hoy de que el proceso o la tasación sea suyo no cambian. `ContactEditor` no se rompe: vincula el contacto que acaba de crear con `POST /api/contacts`, que desde este change queda con `created_by` = él. La ruta de procesos acepta como dueño a `assigned_to` **o** `created_by` del proceso; `canAccessContact` mira solo `assigned_to` y no se unifican (D2). Lo que estas rutas no cubren (la API directa de la base, y las tres rutas que reutilizan el contacto por email o teléfono) está en la fila siguiente y en Risks. |
+| `PUT /api/deals/[id]/cliente` (existente) | Completa nombre, teléfono y email de un proceso. Si el proceso no tiene contacto, busca a la persona por email o teléfono (`encontrarOCrearContacto`) y la vincula; el permiso de hoy es solo `canAccessDeal`. **No se bloquea** (es el flujo de "Completá los datos del cliente para avanzar"), pero deja rastro. Cambio, solo en la rama "el proceso no tenía contacto": después de `encontrarOCrearContacto` y **antes de escribir `deals.contact_id`**, si `alcanceContactos(role)` es `propios`, se calcula `yaLoVeia = canAccessContact(user, contactId)`. Un contacto recién creado da verdadero (nace con `assigned_to` = el asesor del proceso, que es él) y uno que ya podía ver, también. Si da **falso** —el contacto ya existía y no era suyo—, la ruta **vincula igual** y, después del `update` del proceso, inserta una fila en `contact_activities`: `kind = 'note'`, `automatic = true`, `contact_id` = ese contacto, `deal_id` = el proceso, `created_by` = quien pidió y `body` = `textoNotaDeVinculo(deal.property_address)` (D2). La inserta `registrarNotaDeVinculo` de `lib/supabase/contactos.ts`, con service role y sin `occurred_at` (lo pone la base). **Si esa inserción falla, el vínculo no se deshace** y la respuesta sigue siendo 200: se registra con `console.error('PUT /api/deals/[id]/cliente: no se pudo dejar la nota de vínculo', { dealId, contactId, userId, error })`, sin datos de la persona. Operaciones no deja nota (ya veía el contacto). Cuando el proceso ya tenía contacto nada cambia: se corrige ese mismo contacto, no hay vínculo nuevo. La nota no corre la cadencia, no cierra ni crea tareas y no lleva `client_token`. |
 | `POST /api/deals` (existente) | Acepta `from_deal_id` o `contact_id` (D9). Sin ninguno de los dos, no cambia nada. |
 | `POST /api/deals/[id]/undo-lost` (nueva) | Deshace un "perdido" recién marcado (D9). |
 
@@ -963,7 +1010,9 @@ Respuesta `201` (o `200` si el `client_token` ya existía, **con el mismo cuerpo
 ```
 
 Cuerpo de `PATCH`: `{ accion: 'editar', body }` (solo notas y solo el autor: si no, 400 o
-403) o `{ accion: 'anular' }` (autor u operaciones). Anular responde
+403) o `{ accion: 'anular' }` (autor u operaciones). **La nota automática (`automatic`) no
+la edita nadie y la anula solo operaciones: al asesor que figura como autor le responde
+403 en los dos pedidos** (`puedeEditarNota` y `puedeAnular`, D2). Anular responde
 `{ ok: true, tareas: { descartadas, reabiertas } }`. Anular algo ya anulado responde 200 sin
 volver a tocar el registro (`voided_at` y `voided_by` quedan como estaban); solo repite lo
 que haya quedado a medias de las tareas (D8).
@@ -1136,8 +1185,13 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   `enlaceTareaCadencia(task): string | null` en `lib/crm/tareas-ficha.ts` — una tarea
   `follow_up` con `source_activity_id` y `contact_id` devuelve `/contacts/<contact_id>`;
   cualquier otra, `null`. `getTaskLink` la consulta **primero** y, si da `null`, sigue
-  exactamente como hoy. Quien tiene una tarea de la cadencia siempre puede abrir esa
-  ficha: registró una actividad sobre ese contacto, o es de la coordinación.
+  exactamente como hoy. Quien tiene una tarea de la cadencia casi siempre puede abrir esa
+  ficha: registró una actividad sobre ese contacto, o es de la coordinación. **La
+  excepción:** un asesor al que después le reasignaron el proceso (o el contacto) que le
+  daba el acceso conserva la tarea, y al abrirla ve "No encontramos este contacto". No se
+  agrega nada para ese caso: la tarea se completa o se descarta desde `/tasks`, y limpiar
+  las tareas de la cadencia al reasignar queda con el resto de esa limpieza en
+  `crm-tareas-y-campanita`.
 - Después de guardar, en escritorio el cuadro vuelve a la pestaña "Nota" (como
   `despuesDeGuardar` de la maqueta); en celular, a la pestaña "Actividad".
 - **Comportamientos de la maqueta que no son texto ni medida** (GUIA.md, secciones 10, 11
@@ -1587,7 +1641,9 @@ con `advance` (deja una perdida falsa en las métricas).
 - **Módulos puros:** vitest, test primero. Se amplía `vitest.crm.config.ts` y
   `tsconfig.crm.json`. El `include` suma todo lo que este change prueba, para que un solo
   comando lo corra: `lib/crm/**`, `lib/auth/**/*.test.ts`, `lib/supabase/tasks*.test.ts`,
-  `lib/supabase/cadencia*.test.ts` (`aplicarCadencia` es código de `lib/` y lleva su test
+  `lib/supabase/cadencia*.test.ts`, `lib/supabase/contactos*.test.ts` (la nota de vínculo de
+  `/cliente`, D4; `lib/supabase/contactos.ts` ya está en `tsconfig.crm.json`)
+  (`aplicarCadencia` es código de `lib/` y lleva su test
   primero; `lib/supabase/deals*.test.ts`, donde va el test de la función de conversión, ya
   está en el `include`),
   `app/api/contacts/**`, `app/api/appraisals/[id]/contact/**` (la ruta de vincular, D4;
@@ -1741,11 +1797,28 @@ en el reporte final.
   edición, sin que nadie se enterara. Se cierra en D4 (tarea 5.4): antes de vincular se le
   exige poder ver ese contacto. **Lo que queda abierto:** la política
   `deals_update_owner_or_ops` (`20260505000001`) deja que un asesor edite sus procesos por
-  la API directa de la base, incluido `contact_id`. No pasa por ninguna ruta y ninguna
+  la API directa de la base, incluido `contact_id`. **Es el mismo atajo, y por la misma
+  migración, con las políticas de alta y de tasaciones:** `deals_insert_authenticated`
+  deja insertar un proceso a su nombre con el `contact_id` que quiera, y
+  `appraisals_insert_self_or_ops` y `appraisals_update_owner_or_ops` hacen lo mismo con una
+  tasación suya. No pasa por ninguna ruta y ninguna
   pantalla lo hace; existe desde antes. Cerrar esa escritura es del change que revise los
   permisos de procesos (tarea 13.1) y se le avisa al dueño (tarea 13.5). Atenuante: la
   RLS de `contacts` no le deja listar contactos ajenos (`contacts_select_owner_or_ops`),
   así que necesita conocer el id.
+- [Completar los datos del cliente engancha un contacto que ya existía] → `PUT
+  /api/deals/[id]/cliente` es la tercera ruta que reutiliza el contacto por email o
+  teléfono, y la única que lo hace sobre un proceso que ya existe. Un asesor podía
+  desvincular la persona de un proceso suyo, llamar a `/cliente` con el email de otra,
+  quedar vinculado a su contacto (y abrir su ficha), y después volver a dejar todo como
+  estaba, sin que quedara nada a la vista. **No se bloquea**, porque es el flujo normal de
+  "Completá los datos del cliente para avanzar" con un referido ya cargado. Se cierra el
+  "sin rastro": cuando el asesor queda vinculado a un contacto que ya existía y que antes
+  no podía ver, queda una nota automática en la ficha de esa persona, a su nombre, que él
+  no puede editar ni borrar (D1, D2, D4; tarea 5.5). Límites que se aceptan: si la
+  inserción de la nota falla, el vínculo queda igual y solo hay un `console.error`; y la
+  coordinación se entera cuando abre esa ficha, no con un aviso. Se le cuenta al dueño
+  (tarea 13.5).
 - [Un asesor que crea un proceso con el teléfono o el email de una persona pasa a ver su
   ficha] → `POST /api/deals` y `POST /api/deals/manual` reutilizan el contacto que ya
   tiene ese email o ese teléfono, y el proceso nuevo queda a nombre del asesor. Con la
@@ -1827,6 +1900,19 @@ en el reporte final.
   nombre, teléfono y email. Existe desde antes; queda anotado para el change que revise
   los permisos de procesos (tarea 13.1) y el reporte al dueño lo dice así: "deja de ver
   la ficha y la lista de contactos", no "deja de ver contactos".
+- [Borrar un proceso renumera sus llamadas] → `DELETE /api/deals/[id]` (admin y dueño)
+  deja las llamadas de ese proceso con `deal_id` vacío (`ON DELETE SET NULL`, D1). Desde
+  ahí se numeran junto con las llamadas "sin proceso" de esa persona, como un solo grupo:
+  una "Llamada 2" puede pasar a verse como "Llamada 4". No se pierde ningún registro y la
+  cadencia de los procesos que siguen vivos no cambia. Borrar un proceso es raro (lo
+  normal es descartarlo) y no se agrega nada para esto.
+- [El aviso puede nombrar tareas que la ficha no le lista al asesor] → cuando un asesor
+  llama sobre un proceso **suyo**, la cadencia cierra tareas sobre la lista completa (D3),
+  y entre ellas puede haber una de la coordinación ligada solo al contacto (una
+  `update_contact`, una llamada agendada a mano), que el bloque Tareas no le muestra
+  (regla (c) de `tareasVisiblesEnFicha`). El aviso la nombra por su título al cerrarla. Se
+  acepta: es el título de una tarea sobre una persona que ya atiende, "Deshacer" la
+  reabre, y esconderla del aviso dejaría una tarea cerrada sin que nadie lo vea.
 - [La tarea de entrada del lead puede nacer después de la primera llamada] → la crea la
   cola del embudo, que corre cada minuto y reintenta (`side-effect-handlers.ts`). Si la
   coordinadora registra la llamada antes de que esa tarea exista, la tarea nace después,
