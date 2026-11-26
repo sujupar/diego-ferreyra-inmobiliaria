@@ -10,6 +10,7 @@ import { AvisoGuardado } from './AvisoGuardado'
 import { FichaContacto } from './FichaContacto'
 import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
 import { pedidosA, simularRed } from './red-prueba'
+import { toast } from 'sonner'
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...p }: { href: string; children: React.ReactNode }) => (
@@ -208,5 +209,35 @@ describe('"Reintentar" en la ficha', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Se agendó Llamada 2 para mañana 9:00.'))
     expect(screen.getByRole('status')).not.toHaveTextContent('no se pudo agendar')
     expect(pedidosA(red, '/a-9/cadencia', 'POST')).toHaveLength(1)
+  })
+
+  it('si la red se corta al reintentar: toast de error, se registra en consola y se puede volver a tocar (revisión 12.1)', async () => {
+    const BASE = `/api/contacts/${CONTACTO}`
+    const llamada = actividadDePrueba({ id: 'a-9', kind: 'call', call_outcome: 'no_atendio', body: null, intento: 1, titulo: 'Llamada 1 · No atendió' })
+    const red = simularRed({
+      [`${BASE}/ficha`]: { body: fichaDePrueba() },
+      [`${BASE}/activities`]: { body: { actividades: [], hay_mas: false } },
+      [`${BASE}/tasks`]: { body: { tareas: [tareaDePrueba()], total: 1 } },
+      [`POST ${BASE}/activities`]: { status: 201, body: { actividad: llamada, cadencia: cad({ dealId: 'd-1' }), pendiente: true } },
+      [`POST ${BASE}/activities/a-9/cadencia`]: () => {
+        throw new TypeError('Failed to fetch')
+      },
+    })
+    const consola = vi.spyOn(console, 'error').mockImplementation(() => {})
+    render(<FichaContacto contactoId={CONTACTO} rol="coordinador" usuarioId="u-1" abrirEditor={false} reloj={() => ahora} />)
+    const usr = userEvent.setup()
+    const composer = await waitFor(() => document.getElementById('ficha-composer') as HTMLElement)
+    await screen.findByRole('heading', { name: '[TEST] Marcela Ibáñez' })
+    await usr.click(within(composer).getByRole('tab', { name: /Registrar llamada/ }))
+    await usr.click(within(composer).getByRole('button', { name: /No atendió/ }))
+    const aviso = await screen.findByRole('status')
+    await usr.click(within(aviso).getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() =>
+      expect(vi.mocked(toast.error).mock.calls.map((c) => c[0])).toContain('No se pudo agendar la siguiente. Revisá la conexión y probá de nuevo.'),
+    )
+    expect(consola).toHaveBeenCalled()
+    await usr.click(within(screen.getByRole('status')).getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() => expect(pedidosA(red, '/a-9/cadencia', 'POST')).toHaveLength(2))
+    consola.mockRestore()
   })
 })
