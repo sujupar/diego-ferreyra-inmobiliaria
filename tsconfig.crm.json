@@ -39,6 +39,7 @@
     "scripts/ficha-contacto.probe.tsx",
     "scripts/tipos/pg.d.ts",
     "scripts/apply-contact-activities-pg.ts",
+    "scripts/apply-tasks-cadencia-solo-servidor-pg.ts",
     "scripts/_qa-ficha-datos.ts",
     "scripts/_qa-convertir-solicitud.ts",
     "scripts/_qa-actividad.ts"
