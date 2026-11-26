@@ -172,10 +172,15 @@ function siguienteDeNoAtendio(e: EntradaCadencia): { tarea: TareaACrear | null; 
 
   // Día hábil siguiente al día de Argentina en que se cargó, a la hora de inicio.
   const { fecha, hora } = siguienteDiaHabil(e.cargadoEn)
+  // Con una tarea "Enviar WhatsApp" de la cadencia todavía pendiente, el próximo paso ya
+  // existe: no se crea otra tarea, sea cual sea la racha (spec, "Qué regla gana cuando se
+  // cruzan dos"). Pasa con racha 1 si, por ejemplo, un asesor registró "Atendió" sobre un
+  // proceso ajeno y no cerró la tarea de la coordinación: crear "Llamada N+1" le dejaría a
+  // la coordinadora dos tareas para la misma persona.
+  if (e.hayTareaWhatsappDeCadenciaPendiente) return sinTarea('whatsapp_ya_pendiente')
   if (racha.noAtendioSeguidas >= 2) {
     // Una tarea "Enviar WhatsApp" completada con el tilde no cuenta: el tilde no prueba que
     // el mensaje salió, así que mientras nadie lo marque cada "No atendió" lo vuelve a pedir.
-    if (e.hayTareaWhatsappDeCadenciaPendiente) return sinTarea('whatsapp_ya_pendiente')
     return {
       tarea: { title: `Enviar WhatsApp a ${e.nombreContacto}`, channel: 'message', due_date: fecha, due_time: hora },
       motivoSinTarea: null,
