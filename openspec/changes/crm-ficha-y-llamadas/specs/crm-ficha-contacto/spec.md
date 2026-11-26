@@ -414,7 +414,7 @@ exacta se ve al tocar cualquier parte del renglón.
 - **THEN** se lee "Llamada 1 · No atendió" con su ícono, "Paula" y "ayer", y al tocar la fecha se ven el día y la hora exactos
 
 #### Scenario: Título largo
-- **WHEN** el título de un registro no entra en un renglón (por ejemplo "Llamada 3 · Atendió · volver a llamar" a 390 px)
+- **WHEN** el título de un registro no entra en un renglón (por ejemplo "Llamada 3 · Volver a llamar" a 390 px)
 - **THEN** pasa a un segundo renglón y no se corta con puntos suspensivos
 
 #### Scenario: Toque en el renglón
