@@ -101,7 +101,7 @@ describe('POST /api/contacts/[id]/activities — notas', () => {
   it('nota vacía → 400 y no se guarda nada', async () => {
     const res = await post({ kind: 'note', body: '   ', client_token: TOKEN })
     expect(res.status).toBe(400)
-    expect((await res.json()).error).toBe('Escribí la nota.')
+    expect((await res.json()).error).toBe('Escribí algo para guardar la nota')
     expect(m.insertarActividad).not.toHaveBeenCalled()
   })
 

@@ -9,7 +9,7 @@ export const MAX_MINUTOS_ATRAS = 7 * 24 * 60
 export const MAX_LARGO_TEXTO = 2000
 
 const MSG_LARGO = `El texto no puede pasar de ${MAX_LARGO_TEXTO} caracteres.`
-const MSG_NOTA_VACIA = 'Escribí la nota.'
+const MSG_NOTA_VACIA = 'Escribí algo para guardar la nota' // texto de la spec crm-registro-actividad
 
 // NFC antes de contar: una "é" pegada desde macOS llega como dos caracteres (NFD) y
 // sin normalizar contaría doble y no coincidiría al buscar.

@@ -144,7 +144,7 @@ describe('Editar una nota', () => {
   it('editar y dejarla vacía → 400 y no se toca', async () => {
     const res = await patch({ accion: 'editar', body: '   ' })
     expect(res.status).toBe(400)
-    expect((await res.json()).error).toBe('Escribí la nota.')
+    expect((await res.json()).error).toBe('Escribí algo para guardar la nota')
     expect(m.editarNota).not.toHaveBeenCalled()
   })
   it('no se puede cambiar el resultado ni el comentario de una llamada → 400', async () => {
