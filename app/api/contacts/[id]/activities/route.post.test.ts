@@ -1,8 +1,7 @@
 /**
  * POST /api/contacts/[id]/activities — notas (crm-ficha-y-llamadas, tarea 6.1).
  * Todo corre con service role: la ruta es la única barrera (design.md D4).
- * Llamadas y WhatsApp esperan a `aplicarCadencia` (tarea 6.2): hasta entonces la ruta
- * los rechaza con un error explícito y no guarda nada.
+ * Las llamadas y el WhatsApp marcado (con la cadencia) están en `route.llamadas.test.ts`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -246,22 +245,3 @@ describe('POST — client_token repetido en una nota', () => {
   })
 })
 
-describe('POST — llamadas y WhatsApp todavía no (esperan a la cadencia, tarea 6.2)', () => {
-  it('una llamada → 501 con un error explícito y no se guarda nada', async () => {
-    const res = await post({ kind: 'call', call_outcome: 'no_atendio', client_token: TOKEN })
-    expect(res.status).toBe(501)
-    expect((await res.json()).error).toMatch(/todavía/i)
-    expect(m.insertarActividad).not.toHaveBeenCalled()
-  })
-
-  it('un WhatsApp marcado → 501 y no se guarda nada', async () => {
-    const res = await post({ kind: 'whatsapp_sent', client_token: TOKEN })
-    expect(res.status).toBe(501)
-    expect(m.insertarActividad).not.toHaveBeenCalled()
-  })
-
-  it('una llamada con resultado desconocido sigue siendo 400 (la validación va primero)', async () => {
-    const res = await post({ kind: 'call', call_outcome: 'inventado', client_token: TOKEN })
-    expect(res.status).toBe(400)
-  })
-})
