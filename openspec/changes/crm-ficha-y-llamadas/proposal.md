@@ -40,7 +40,13 @@ hay tiempos, ni tasas, ni forma de mejorar ese paso.
   hoy "funciona":** un asesor ya no puede abrir un contacto con el que no tiene ningún
   vínculo. (Lo que no se cierra acá: con la dirección de un proceso, el abogado todavía
   puede leer los datos de esa persona por la pantalla de procesos; es anterior a este
-  cambio y queda anotado.)
+  cambio y queda anotado.) También se cierra el atajo por el que un asesor se daba ese
+  vínculo solo: las dos rutas que vinculan un contacto a un proceso o a una tasación le
+  exigen que ya pueda ver ese contacto. (Dos cosas más que quedan dichas: por la API
+  directa de la base un asesor todavía puede cambiar el contacto de un proceso suyo, y
+  eso queda para el change que revise los permisos de procesos; y un asesor que crea un
+  proceso con el teléfono o el email de una persona ya cargada pasa a ver su ficha,
+  porque ese proceso queda a su nombre: es la regla confirmada.)
 - Se llega a la ficha tocando el nombre de la persona en el CRM, en el proceso y en la
   lista de contactos. Una tarea de llamada o de WhatsApp creada por la cadencia, abierta
   desde `/tasks`, también abre la ficha (hoy abriría el proceso, donde la llamada no se
@@ -135,6 +141,9 @@ asesor cierra solo las tareas que están a su nombre; y se acepta que, al deshac
     quien no es admin ni dueño (hoy responde 500);
   - `app/api/deals` (`POST`): acepta `from_deal_id` (convierte la solicitud) y `contact_id`
     (usa ese contacto). Sin esos dos campos no cambia nada.
+  - `app/api/deals/[id]/contact` y `app/api/appraisals/[id]/contact` (`PATCH`): a un
+    asesor le exigen poder ver el contacto que vincula (404 si no). Desvincular, y todo
+    lo que hace la coordinación, sigue igual.
 - Mailchimp: convertir una solicitud y deshacer un "perdido" avisan a Mailchimp del cambio
   de etapa, igual que cualquier cambio de etapa de hoy, para que la persona reciba la
   secuencia de emails que le corresponde. No se agrega ningún envío nuevo.
@@ -146,13 +155,16 @@ asesor cierra solo las tareas que están a su nombre; y se acepta que, al deshac
   y `/contacts`, y en `app/(dashboard)/tasks` solo a dónde lleva una tarea de la cadencia.
 - Código: `lib/crm/`, `lib/auth/` (`contact-access`, `entity-access`), `components/crm/`,
   `lib/supabase/tasks.ts` (cinco funciones nuevas), `lib/supabase/cadencia.ts` (nuevo:
-  `aplicarCadencia`), `lib/supabase/deals.ts` (función nueva para convertir una solicitud),
+  `aplicarCadencia`), `lib/supabase/deals.ts` (función nueva `convertirSolicitud`, y se exporta
+  `syncMailchimpBestEffort`),
   `app/globals.css` (dos tokens).
 - Efecto sobre otras pantallas: `ContactEditor` en `/pipeline/[id]` y `/appraisals/[id]`
   usa las rutas de contactos; con la regla de acceso de este change sigue funcionando para
   el asesor. En `/pipeline/[id]` se prueba en el QA (tarea 11.2); en `/appraisals/[id]`
   se cubre con el test de ruta (asesor con solo una tasación a su nombre, tarea 5.2),
-  porque la receta de datos de prueba no crea tasaciones.
+  porque la receta de datos de prueba no crea tasaciones. Cuando `ContactEditor` crea un
+  contacto y lo vincula a un proceso o a una tasación, también sigue funcionando: el
+  contacto queda creado por él (tarea 5.3) y por eso lo puede vincular (tarea 5.4).
 - No hay variables de entorno nuevas ni procesos programados.
 - Depende de `crm-sistema-diseno`, aprobado y archivado (maqueta en
   `openspec/changes/archive/2026-11-25-crm-sistema-diseno/maqueta/`). Deja anotado trabajo para

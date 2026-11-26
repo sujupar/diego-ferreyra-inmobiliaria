@@ -14,6 +14,12 @@ Estado del código que condiciona el diseño (verificado en el worktree):
   piden sesión: un asesor o el abogado, con el id, leen y editan cualquier contacto, y el
   `PUT` acepta `assigned_to` en el cuerpo. Todas las rutas de contactos y de tareas usan
   service role, así que **la RLS no los frena**: el permiso hay que ponerlo en cada ruta.
+  **Y el vínculo que da acceso se lo puede armar el propio asesor.** `PATCH
+  /api/deals/[id]/contact` y `PATCH /api/appraisals/[id]/contact` miran solo que el proceso
+  o la tasación sea de quien pide y escriben el `contact_id` que venga, sin leer ese
+  contacto. Como la regla nueva le da al asesor el contacto de un proceso o una tasación a
+  su nombre (D2), sin tocar esas dos rutas le alcanzaría con conocer el id de un contacto
+  ajeno para abrirse su ficha. Se cierran en D4.
 - **`POST /api/contacts` no guarda `created_by` ni `assigned_to`**: un contacto creado por
   un asesor queda sin dueño.
 - **Los contactos del embudo nacen sin `assigned_to` ni `created_by`**
@@ -325,7 +331,7 @@ export interface UsuarioMinimo { id: string; role: string }
 
 ```ts
 export const ZONA_AR = 'America/Argentina/Buenos_Aires'
-export const HORARIO_LABORAL = { dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '13:00' } as const
+export const HORARIO_LABORAL = { dias: [1, 2, 3, 4, 5], inicio: '09:00' } as const
 export interface FechaHoraAR { fecha: string; hora: string; diaSemana: number } // YYYY-MM-DD, HH:MM, 0=dom
 export function enArgentina(instante: Date): FechaHoraAR
 export function instanteDesdeAR(fecha: string, hora: string): Date
@@ -337,6 +343,9 @@ Usa `Intl.DateTimeFormat` con `timeZone: ZONA_AR` (sin librería nueva). Tests: 
 sábado y domingo → lunes; miércoles → jueves; martes 22:30 AR (miércoles en UTC) → miércoles;
 31 de diciembre → año siguiente; ida y vuelta `enArgentina`/`instanteDesdeAR`; 23:30 → 00:30
 cuenta 1 día; fecha con formato inválido tira error.
+La constante no lleva hora de fin: ninguna regla la usa (la cadencia usa solo los días y
+la hora de inicio) y nadie la confirmó (Open Questions, grupo B, habla solo de "desde las
+9:00"). Se agrega el día que una regla la necesite.
 
 **`lib/crm/deal-activo.ts`**
 
@@ -536,6 +545,9 @@ Reglas de `decidirCadencia` (las de la spec `crm-cadencia-llamadas`):
 - **Cuándo se devuelve cada `motivoSinTarea`** (siempre con `tarea: null`; si hay tarea, el
   motivo es `null`):
   - `fuera_de_orden`: `evaluado` no es el último intento del proceso (cualquier resultado).
+    Texto del aviso: "Quedó anotada antes de otra más nueva: no se agenda ni se cierra
+    ninguna tarea."; con `volver_a_llamar` agrega "Si hace falta, agendala con «+ Tarea»."
+    (el formulario ya pidió día y hora, y esa tarea no se crea).
   - `secuencia_terminada`: `evaluado` es un WhatsApp marcado. Marcarlo termina la secuencia.
   - `whatsapp_ya_enviado`: "No atendió" con un WhatsApp marcado en la racha.
   - `whatsapp_ya_pendiente`: "No atendió" con racha ≥ 2 y una tarea de WhatsApp de la
@@ -584,9 +596,21 @@ contacto (`deal_id` vacío y `contact_id` igual), y además es:
 - (c) —solo con `incluirWhatsapp`— `follow_up` con canal `message` y `source_activity_id`
   no vacío.
 
+`assigned_role` **no es una columna de `tasks`**: es el rol (`profiles.role`) del usuario
+de `tasks.assigned_to`. Lo completa `getPendingTasksForContact` (D3) con su segunda
+consulta a `profiles`; va en `null` si la tarea no tiene asignado o si ese perfil ya no
+existe. Importa para (b): si quedara siempre en `null`, la llamada de una coordinadora no
+cerraría la llamada que otra coordinadora se agendó a mano, que es lo confirmado.
+
 Con `soloPropias` se aplica un filtro más sobre ese resultado: **queda solo lo que tiene
 `assigned_to` = quien registra**. En la práctica, sus propias tareas de llamada; nunca una
-`update_contact` de la coordinación. `soloPropias` es verdadero en dos casos:
+`update_contact` de la coordinación. **Decide a nombre de quién está la tarea, no su
+tipo:** una `update_contact` del proceso asignada a quien registra sí se cierra. Con datos
+reales un asesor no tiene tareas de entrada (se crean para el rol coordinador); en el QA
+sí puede pasar, porque la cuenta de pruebas que hace de asesor recibió una cuando la
+receta creó la solicitud. Por eso los casos de "proceso ajeno" se prueban con la
+situación `solicitud-para-asesor` (tareas 2.5, 12.5 y 14.5), y que esa tarea propia se
+cierre no es una falla. `soloPropias` es verdadero en dos casos:
 
 - el proceso de la actividad no es de quien registró (`procesoPropio` falso); o
 - **quien registró es un asesor y la actividad no tiene proceso** (`deal_id` vacío). Sin
@@ -698,6 +722,13 @@ proceso o una tasación de ese contacto a su nombre**. Sin esa segunda parte el 
 hace hasta tres lecturas cortas con service role (contacto; `deals` por `contact_id` y
 `assigned_to`; `appraisals` por `contact_id`) y corta en la primera que da acceso; un error
 de lectura devuelve `false`.
+**El vínculo por proceso o por tasación no se lo puede dar el propio asesor desde las
+rutas:** las dos que escriben `contact_id` en un proceso o en una tasación
+(`PATCH …/contact`) le exigen `canAccessContact` sobre ese contacto **antes** del cambio
+(D4). Lo que sigue siendo cierto, y es la regla confirmada: un asesor que crea un proceso
+con el teléfono o el email de una persona ya cargada (`POST /api/deals` y
+`POST /api/deals/manual` reutilizan el contacto) queda con un proceso a su nombre y desde
+ahí ve su ficha (Risks).
 La lista de roles es explícita y **falla cerrado** (un rol nuevo o `agent`/`viewer` no ve
 nada), igual que `appraisal-access.ts`. Tests: cada rol; contacto sin dueño; asignado;
 creado por él; **contacto sin dueño con un proceso asignado al asesor → puede**; con una
@@ -729,7 +760,10 @@ export async function undoTasksOfActivity(activityId: string): Promise<{ descart
   el rol se traen con una segunda consulta** a `profiles` (`select id, full_name, role …
   in (ids)`), como hace `GET /api/deals` (`route.ts:41-54`): `tasks` se creó a mano y no hay
   constancia de una FK `tasks.assigned_to → profiles`, así que un embed de PostgREST podría
-  fallar.
+  fallar. **`assigned_role` de cada tarea es ese `role`** (D2, regla (b)); `null` si no
+  hay asignado o el perfil no existe. **`TareaDeFicha`** es el tipo de cada fila que
+  devuelve: todos los campos de `TareaPendiente` (D2) más lo que dibuja el bloque Tareas
+  (`description`, `due_date`, `due_time`, `all_day`, `status` y `assigned_name`).
 - `createCadenceTask`: si el insert choca con `uq_tasks_source_activity` (23505), devuelve la
   tarea existente con `yaExistia: true`. Eso hace seguro el reintento.
 - `closeTasksByActivity`: `update … set status='completed', completed_at=now,
@@ -819,6 +853,7 @@ para todas:
 | `GET /api/contacts` (existente, la lista) | Se le agrega el corte por rol: **403** cuando `alcanceContactos(role)` es `ninguno` (hoy el abogado recibe 200 con la lista vacía). Para los demás no cambia: el asesor sigue recibiendo solo los asignados a él (`resolverAlcanceAsignado`). El menú del abogado no tiene "Contactos", así que ninguna pantalla suya la pide. |
 | `POST /api/contacts` (existente) | **403** cuando `alcanceContactos(role)` es `ninguno`. Deja de pasar el cuerpo crudo a `createContact`: arma el insert con una **lista cerrada** (`full_name`, `phone`, `email`, `origin`, `notes`). `created_by` lo pone **siempre el servidor** (= usuario). `assigned_to`: si quien crea es asesor, el servidor pone su id y descarta lo que venga; si es de operaciones, se acepta el que mande (o vacío). |
 | `DELETE /api/contacts/[id]` (existente) | Pasa a `requireAuth()` + chequeo explícito del rol: quien no es admin ni dueño recibe **403** en JSON (`{ error }`) y no se borra nada. **No se usa `requireRole`:** no devuelve un error, hace `redirect('/')` (`lib/auth/require-role.ts`). Adentro del `try`, como hoy, eso termina en un 500; afuera del `try` sería una redirección que el `fetch` sigue hasta un 200, y la lista `/contacts` —que decide por `r.value.ok` (`contacts/page.tsx:234-236`)— sacaría de la pantalla un contacto que no se borró. |
+| `PATCH /api/deals/[id]/contact` y `PATCH /api/appraisals/[id]/contact` (existentes) | Vinculan o desvinculan un contacto de un proceso o de una tasación; las usa `ContactEditor` (`ContactEditor.tsx:175` y `:186`) después de crear un contacto. Hoy miran solo que el proceso o la tasación sea de quien pide y escriben el `contact_id` que venga. Como un proceso o una tasación a su nombre le da al asesor acceso al contacto (D2), así se abriría la ficha de cualquier contacto del que conozca el id. Se agrega, **antes del `update`**: `alcanceContactos(role)` = `ninguno` → **403**; y con `contact_id` distinto de `null` y alcance `propios` → se exige `canAccessContact(user, contact_id)`, **calculado con los vínculos de antes del cambio**; si da falso, **404** `{ error: 'No encontramos este contacto' }` (lo mismo si el contacto no existe) y el proceso o la tasación no cambia. Desvincular (`contact_id: null`), operaciones y el chequeo de hoy de que el proceso o la tasación sea suyo no cambian. `ContactEditor` no se rompe: vincula el contacto que acaba de crear con `POST /api/contacts`, que desde este change queda con `created_by` = él. Lo que estas rutas no cubren (la API directa de la base, y crear un proceso con el teléfono o el email de la persona) está en Risks. |
 | `POST /api/deals` (existente) | Acepta `from_deal_id` o `contact_id` (D9). Sin ninguno de los dos, no cambia nada. |
 | `POST /api/deals/[id]/undo-lost` (nueva) | Deshace un "perdido" recién marcado (D9). |
 
@@ -890,7 +925,7 @@ la fecha. "Archivos": `appraisals` y `properties` del contacto.
 Las mismas reglas valen para `GET /api/contacts/[id]` (existente): para un asesor, sus
 listas `deals`, `appraisals`, `properties` y `scheduled` vienen filtradas igual (ahí
 `scheduled` sí es la tabla vieja `scheduled_appraisals`, como hoy, y se filtra por su
-columna `assigned_to`). Para operaciones no cambia nada. El caso es raro (un contacto con procesos de dos asesores),
+columna `assigned_to`; hoy `getContact` no la trae —`lib/supabase/contacts.ts:42`—, así que se suma a ese `select`). Para operaciones no cambia nada. El caso es raro (un contacto con procesos de dos asesores),
 pero son datos de otros usuarios y queda decidido acá, no implícito.
 
 Cuerpo de `POST …/activities` (Zod, claves desconocidas se descartan):
@@ -1105,8 +1140,8 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   ficha: registró una actividad sobre ese contacto, o es de la coordinación.
 - Después de guardar, en escritorio el cuadro vuelve a la pestaña "Nota" (como
   `despuesDeGuardar` de la maqueta); en celular, a la pestaña "Actividad".
-- **Comportamientos de la maqueta que no son texto ni medida** (GUIA.md, secciones 10 y
-  11; la maqueta manda, y estos no se ven en una captura, así que se escriben acá y se
+- **Comportamientos de la maqueta que no son texto ni medida** (GUIA.md, secciones 10, 11
+  y 12; la maqueta manda, y estos no se ven en una captura, así que se escriben acá y se
   prueban en 9.4):
   - **Foco después de guardar, en escritorio:** va al aviso de lo que pasó
     (`AvisoGuardado`) y, si no hay aviso (una nota), al registro nuevo de la lista. Quien
@@ -1118,6 +1153,10 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
     el bloque "¿Cuándo hay que volver a llamar?" y la página se desplaza lo justo para que
     "Guardar llamada" quede entero a la vista. En la hoja del celular pasa lo equivalente
     (D6).
+  - **"Corregir la hora" en escritorio acomoda la página:** al abrir "¿Fue hace un rato?
+    Corregir la hora" aparecen las opciones y la página se desplaza lo justo para que
+    "Guardar llamada" quede entero a la vista (GUIA.md, sección 12). Es el mismo
+    mecanismo del punto anterior.
 - **"Marcar WhatsApp enviado" toma del formulario el comentario y la hora corregida**
   ("Hace 30 min" → `hace_minutos: 30`) y los manda con `kind: 'whatsapp_sent'`; no manda
   el resultado marcado ni el día y la hora de "volver a llamar". La maqueta tomaba solo el
@@ -1142,7 +1181,14 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
 - La línea "Tarea creada sola · …" de la maqueta se muestra dentro del ítem de la llamada
   que la originó (se lee de `tasks.source_activity_id`), no como un evento aparte.
 - Toasts: se deja el `Toaster` global (arriba a la derecha). Arriba no tapa el "+" ni la
-  barra inferior, y moverlo afectaría a toda la plataforma. **Todo toast con "Deshacer"
+  barra inferior, y moverlo afectaría a toda la plataforma. **Un solo toast de la ficha a
+  la vez, como fija la guía** (GUIA.md:336: "Uno solo a la vez; se cierra al cambiar de
+  pantalla y, en celular, al abrir una hoja"). El `Toaster` global apila varios y los deja
+  al navegar, y no se toca; lo cumple la ficha con sus propios toasts: guarda el id del
+  último que mostró y lo cierra (`toast.dismiss(id)`) antes de mostrar otro, al salir de
+  la ficha (cuando se desmonta) y, en celular, al abrir la hoja "+". Cierra solo los
+  suyos. Cerrar un toast no deshace nada: lo guardado se sigue anulando desde el menú "⋯"
+  y el perdido desde "Procesos". **Todo toast con "Deshacer"
   (llamada, WhatsApp, nota, proceso perdido) dura 6 segundos** (`duration: 6000` en ese
   toast, como en la maqueta); los demás usan la duración de siempre. Pasado ese tiempo, lo
   guardado se anula desde el menú "⋯" del registro, y el perdido se deshace desde el botón
@@ -1358,8 +1404,11 @@ hoy**, y los tests que ya existen tienen que seguir pasando sin tocarlos.
      `scheduled_date || null`; solo lo pide el formulario), y una conversión sin día
      dejaría el proceso en `scheduled` sin fecha: el CRM lo seguiría mostrando como
      Solicitud, saldría el email "Tasación agendada" con la fecha vacía y, como el filtro
-     del `update` seguiría coincidiendo, el pedido se podría repetir y mandar el email otra
-     vez. Sin `from_deal_id` la validación de hoy no cambia;
+     del `update` seguiría coincidiendo, la conversión se podría repetir sin que nada la
+     frene. (El email no se repetiría: `sendEmail` no reenvía el mismo tipo de aviso al
+     mismo destinatario por el mismo proceso, `lib/email/resend-client.ts:202-216`; el
+     motivo es el proceso mal guardado, no el email.) Sin `from_deal_id` la validación de
+     hoy no cambia;
   2. lee el proceso (también `notes`, para el paso 4) y decide con `motivoNoConvertir`
      (D2), **primero el permiso y después la etapa, en este orden**:
      - el proceso no existe, o `sin_permiso` (quien pide no tiene `pipeline.schedule`, o
@@ -1448,8 +1497,11 @@ hoy**, y los tests que ya existen tienen que seguir pasando sin tocarlos.
      `warning`. El orden importa: la sincronización busca a la persona en Mailchimp por el
      email del contacto (`sync-deal.ts`); si corriera antes de guardar el email corregido,
      la etiqueta de "agendada" quedaría en el email viejo. Por eso **no se llama desde
-     adentro de la función que hace el `update`** del proceso: si en `lib/supabase/deals.ts`
-     se suma una función `convertirSolicitud` para ese `update`, esa función no toca
+     adentro de la función que hace el `update`** del proceso: ese `update` lo hace una
+     función nueva de `lib/supabase/deals.ts`, `convertirSolicitud` (recibe el id y los
+     campos ya calculados por la ruta —`notes` y `created_by` solo cuando corresponden,
+     paso 4—, arma el `update` con el filtro de etapa y devuelve si cambió una fila; su
+     test se escribe primero, tarea 8.1), y esa función no toca
      Mailchimp. Un fallo de la sincronización no corta la respuesta (ya atrapa sus errores).
      **Orden de los tres efectos, fijo:** primero la tarea `new_assignment`, después
      `notifyDealCreated` y **Mailchimp al final**. Lo que le sirve al equipo (la tarea y
@@ -1538,7 +1590,8 @@ con `advance` (deja una perdida falsa en las métricas).
   `lib/supabase/cadencia*.test.ts` (`aplicarCadencia` es código de `lib/` y lleva su test
   primero; `lib/supabase/deals*.test.ts`, donde va el test de la función de conversión, ya
   está en el `include`),
-  `app/api/contacts/**`, `app/api/tasks/**/*.test.ts` (ya existe `route.test.ts`),
+  `app/api/contacts/**`, `app/api/appraisals/[id]/contact/**` (la ruta de vincular, D4;
+  `app/api/deals/**` ya está), `app/api/tasks/**/*.test.ts` (ya existe `route.test.ts`),
   `components/crm/**`, `components/contacts/**`, y las pantallas que se tocan:
   `app/(dashboard)/contacts/**`, `app/(dashboard)/crm/**` (ya existe `page.test.tsx`) y
   `app/(dashboard)/pipeline/**`; más el alias de `server-only`. No se corre la
@@ -1634,8 +1687,8 @@ Con la sección 8 del diseño general:
 
 **Precisiones agregadas en la verificación final (2026-11-25).** No estaban entre las
 veinte que cubrió el "Ok a todo": no cambian ninguna decisión confirmada, pero **se le
-nombran al dueño al abrir el PR, antes de construir (tarea 1.5), y su respuesta se copia
-ahí**; se repiten en el reporte final (tarea 13.5). Dos cambian algo que se ve: la 21
+nombran al dueño al abrir el PR (tarea 1.5): el resto del trabajo no se frena, pero las
+tareas que construyen cada una esperan su respuesta, que se copia ahí**; se repiten en el reporte final (tarea 13.5). Dos cambian algo que se ve: la 21
 ("volver a llamar" cargado fuera de orden no crea tarea) y la 25 (se toca un enlace de la
 página de tareas, que estaba afuera).
 
@@ -1681,6 +1734,26 @@ en el reporte final.
   contacto. Quien tiene vínculo (asignado, creado, proceso o tasación a su nombre) sigue
   igual. Antes de codear se listan las pantallas que usan esas rutas y se cuenta en la base
   cuántos contactos quedarían fuera del alcance de su asesor (tarea 5.1).
+- [Las rutas que vinculan un contacto le daban el permiso al propio asesor] → `PATCH
+  /api/deals/[id]/contact` y `PATCH /api/appraisals/[id]/contact` miraban solo que el
+  proceso o la tasación fuera suyo. Con la regla de D2, un asesor con el id de un contacto
+  ajeno lo vinculaba a un proceso suyo y se abría la ficha, las notas, las llamadas y la
+  edición, sin que nadie se enterara. Se cierra en D4 (tarea 5.4): antes de vincular se le
+  exige poder ver ese contacto. **Lo que queda abierto:** la política
+  `deals_update_owner_or_ops` (`20260505000001`) deja que un asesor edite sus procesos por
+  la API directa de la base, incluido `contact_id`. No pasa por ninguna ruta y ninguna
+  pantalla lo hace; existe desde antes. Cerrar esa escritura es del change que revise los
+  permisos de procesos (tarea 13.1) y se le avisa al dueño (tarea 13.5). Atenuante: la
+  RLS de `contacts` no le deja listar contactos ajenos (`contacts_select_owner_or_ops`),
+  así que necesita conocer el id.
+- [Un asesor que crea un proceso con el teléfono o el email de una persona pasa a ver su
+  ficha] → `POST /api/deals` y `POST /api/deals/manual` reutilizan el contacto que ya
+  tiene ese email o ese teléfono, y el proceso nuevo queda a nombre del asesor. Con la
+  regla confirmada (ve los contactos de sus procesos), desde ahí abre la ficha de esa
+  persona, con toda su actividad. No es un hueco: es la regla, y es el caso normal de un
+  referido que ya estaba cargado. Necesita conocer el teléfono o el email, y deja un
+  proceso a su nombre a la vista de la coordinación. Se dice en la propuesta y en el
+  reporte final (tarea 13.5).
 - [La lista `/contacts` del asesor sigue mostrando solo los asignados a él] → no cambia en
   este change: un contacto del embudo con proceso suyo se abre desde el CRM o desde el
   proceso, pero no figura en "Mis contactos". Se anota para `crm-inicio`.
@@ -1730,6 +1803,13 @@ en el reporte final.
   la fecha vieja (D9, paso 4). Para esos procesos, el momento de "agendada" que lee
   cualquier métrica es el de antes, no el de la coordinación real. Son pocos (el CRM los
   muestra como Solicitud) y no se toca el trigger en este change.
+  **Y el email con el día real puede no salirle a quien ya recibió el primero:** si ese
+  proceso nació por `POST /api/deals` sin día, `notifyDealCreated` ya salió una vez, y
+  `sendEmail` no repite el mismo aviso al mismo destinatario por el mismo proceso (queda
+  `skipped_idempotent` en el log, sin error; `deal-created.ts:61-63` y `:102-104`). A un
+  asesor distinto del de aquella vez sí le sale. La tarea `new_assignment` se crea salvo
+  que ese asesor ya tenga una pendiente de ese proceso (`createTask` no duplica). Nadie
+  recibe un aviso de que el email no salió; no se cambia código por esto.
 - [Borrar un contacto borra para siempre sus llamadas y notas] → `contact_activities`
   cuelga del contacto con `ON DELETE CASCADE` (D1). Admin y dueño pueden borrar un
   contacto, también en lote desde `/contacts`: sus procesos siguen vivos sin persona
