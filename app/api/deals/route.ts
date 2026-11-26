@@ -11,6 +11,8 @@ import { guardarDatosDeContacto, hayOtroContactoCon } from '@/lib/supabase/conta
 import { hasPermission } from '@/lib/auth/roles'
 import { motivoNoConvertir } from '@/lib/crm/deal-activo'
 import type { UserWithProfile } from '@/types/auth.types'
+import { canAccessContact } from '@/lib/auth/entity-access'
+import { existeContacto } from '@/lib/supabase/actividades'
 import { createTask } from '@/lib/supabase/tasks'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth, requirePermission } from '@/lib/auth/require-role'
@@ -153,7 +155,14 @@ export async function POST(request: NextRequest) {
     // bug surfaced this gap: when only phone was provided, every coordinar
     // produced a brand-new contact, leaving the contacts table littered.
     let contactId: string | null = null
-    {
+    if (contactIdPedido) {
+      // Coordinar a una persona sin solicitud desde su ficha (D9): ese contacto, sin
+      // buscar otro. `canAccessContact` da verdadero a operaciones sin mirar si existe.
+      const puede = (await canAccessContact(user, contactIdPedido)) && (await existeContacto(contactIdPedido))
+      if (!puede) return NextResponse.json({ error: 'No encontramos este contacto' }, { status: 404 })
+      contactId = contactIdPedido
+    }
+    if (!contactId) {
       // Se busca con el email tal cual lo tipearon Y en minúsculas: los viejos
       // pueden estar guardados con mayúsculas y no hay que duplicarlos.
       const variantes = [...new Set([String(contact_email).trim(), emailCliente])]
@@ -203,6 +212,13 @@ export async function POST(request: NextRequest) {
       covered_area: covered_area != null && covered_area !== '' ? Number(covered_area) : null,
     })
 
+    // Con `contact_id`, después de crear el proceso se guardan en esa persona los datos
+    // validados: si al lead de la clase le faltaba el email, sin esto `advance`
+    // respondería 422 más adelante (D9).
+    const avisos = contactIdPedido
+      ? await actualizarContactoCoordinado(contactId, cliente.valor, String(contact_email ?? ''))
+      : []
+
     // Auto-create tasks
     if (asesorId) {
       try {
@@ -228,7 +244,12 @@ export async function POST(request: NextRequest) {
       { failedNotificationType: 'deal_created', entityType: 'deal', entityId: dealId },
     )
 
-    return NextResponse.json({ success: true, id: dealId, contact_id: contactId })
+    return NextResponse.json({
+      success: true,
+      id: dealId,
+      contact_id: contactId,
+      ...(avisos.length > 0 ? { warning: avisos.join(' ') } : {}),
+    })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Error' }, { status: 500 })
   }
