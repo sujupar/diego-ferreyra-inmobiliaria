@@ -1,5 +1,5 @@
 /**
- * Aplica `20261126000001_tasks_columnas_cadencia_solo_servidor.sql` (crm-ficha-y-llamadas,
+ * Aplica `20261126000002_tasks_columnas_cadencia_solo_servidor.sql` (crm-ficha-y-llamadas,
  * design.md D1, hallazgo S1 de la revisión 12.1) y VERIFICA que las columnas
  * `tasks.source_activity_id` y `tasks.closed_by_activity_id` solo las escribe el servidor.
  *
@@ -17,7 +17,7 @@
 import { readFileSync } from 'node:fs'
 import { Client } from 'pg'
 
-const MIGRACION = 'supabase/migrations/20261126000001_tasks_columnas_cadencia_solo_servidor.sql'
+const MIGRACION = 'supabase/migrations/20261126000002_tasks_columnas_cadencia_solo_servidor.sql'
 const NOMBRE_PRUEBA = '[TEST] apply-tasks-cadencia-solo-servidor'
 /** Contacto conocido de producción: prueba que la base es la de la app. */
 const CONTACTO_CONOCIDO = '7a636d2f-be56-4492-80ed-3bf23ba90e39'
