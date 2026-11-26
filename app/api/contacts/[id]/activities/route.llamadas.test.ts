@@ -300,3 +300,121 @@ describe('POST — permisos de llamadas', () => {
   })
 })
 
+describe('POST — guardado repetido y fallo parcial (tarea 6.3)', () => {
+  it('client_token repetido del mismo autor y contacto → 200 con la misma respuesta, sin otra fila ni otra tarea', async () => {
+    const b1 = await (await post(llamada('no_atendio'))).json()
+    const tareas = b.tareas.length
+    const r2 = await post(llamada('no_atendio'))
+    expect(r2.status).toBe(200)
+    expect(await r2.json()).toEqual(b1)
+    expect(b.actividades).toHaveLength(1)
+    expect(b.tareas).toHaveLength(tareas)
+  })
+
+  it('token de otro autor → 409 sin datos de la otra', async () => {
+    await post(llamada('no_atendio', { body: 'Secreto' }))
+    como('coordinador', 'coord-2')
+    const res = await post(llamada('no_atendio'))
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'No se pudo guardar. Probá de nuevo.' })
+  })
+
+  it('token usado en otro contacto → 409 sin datos', async () => {
+    b.contactos.set('c-2', '[TEST] Beto')
+    await post(llamada('no_atendio', { body: 'Secreto' }), 'c-2')
+    const res = await post(llamada('no_atendio'))
+    expect(res.status).toBe(409)
+    expect(JSON.stringify(await res.json())).not.toContain('Secreto')
+  })
+
+  it('token que ya usó una nota propia → 409 (no es el mismo guardado)', async () => {
+    await post({ kind: 'note', body: 'Hola', client_token: TOKEN })
+    const res = await post(llamada('no_atendio'))
+    expect(res.status).toBe(409)
+  })
+
+  it('dos pedidos simultáneos con el mismo token → una fila, una tarea y las dos respuestas iguales', async () => {
+    const [r1, r2] = await Promise.all([post(llamada('no_atendio')), post(llamada('no_atendio'))])
+    expect([r1.status, r2.status].sort()).toEqual([200, 201])
+    expect(await r1.json()).toEqual(await r2.json())
+    expect(b.actividades).toHaveLength(1)
+    expect(b.tareas.filter((t) => t.source_activity_id !== null)).toHaveLength(1)
+  })
+
+  it('la segunda "No atendió" con el token repetido → misma respuesta, con "Enviar WhatsApp" creada y sin motivo', async () => {
+    await post(llamada('no_atendio'))
+    const primera = await (await post(llamada('no_atendio', {}, TOKEN_2))).json()
+    expect(primera.cadencia.tareaCreada?.title).toBe('Enviar WhatsApp a [TEST] Ana')
+    const repetida = await post(llamada('no_atendio', {}, TOKEN_2))
+    expect(repetida.status).toBe(200)
+    const body = await repetida.json()
+    expect(body).toEqual(primera)
+    expect(body.cadencia.motivoSinTarea).toBeNull()
+    expect(b.tareas.filter((t) => t.title.startsWith('Enviar WhatsApp'))).toHaveLength(1)
+  })
+
+  it('token repetido de una actividad ya anulada → 200 con la fila anulada, sin correr la cadencia', async () => {
+    const r1 = await (await post(llamada('no_atendio'))).json()
+    // "Deshacer": se anula, se descarta la tarea creada y se reabre la de entrada.
+    const act = b.actividades[0]
+    act.voided_at = b.ahora()
+    act.voided_by = 'coord-1'
+    const creada = b.tareas.find((t) => t.source_activity_id === r1.actividad.id)
+    if (creada) creada.status = 'dismissed'
+    const entrada = b.tareas.find((t) => t.id === 't-entrada')
+    if (entrada) {
+      entrada.status = 'pending'
+      entrada.closed_by_activity_id = null
+    }
+    const res = await post(llamada('no_atendio'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.actividad.voided_at).not.toBeNull()
+    expect(body.cadencia).toEqual({ aplica: false, tareaCreada: null, motivoSinTarea: null, tareasCerradas: [], ofrecer: null, dealId: null })
+    expect(body.pendiente).toBe(false)
+    expect(pendientes()).toEqual(['t-entrada'])
+  })
+
+  it('repetición tardía de un guardado que sí agendó, con un intento posterior → aplica verdadero con su tarea, sin crear ni cerrar nada', async () => {
+    const r1 = await (await post(llamada('no_atendio'))).json()
+    await post(llamada('no_atendio', {}, TOKEN_2))
+    const antes = JSON.stringify(b.tareas)
+    const res = await post(llamada('no_atendio'))
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(body.cadencia.aplica).toBe(true)
+    expect(body.cadencia.tareaCreada?.id).toBe(r1.cadencia.tareaCreada.id)
+    expect(body.cadencia.motivoSinTarea).toBeNull()
+    expect(JSON.stringify(b.tareas)).toBe(antes)
+  })
+
+  it('crear la tarea falla una vez → se reintenta y responde 201 con pendiente falso', async () => {
+    b.fallarCrear = 1
+    const res = await post(llamada('no_atendio'))
+    expect(res.status).toBe(201)
+    expect((await res.json()).pendiente).toBe(false)
+  })
+
+  it('crear la tarea falla tras el reintento → 201 con pendiente verdadero y la llamada guardada', async () => {
+    b.fallarCrear = 2
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await post(llamada('no_atendio'))
+    expect(res.status).toBe(201)
+    const body = await res.json()
+    expect(body.pendiente).toBe(true)
+    expect(body.cadencia.tareaCreada).toBeNull()
+    expect(body.cadencia.tareasCerradas).toHaveLength(1) // cerrar sí funcionó
+    expect(b.actividades).toHaveLength(1)
+    err.mockRestore()
+  })
+
+  it('cerrar tareas falla tras el reintento → 201 con pendiente verdadero', async () => {
+    b.fallarCerrar = 2
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await post(llamada('no_atendio'))
+    expect(res.status).toBe(201)
+    expect((await res.json()).pendiente).toBe(true)
+    err.mockRestore()
+  })
+})
+
