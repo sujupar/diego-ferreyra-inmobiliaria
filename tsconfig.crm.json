@@ -33,7 +33,9 @@
     "components/contacts/**/*.tsx",
     "app/(dashboard)/contacts/**/*.tsx",
     "app/(dashboard)/crm/**/*.tsx",
-    "app/(dashboard)/pipeline/**/*.tsx"
+    "app/(dashboard)/pipeline/**/*.tsx",
+    "scripts/tipos/pg.d.ts",
+    "scripts/apply-contact-activities-pg.ts"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }
