@@ -82,3 +82,106 @@ describe('leerDatosDeFicha', () => {
     await expect(leerDatosDeFicha('c-1')).rejects.toThrow(/caída/)
   })
 })
+
+// ROJO 1 del QA (2026-11-26): en producción casi todas las tasaciones y propiedades cuelgan
+// del PROCESO (`deals.appraisal_id` / `deals.property_id`) y tienen `contact_id` vacío.
+// "Archivos" tiene que sumar las dos fuentes, sin duplicados.
+describe('leerDatosDeFicha: archivos del contacto y de sus procesos', () => {
+  const TASACION = (id: string, creado: string) => ({
+    id, property_title: `[TEST] ${id}`, property_location: null, created_at: creado, assigned_to: null, user_id: null,
+  })
+  const PROPIEDAD = (id: string, creado: string) => ({ id, address: `[TEST] ${id}`, neighborhood: null, created_at: creado, assigned_to: null })
+  const filtro = (p: Pedido, metodo: string, columna: string) =>
+    args(p, metodo).find((a) => a[0] === columna)?.[1] as unknown
+
+  it('una tasación ligada solo por el proceso aparece', async () => {
+    responder = (p) => {
+      if (p.tabla === 'contacts') return ok(CONTACTO)
+      if (p.tabla === 'contact_activities') return ok(null)
+      if (p.tabla === 'deals') return ok([{ id: 'd-1', created_at: '2026-11-01T00:00:00Z', appraisal_id: 'a-1', property_id: null }])
+      if (p.tabla === 'appraisals') return ok(filtro(p, 'in', 'id') ? [TASACION('a-1', '2026-11-02T00:00:00Z')] : [])
+      return ok([])
+    }
+    const d = await leerDatosDeFicha('c-1')
+    expect(d?.tasaciones.map((t) => t.id)).toEqual(['a-1'])
+  })
+
+  it('la misma tasación por contact_id y por proceso aparece una sola vez, y las dos fuentes se ordenan por fecha', async () => {
+    responder = (p) => {
+      if (p.tabla === 'contacts') return ok(CONTACTO)
+      if (p.tabla === 'contact_activities') return ok(null)
+      if (p.tabla === 'deals') {
+        return ok([
+          { id: 'd-1', created_at: '2026-11-01T00:00:00Z', appraisal_id: 'a-1', property_id: 'p-1' },
+          { id: 'd-2', created_at: '2026-11-03T00:00:00Z', appraisal_id: 'a-2', property_id: null },
+        ])
+      }
+      if (p.tabla === 'appraisals') {
+        if (filtro(p, 'eq', 'contact_id')) return ok([TASACION('a-1', '2026-11-02T00:00:00Z')])
+        return ok(filtro(p, 'in', 'id') ? [TASACION('a-2', '2026-11-04T00:00:00Z')] : [])
+      }
+      if (p.tabla === 'properties') return ok(filtro(p, 'eq', 'contact_id') ? [PROPIEDAD('p-1', '2026-11-05T00:00:00Z')] : [PROPIEDAD('p-1', '2026-11-05T00:00:00Z')])
+      return ok([])
+    }
+    const d = await leerDatosDeFicha('c-1')
+    expect(d?.tasaciones.map((t) => t.id)).toEqual(['a-2', 'a-1'])
+    expect(d?.propiedades.map((p) => p.id)).toEqual(['p-1'])
+    // Solo se piden por id las que no vinieron por contact_id.
+    const porId = de('appraisals').map((q) => filtro(q, 'in', 'id')).filter(Boolean)
+    expect(porId).toEqual([['a-2']])
+    expect(de('properties').map((q) => filtro(q, 'in', 'id')).filter(Boolean)).toEqual([])
+  })
+
+  it('una propiedad ligada solo por el proceso aparece', async () => {
+    responder = (p) => {
+      if (p.tabla === 'contacts') return ok(CONTACTO)
+      if (p.tabla === 'contact_activities') return ok(null)
+      if (p.tabla === 'deals') return ok([{ id: 'd-1', created_at: '2026-11-01T00:00:00Z', appraisal_id: null, property_id: 'p-9' }])
+      if (p.tabla === 'properties') return ok(filtro(p, 'in', 'id') ? [PROPIEDAD('p-9', '2026-11-02T00:00:00Z')] : [])
+      return ok([])
+    }
+    const d = await leerDatosDeFicha('c-1')
+    expect(d?.propiedades.map((p) => p.id)).toEqual(['p-9'])
+  })
+
+  it('las tasaciones se piden con columnas explícitas, nunca * ni property_images', async () => {
+    responder = (p) => {
+      if (p.tabla === 'contacts') return ok(CONTACTO)
+      if (p.tabla === 'contact_activities') return ok(null)
+      if (p.tabla === 'deals') return ok([{ id: 'd-1', created_at: '2026-11-01T00:00:00Z', appraisal_id: 'a-1', property_id: null }])
+      return ok([])
+    }
+    await leerDatosDeFicha('c-1')
+    const tasaciones = de('appraisals')
+    expect(tasaciones).toHaveLength(2)
+    for (const q of tasaciones) {
+      const columnas = String(args(q, 'select')[0][0])
+      expect(columnas).not.toContain('*')
+      expect(columnas).not.toContain('property_images')
+    }
+  })
+
+  it('los procesos traen appraisal_id y property_id', async () => {
+    await leerDatosDeFicha('c-1')
+    const columnas = String(args(de('deals')[0], 'select')[0][0])
+    expect(columnas).toContain('appraisal_id')
+    expect(columnas).toContain('property_id')
+  })
+
+  it('sin procesos con tasación ni propiedad no hace pedidos de más', async () => {
+    await leerDatosDeFicha('c-1')
+    expect(de('appraisals')).toHaveLength(1)
+    expect(de('properties')).toHaveLength(1)
+  })
+
+  it('si falla la lectura de las tasaciones del proceso, tira (nunca llega vacía)', async () => {
+    responder = (p) => {
+      if (p.tabla === 'contacts') return ok(CONTACTO)
+      if (p.tabla === 'contact_activities') return ok(null)
+      if (p.tabla === 'deals') return ok([{ id: 'd-1', created_at: '2026-11-01T00:00:00Z', appraisal_id: 'a-1', property_id: null }])
+      if (p.tabla === 'appraisals' && filtro(p, 'in', 'id')) return { data: null, error: { message: 'caída por proceso' } }
+      return ok([])
+    }
+    await expect(leerDatosDeFicha('c-1')).rejects.toThrow(/caída por proceso/)
+  })
+})

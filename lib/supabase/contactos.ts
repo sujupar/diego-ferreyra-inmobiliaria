@@ -128,7 +128,26 @@ export async function registrarNotaDeVinculo(datos: {
 const COLUMNAS_PROCESO_FICHA =
   'id, stage, created_at, assigned_to, scheduled_date, scheduled_time, origin, property_address, ' +
   'neighborhood, property_type, property_type_other, rooms, covered_area, meta_campaign_name, ' +
-  'meta_adset_name, meta_ad_name, stage_changed_at, lost_at, visited_at'
+  'meta_adset_name, meta_ad_name, stage_changed_at, lost_at, visited_at, appraisal_id, property_id'
+
+// Columnas EXPLÍCITAS: `appraisals.property_images` guarda fotos en base64 (215 MB en 67
+// filas) y un `select('*')` de muchas tasaciones ya tumbó la base una vez (CLAUDE.md).
+const COLUMNAS_TASACION_FICHA = 'id, property_title, property_location, created_at, assigned_to, user_id'
+const COLUMNAS_PROPIEDAD_FICHA = 'id, address, neighborhood, created_at, assigned_to'
+
+/** Junta dos listas por `id` (sin repetir) y las deja de la más nueva a la más vieja. */
+function unirPorId<T extends { id: string; created_at: string }>(a: T[], b: T[]): T[] {
+  const porId = new Map<string, T>()
+  for (const x of [...a, ...b]) if (!porId.has(x.id)) porId.set(x.id, x)
+  return [...porId.values()].sort((x, y) => Date.parse(y.created_at) - Date.parse(x.created_at))
+}
+
+/** Los ids de `columna` de los procesos que no vinieron ya en `yaEstan`, sin repetir. */
+function idsQueFaltan(procesos: Record<string, unknown>[], columna: string, yaEstan: { id: string }[]): string[] {
+  const tengo = new Set(yaEstan.map((x) => x.id))
+  const ids = procesos.map((p) => p[columna]).filter((v): v is string => typeof v === 'string' && v !== '' && !tengo.has(v))
+  return [...new Set(ids)]
+}
 
 /**
  * Lo que la ruta `ficha` necesita del contacto (D4), con service role: la ruta ya decidió
@@ -141,16 +160,8 @@ export async function leerDatosDeFicha(contactId: string): Promise<DatosFicha | 
   const [contacto, procesos, tasaciones, propiedades, intento] = await Promise.all([
     db.from('contacts').select('id, full_name, phone, email, origin, notes, assigned_to, created_by').eq('id', contactId).maybeSingle(),
     db.from('deals').select(COLUMNAS_PROCESO_FICHA).eq('contact_id', contactId).order('created_at', { ascending: false }),
-    db
-      .from('appraisals')
-      .select('id, property_title, property_location, created_at, assigned_to, user_id')
-      .eq('contact_id', contactId)
-      .order('created_at', { ascending: false }),
-    db
-      .from('properties')
-      .select('id, address, neighborhood, created_at, assigned_to')
-      .eq('contact_id', contactId)
-      .order('created_at', { ascending: false }),
+    db.from('appraisals').select(COLUMNAS_TASACION_FICHA).eq('contact_id', contactId).order('created_at', { ascending: false }),
+    db.from('properties').select(COLUMNAS_PROPIEDAD_FICHA).eq('contact_id', contactId).order('created_at', { ascending: false }),
     // El último contacto es de la PERSONA: NO se filtra por `deal_id` (cuenta el intento
     // de cualquier proceso, abierto o cerrado, y el que no tiene proceso).
     db
@@ -167,11 +178,32 @@ export async function leerDatosDeFicha(contactId: string): Promise<DatosFicha | 
     if (r.error) throw new Error(`leerDatosDeFicha (${nombre}): ${r.error.message}`)
   }
   if (!contacto.data) return null
+
+  // "Archivos" (ROJO 1 del QA, 2026-11-26): en la base real casi ninguna tasación ni
+  // propiedad tiene `contact_id`; cuelgan del PROCESO (`deals.appraisal_id` /
+  // `deals.property_id`). Se suman las de los procesos del contacto, sin repetir las que
+  // ya vinieron por `contact_id`. Qué ve un asesor lo decide `armarFicha` (D4).
+  const filasProcesos = (procesos.data ?? []) as unknown as Record<string, unknown>[]
+  const tasacionesDirectas = (tasaciones.data ?? []) as DatosFicha['tasaciones']
+  const propiedadesDirectas = (propiedades.data ?? []) as DatosFicha['propiedades']
+  const tasacionesQueFaltan = idsQueFaltan(filasProcesos, 'appraisal_id', tasacionesDirectas)
+  const propiedadesQueFaltan = idsQueFaltan(filasProcesos, 'property_id', propiedadesDirectas)
+  const [tasacionesDeProcesos, propiedadesDeProcesos] = await Promise.all([
+    tasacionesQueFaltan.length > 0
+      ? db.from('appraisals').select(COLUMNAS_TASACION_FICHA).in('id', tasacionesQueFaltan)
+      : Promise.resolve({ data: [], error: null }),
+    propiedadesQueFaltan.length > 0
+      ? db.from('properties').select(COLUMNAS_PROPIEDAD_FICHA).in('id', propiedadesQueFaltan)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (tasacionesDeProcesos.error) throw new Error(`leerDatosDeFicha (tasaciones de los procesos): ${tasacionesDeProcesos.error.message}`)
+  if (propiedadesDeProcesos.error) throw new Error(`leerDatosDeFicha (propiedades de los procesos): ${propiedadesDeProcesos.error.message}`)
+
   return {
     contacto: contacto.data as DatosFicha['contacto'],
-    procesos: (procesos.data ?? []) as unknown as ProcesoDeFicha[],
-    tasaciones: (tasaciones.data ?? []) as DatosFicha['tasaciones'],
-    propiedades: (propiedades.data ?? []) as DatosFicha['propiedades'],
+    procesos: filasProcesos as unknown as ProcesoDeFicha[],
+    tasaciones: unirPorId(tasacionesDirectas, (tasacionesDeProcesos.data ?? []) as DatosFicha['tasaciones']),
+    propiedades: unirPorId(propiedadesDirectas, (propiedadesDeProcesos.data ?? []) as DatosFicha['propiedades']),
     ultimoIntentoEn: (intento.data as { occurred_at: string } | null)?.occurred_at ?? null,
   }
 }

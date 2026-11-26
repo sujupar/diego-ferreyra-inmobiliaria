@@ -986,7 +986,17 @@ pantalla). Para un asesor se filtra por `deals.assigned_to`. Al marcar un
 proceso como perdido deja de listarse porque cambió la etapa; **la fecha no se borra**
 (`advance` a `lost` no toca `scheduled_date`, `deals.ts:211-222`), y por eso el "Deshacer"
 la devuelve tal cual. El texto " Se quitó la tasación agendada." habla de la lista, no de
-la fecha. "Archivos": `appraisals` y `properties` del contacto.
+la fecha. "Archivos": `appraisals` y `properties` del contacto **por dos caminos, sin
+repetir**: las que tienen `contact_id` = el contacto y las que cuelgan de sus procesos
+(`deals.appraisal_id` / `deals.property_id`). El segundo camino salió del QA en la vista
+previa (2026-11-26, ROJO 1): en la base real 70 de 71 tasaciones vinculadas a un proceso
+tienen `contact_id` vacío, y leyendo solo esa columna el bloque no aparecía casi nunca.
+`leerDatosDeFicha` lee primero los procesos (con `appraisal_id` y `property_id`) y después,
+en un segundo pedido por `id`, solo las que no vinieron por `contact_id`; columnas
+explícitas, nunca `property_images` (CLAUDE.md, 2026-10-10). Para un asesor el filtro es
+el de D4 sin cambios (`assigned_to`/`user_id` = él), también para las que llegan por un
+proceso: una tasación de su proceso pero a nombre de nadie no se lista, porque
+`canAccessAppraisal` le respondería 403 al abrirla.
 
 Las mismas reglas valen para `GET /api/contacts/[id]` (existente): para un asesor, sus
 listas `deals`, `appraisals`, `properties` y `scheduled` vienen filtradas igual (ahí
