@@ -347,6 +347,9 @@ export type SituacionProceso = 'solicitud' | 'clase_gratuita' | 'coordinada_o_po
 export function situacionProceso(deal: { stage: string; scheduled_date: string | null; origin: string | null } | null): SituacionProceso
 export function puedeConvertirSolicitud(u: { id: string; puedeVerTodos: boolean; puedeCoordinar: boolean },
                                         deal: { stage: string; scheduled_date: string | null; origin: string | null; assigned_to: string | null }): boolean
+export type MotivoNoConvertir = 'sin_permiso' | 'clase_gratuita' | 'ya_cambio_de_etapa'
+export function motivoNoConvertir(u: { id: string; puedeVerTodos: boolean; puedeCoordinar: boolean },
+                                  deal: { stage: string; scheduled_date: string | null; origin: string | null; assigned_to: string | null }): MotivoNoConvertir | null
 export function puedeCerrarProceso(u: { id: string; role: string; puedeAvanzar: boolean },
                                    deal: { assigned_to: string | null }): boolean
 export function esProcesoPropio(u: { id: string; role: string }, deal: { assigned_to: string | null }): boolean
@@ -359,7 +362,15 @@ cuenta como `clase_gratuita`, no como `solicitud`: no se convierte, se le abre u
 nuevo (D9). Hoy la interfaz no deja un proceso de la clase en ese estado; la regla existe
 para que la ficha nunca ofrezca una conversión que la ruta va a rechazar.
 `puedeConvertirSolicitud`: situación `solicitud`, permiso `pipeline.schedule`, y además
-`pipeline.view_all` **o** `deal.assigned_to` = él. Se evalúa **por proceso**, no solo sobre
+`pipeline.view_all` **o** `deal.assigned_to` = él.
+`motivoNoConvertir` son esas mismas condiciones, **en orden y con nombre**, y
+`puedeConvertirSolicitud(u, deal)` es `motivoNoConvertir(u, deal) === null` (una sola
+definición). El orden: (1) sin `pipeline.schedule`, o sin `pipeline.view_all` y con el
+proceso no asignado a él → `sin_permiso`; (2) `origin` o etapa `clase_gratuita` →
+`clase_gratuita`; (3) etapa que no es `request` ni `scheduled` sin día →
+`ya_cambio_de_etapa`; si no, `null`. La ficha usa el booleano; la ruta de conversión usa
+el motivo para decidir entre 404 y 409 (D9, paso 2): con el booleano solo, los 409 que
+pide la spec no se alcanzarían nunca. Se evalúa **por proceso**, no solo sobre
 el activo: la ruta `ficha` la calcula para cada proceso que lista (D4), y de ahí sale el
 botón fijo "Coordinar tasación" del bloque "Procesos" (D5).
 **Contacto con dos procesos abiertos.** El embudo reutiliza el contacto y crea un proceso
@@ -612,7 +623,11 @@ Coordinada → `proceso_ya_coordinado`, y `tareasACerrar` con `soloPropias` deja
 tarea de entrada de la coordinación y la de la cadencia de otro, y deja adentro la llamada
 propia; **asesor sin proceso** (`dealId` vacío, `soloPropias` verdadero): cierra su propia
 llamada ligada al contacto y deja pendientes la `update_contact` y la llamada manual de la
-coordinación; **coordinadora sin proceso**: cierra las tres; **la tarea "Llamar a {nombre}" que un asesor creó con "volver a llamar" sobre un
+coordinación; **coordinadora sin proceso**: cierra las tres (en ese ejemplo la llamada del
+asesor es la que nació de su "volver a llamar", o sea con `source_activity_id`); **caso
+espejo: la llamada que un asesor se creó a mano, ligada solo al contacto, queda pendiente
+cuando llama la coordinadora** (regla (b): no tiene `source_activity_id`, no está a nombre
+de quien registra ni del rol coordinador); **la tarea "Llamar a {nombre}" que un asesor creó con "volver a llamar" sobre un
 proceso ajeno, cuando después llama la coordinación → se cierra; la que ese asesor se
 agendó a mano → no**; y la precedencia entera, con un caso que cumple dos condiciones a la vez por cada
 par de reglas vecinas).
@@ -625,6 +640,8 @@ export function ultimaLlamada(ultimaEn: string | null, ahora: Date, etapaCRM: st
 ```
 Tests: los escenarios de "Estado de la última llamada" y de "Alerta solo cuando la solicitud
 está sin atender" (nunca, hoy, ayer, 2 días, 3 días, cruce de medianoche, cada etapa).
+`ultimaEn` no lo calcula este módulo: lo arma la ruta `ficha` (D4) y es de la **persona**,
+no del proceso activo.
 
 **`lib/crm/deshacer-perdido.ts`**
 
@@ -781,7 +798,7 @@ para todas:
 
 | Método y ruta | Qué hace |
 | --- | --- |
-| `GET /api/contacts/[id]/ficha` | Persona, proceso activo y su situación, detalles, asesor, última llamada, procesos (cada uno con `puede_convertir` = `puedeConvertirSolicitud` de quien mira sobre ese proceso, y con `deshacer_hasta` = el instante hasta el que quien mira puede deshacer su "perdido", o `null`: sale de `puedeDeshacerPerdido` + `puedeCerrarProceso`, y la última fila de `deal_stage_history` se lee solo para los procesos en `lost` cuyo `stage_changed_at` es de los últimos 10 minutos), tasaciones agendadas y archivos, calculados en el servidor con las funciones de D2. No devuelve permisos sueltos que ninguna pieza use: "Coordinar como proceso nuevo", "Abrir el proceso" y "Marcar proceso como perdido" existen solo en el aviso y salen de `cadencia.ofrecer`. |
+| `GET /api/contacts/[id]/ficha` | Persona, proceso activo y su situación, detalles, asesor, última llamada (`ultimaEn` = el `occurred_at` más nuevo de las filas de `contact_activities` de ese contacto con `kind = 'call'` y `voided_at` vacío, **sin filtrar por `deal_id`**: cuenta la llamada de cualquier proceso, abierto o cerrado, y la que no tiene proceso), procesos (cada uno con `puede_convertir` = `puedeConvertirSolicitud` de quien mira sobre ese proceso, y con `deshacer_hasta` = el instante hasta el que quien mira puede deshacer su "perdido", o `null`: sale de `puedeDeshacerPerdido` + `puedeCerrarProceso`, y la última fila de `deal_stage_history` se lee solo para los procesos en `lost` cuyo `stage_changed_at` es de los últimos 10 minutos), tasaciones agendadas y archivos, calculados en el servidor con las funciones de D2. No devuelve permisos sueltos que ninguna pieza use: "Coordinar como proceso nuevo", "Abrir el proceso" y "Marcar proceso como perdido" existen solo en el aviso y salen de `cadencia.ofrecer`. |
 | `GET /api/contacts/[id]/activities?filtro=todo\|llamadas\|notas\|actividad&antes=<iso>` | 50 registros no anulados + `hay_mas`, cada uno con `intento`, autor, tarea que creó y `puede_editar`/`puede_anular`. `llamadas` = solo `call`; `actividad` = lo que no es llamada ni nota (acá, `whatsapp_sent`). |
 | `POST /api/contacts/[id]/activities` | Guarda nota, llamada o WhatsApp y corre la cadencia. |
 | `PATCH /api/contacts/[id]/activities/[activityId]` | Edita una nota o anula un registro. |
@@ -790,7 +807,7 @@ para todas:
 | `GET` y `PUT /api/contacts/[id]` (existentes) | Se les agrega el permiso (`canAccessContact`, con la regla de D2); el `PUT` pasa a validar con Zod una lista cerrada de campos (`full_name`, `phone`, `email`, `origin`, `notes`, y `assigned_to` solo si `puedeReasignarContacto`). **`phone`, `email`, `origin` y `notes` aceptan `null` y texto vacío** (los dos se guardan como `null`): `ContactEditor` los manda en `null` cuando están vacíos (`ContactEditor.tsx:135-141`) y con un esquema que solo aceptara texto el botón "Editar" de hoy empezaría a dar 400. El Background se guarda con este `PUT` (`{ notes }`), así que **el esquema es parcial**: todos los campos son opcionales, se exige al menos uno de la lista (si no, 400) y `full_name`, cuando viene, no puede quedar vacío. **Un `assigned_to` o `created_by` mandado por quien no puede reasignar se descarta en silencio** (no da error): el resto de la edición se guarda, como dice la spec. Si después de descartar no queda ningún campo, 400. **El esquema no valida el formato de `email` ni de `phone`**: los recorta y les pone un tope de largo (nombre, teléfono y email 200 caracteres; `notes` 10.000; la tarea 5.1 mide el largo máximo que hay hoy en la base y, si algún contacto lo supera, se sube el tope antes de codear). Motivo: `ContactEditor` manda siempre los cinco campos, y si se rechazara un email viejo mal cargado, "Editar" daría 400 para ese contacto aunque solo se le cambie el teléfono. **`origin`** acepta vacío o uno de los cuatro valores del CHECK de la base (`embudo`, `referido`, `historico`, `clase_gratuita`); otro valor responde 400 "Origen no válido" (hoy ya falla, con un 500 de Postgres: no se rompe nada que funcione). **`assigned_to`** de quien sí puede reasignar tiene que ser el id de un perfil que existe: si no tiene forma de id o no existe, **400** "Ese usuario no existe" (hoy es un 500 por la clave foránea); vacío o `null` deja el contacto sin asesor. |
 | `GET /api/contacts` (existente, la lista) | Se le agrega el corte por rol: **403** cuando `alcanceContactos(role)` es `ninguno` (hoy el abogado recibe 200 con la lista vacía). Para los demás no cambia: el asesor sigue recibiendo solo los asignados a él (`resolverAlcanceAsignado`). El menú del abogado no tiene "Contactos", así que ninguna pantalla suya la pide. |
 | `POST /api/contacts` (existente) | **403** cuando `alcanceContactos(role)` es `ninguno`. Deja de pasar el cuerpo crudo a `createContact`: arma el insert con una **lista cerrada** (`full_name`, `phone`, `email`, `origin`, `notes`). `created_by` lo pone **siempre el servidor** (= usuario). `assigned_to`: si quien crea es asesor, el servidor pone su id y descarta lo que venga; si es de operaciones, se acepta el que mande (o vacío). |
-| `DELETE /api/contacts/[id]` (existente) | Se saca `requireRole` de adentro del `try` (hoy un rol sin permiso recibe 500). |
+| `DELETE /api/contacts/[id]` (existente) | Pasa a `requireAuth()` + chequeo explícito del rol: quien no es admin ni dueño recibe **403** en JSON (`{ error }`) y no se borra nada. **No se usa `requireRole`:** no devuelve un error, hace `redirect('/')` (`lib/auth/require-role.ts`). Adentro del `try`, como hoy, eso termina en un 500; afuera del `try` sería una redirección que el `fetch` sigue hasta un 200, y la lista `/contacts` —que decide por `r.value.ok` (`contacts/page.tsx:234-236`)— sacaría de la pantalla un contacto que no se borró. |
 | `POST /api/deals` (existente) | Acepta `from_deal_id` o `contact_id` (D9). Sin ninguno de los dos, no cambia nada. |
 | `POST /api/deals/[id]/undo-lost` (nueva) | Deshace un "perdido" recién marcado (D9). |
 
@@ -830,9 +847,17 @@ tiene alcance `propios`:
     proceso, tampoco la etapa**: todo en `null`. El motivo para mostrar la etapa de un
     proceso ajeno era que el activo tiene que ser el mismo para todos por la cadencia; con
     el proceso cerrado ese motivo no existe, y "Descartado" es un dato de un proceso que
-    el mismo diseño no le lista en "Procesos". Detalles queda como en "Contacto sin
-    procesos": origen y asesor del contacto, si los tiene, y sin renglón Asesor si no lo
-    tiene. La cabecera, como siempre que no hay proceso abierto, no muestra etapa.
+    el mismo diseño no le lista en "Procesos". Detalles muestra solo el origen y el asesor
+    del contacto, si los tiene; **si el contacto no tiene asesor, el renglón Asesor no se
+    dibuja**. La cabecera, como siempre que no hay proceso abierto, no muestra etapa.
+
+  **El renglón Asesor, en limpio** (los tres casos no se parecen):
+  - contacto **sin ningún proceso** y sin asesor → "Asesor: Sin asignar todavía" (es
+    verdad: nadie lo lleva);
+  - proceso de Detalles **propio** (o quien mira es de operaciones), sin asesor en el
+    proceso ni en el contacto → "Sin asignar todavía";
+  - proceso de Detalles **ajeno**, abierto o cerrado, y contacto sin asesor → el renglón
+    **no se dibuja** (alguien lo lleva, pero ese nombre no viaja).
 
   No se busca "el proceso propio más reciente" para rellenar Detalles: el proceso de
   Detalles no cambia según quién mira; lo que cambia es cuánto se ve. Opción conservadora,
@@ -978,12 +1003,12 @@ components/crm/ficha/
   FichaDatos.tsx           tarjeta Contacto (solo celular), Detalles, Background (editar en el lugar), "Editar contacto" → ContactEditor
   Composer.tsx             pestañas "Nota | Registrar llamada" (components/ui/tabs)
   FormNota.tsx
-  FormLlamada.tsx          5 OpcionResultado, bloque "¿Cuándo hay que volver a llamar?", comentario, "Corregir la hora", "Marcar WhatsApp enviado" (manda el comentario y la hora corregida del formulario)
+  FormLlamada.tsx          5 OpcionGrande, bloque "¿Cuándo hay que volver a llamar?", comentario, "Corregir la hora", "Marcar WhatsApp enviado" (manda el comentario y la hora corregida del formulario)
   HojaAgregar.tsx          Sheet side="bottom": menú "Agregar" → Registrar llamada / Nota, con "Volver"
   BotonMas.tsx             el "+" (aria-label "Agregar nota o registrar llamada")
   AvisoGuardado.tsx        .ficha-aviso: título, renglones, acciones, X; variante "pendiente" con Reintentar
   Actividad.tsx            filtros en pastilla + lista + "Ver más" + vacíos
-  ItemActividad.tsx        .evento: ícono, título, autor, fecha relativa/exacta, tarea agendada sola, menú ⋯ (Editar, Borrar, Anular)
+  ItemActividad.tsx        .evento: ícono, título (hasta dos renglones, sin "…"), autor, fecha relativa/exacta (en táctil cambia al tocar cualquier parte del renglón), tarea agendada sola, menú ⋯ (Editar, Borrar, Anular)
   LateralTareas.tsx        cabecera "Tareas · N" + AddTaskDialog (entity contact, onCreated → recargar) + ItemTarea con completar
   BloqueLista.tsx          Tasaciones agendadas, Procesos, Archivos (se oculta sin ítems); cada ítem acepta una acción al lado del enlace: en Procesos, "Coordinar tasación" si `puede_convertir` y "Deshacer" si `deshacer_hasta` todavía no pasó
 components/crm/ui/
@@ -1013,7 +1038,24 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   identificadores distintos: dos llamadas, y la segunda saltaría directo a "Enviar WhatsApp".
 - Lo que la maqueta no tiene y la propuesta pide (editar y borrar nota, anular un registro
   viejo) va en un menú "⋯" de cada ítem. Borrar y anular piden confirmación; el "Deshacer"
-  del toast usa el mismo `PATCH { accion: 'anular' }`.
+  del toast usa el mismo `PATCH { accion: 'anular' }`. Como la maqueta no los dibuja, se fija acá:
+  - **Editar una nota es en el lugar:** el texto del ítem se cambia por un campo de varios
+    renglones con la nota cargada (16 px de letra en táctil), y debajo "Guardar" y
+    "Cancelar" (44 px de alto en táctil). No abre ventana ni hoja, así que a 390 px ocupa
+    el ancho del ítem. "Cancelar" deja el texto anterior. Vacía muestra "Escribí algo para
+    guardar la nota"; con más de 2.000 caracteres avisa el límite; en los dos casos, y ante
+    un error del servidor, se conserva lo escrito. Al guardar, el ítem muestra "editada".
+  - **La confirmación de borrar y de anular** usa el `Dialog` que ya tiene la plataforma
+    (`components/ui/dialog.tsx`, con su piso de celular resuelto), con dos botones: la
+    acción ("Borrar nota" / "Anular") y "Cancelar". **No** se usa
+    `useConfirmarEliminacion`: pide escribir "ELIMINAR", pensado para borrados sin vuelta
+    atrás; acá lo borrado queda en la base y el toast ofrece "Deshacer". Cancelar no
+    cambia nada.
+- **Renglón de un registro (anatomía de evento de la spec vigente `crm-sistema-diseno`).**
+  El título puede ocupar dos renglones y no se corta con "…" (sin `truncate`). La fecha
+  exacta se ve al pasar el cursor y al tocar la fecha; **en pantallas táctiles, al tocar
+  cualquier parte del renglón** (menos el menú "⋯" y los botones de edición), y un segundo
+  toque vuelve a la relativa.
 - **Los cuatro filtros de la maqueta se mantienen** (Todo, Llamadas, Notas, Actividad) con
   su misma lógica (`ficha.js:103-108`): "Llamadas" muestra solo llamadas y "Actividad" lo
   que no es llamada ni nota. En este change eso es el WhatsApp marcado; los demás eventos
@@ -1026,9 +1068,22 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   `/pipeline/new` (D9): obliga a un `<Suspense>` y el fallo se vería recién en el build de
   Netlify. Efecto que se anota: `/tasks` manda las tareas `update_contact` que están
   ligadas **solo a un contacto** (sin proceso ni tasación) a `/contacts/<id>?edit=1`
-  (`tasks/page.tsx:110`), así que desde ahí la ficha nueva abre con el editor encima. En
-  este change no se toca `/tasks`; que ese enlace deje de llevar `?edit=1` queda anotado
+  (`tasks/page.tsx:110`), así que desde ahí la ficha nueva abre con el editor encima. Ese
+  enlace no se toca en este change; que deje de llevar `?edit=1` queda anotado
   para `crm-tareas-y-campanita` (tarea 13.1).
+- **A dónde lleva una tarea de la cadencia desde `/tasks`** (el único cambio de este change
+  en esa página). Hoy `getTaskLink` manda toda tarea con proceso a `/pipeline/<deal_id>`
+  (`tasks/page.tsx:116`, antes de mirar `contact_id`). Para la cadencia eso está mal por
+  dos lados: la coordinadora que toca "Llamada 2 a…" cae en el proceso, donde la llamada
+  no se registra; y el asesor que se agendó "Llamar a {nombre}" sobre un proceso ajeno
+  (decisión confirmada) cae en un proceso al que la API le responde 403
+  (`app/api/deals/[id]/route.ts:15-17`), y esa pantalla solo hace `console.error` y queda
+  sin datos (`pipeline/[id]/page.tsx:109`). Cambio: función pura
+  `enlaceTareaCadencia(task): string | null` en `lib/crm/tareas-ficha.ts` — una tarea
+  `follow_up` con `source_activity_id` y `contact_id` devuelve `/contacts/<contact_id>`;
+  cualquier otra, `null`. `getTaskLink` la consulta **primero** y, si da `null`, sigue
+  exactamente como hoy. Quien tiene una tarea de la cadencia siempre puede abrir esa
+  ficha: registró una actividad sobre ese contacto, o es de la coordinación.
 - Después de guardar, en escritorio el cuadro vuelve a la pestaña "Nota" (como
   `despuesDeGuardar` de la maqueta); en celular, a la pestaña "Actividad".
 - **"Marcar WhatsApp enviado" toma del formulario el comentario y la hora corregida**
@@ -1062,7 +1117,12 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   "Deshacer" del ítem de ese proceso en "Procesos" (punto siguiente). `/pipeline/<id>` no
   sirve para eso: no dibuja ninguna acción en un proceso descartado (`page.tsx:601`). **El
   botón de acción del toast lleva alto mínimo de 44 px en táctil** (una clase propia en
-  esos toasts; el `Toaster` global no se toca).
+  esos toasts; el `Toaster` global no se toca). **El toast del perdido dice dónde queda
+  el botón:** "Proceso marcado como perdido." y, como descripción, "Se puede deshacer
+  durante 10 minutos desde «Procesos» (en el celular, pestaña Tareas)." (la variante con
+  tasación agendada suma su frase después de la primera). En celular el bloque
+  "Procesos" vive dentro de la pestaña Tareas (D6) y quien está en Actividad no tendría
+  otra pista de dónde quedó el "Deshacer". Diferencia 24.
 - **"Deshacer" del perdido tiene un lugar que dura los 10 minutos.** El dueño confirmó 10
   minutos para deshacer, y un toast de 6 segundos solo no los da. Por eso, en el bloque
   "Procesos", el ítem de un proceso descartado lleva al lado del enlace un botón "Deshacer"
@@ -1092,7 +1152,12 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   ya hay tres columnas, antes de los 1280 que pedía la spec aprobada (otra diferencia
   confirmada por el dueño).
   A 768 con el menú abierto quedan 480 px (pestañas); a 768 con el menú colapsado, 672 px
-  (dos). Entre 768 y ~930 px de ventana con el menú abierto queda la vista de pestañas: dos
+  (dos). **Debajo de 768 px no hay menú lateral** (está la barra inferior del celular) y
+  `#contenido` tiene 16 px de relleno por lado: la ficha tiene la ventana menos 32 px. Por
+  eso desde unos 672 px de ventana ya hay dos columnas y no hay "+": a **744 px** (un iPad
+  mini parado) quedan 712 px → dos columnas, con el cuadro de nota/llamada a la vista y la
+  barra inferior del celular. Es lo que pide el requisito modificado (640 a 959 px libres);
+  se mira en la tarea 10.1. Entre 768 y ~930 px de ventana con el menú abierto queda la vista de pestañas: dos
   columnas ahí no entran (la columna de datos mide 17,5rem fijos). **Esto cambia la
   spec vigente `crm-sistema-diseno`** ("dos columnas entre 768 y 1279 px"): el dueño lo
   confirmó el 2026-11-25 y el requisito modificado está en `specs/crm-sistema-diseno/spec.md`
@@ -1205,6 +1270,8 @@ hoy**, y los tests que ya existen tienen que seguir pasando sin tocarlos.
 
 - `/pipeline/new` pasa a leer `?deal=<id>`: trae el proceso con `GET /api/deals/[id]`
   (existente; para un asesor exige que el proceso sea suyo) y precarga persona y propiedad.
+  **El campo "Notas" arranca vacío**, no se precarga con las notas del proceso: lo que se
+  escriba ahí se agrega a las que ya tiene (paso 4).
   **Al guardar envía `from_deal_id`** con ese id. Sin el parámetro, todo igual que hoy.
 - **Cómo lee los parámetros la página.** `/pipeline/new` es hoy un componente de cliente
   que no usa `useSearchParams`, y en Next 16 ese hook obliga a un límite de `Suspense` (el
@@ -1239,15 +1306,27 @@ hoy**, y los tests que ya existen tienen que seguir pasando sin tocarlos.
      Solicitud, saldría el email "Tasación agendada" con la fecha vacía y, como el filtro
      del `update` seguiría coincidiendo, el pedido se podría repetir y mandar el email otra
      vez. Sin `from_deal_id` la validación de hoy no cambia;
-  2. lee el proceso y exige `puedeConvertirSolicitud` (D2): etapa `request`, o `scheduled`
-     sin día; y quien pide tiene `pipeline.view_all`, o es un asesor y el proceso ya está
-     asignado a él. Si no, **404** (igual que si no existiera). Sin esto, un asesor con el
-     id de cualquier solicitud podría quedársela, porque la ruta le fuerza `assigned_to` = él.
-     Si el proceso tiene `origin = 'clase_gratuita'`, **409** ("Este proceso viene de la
-     clase gratuita: se coordina como un proceso nuevo"), sin cambiar nada: ese caso va por
-     `contact_id`. Motivo verificado: `notifyDealCreated` tira error con ese origen
+  2. lee el proceso (también `notes`, para el paso 4) y decide con `motivoNoConvertir`
+     (D2), **primero el permiso y después la etapa, en este orden**:
+     - el proceso no existe, o `sin_permiso` (quien pide no tiene `pipeline.schedule`, o
+       no tiene `pipeline.view_all` y el proceso no está asignado a él) → **404**, igual
+       que si no existiera. Sin esto, un asesor con el id de cualquier solicitud podría
+       quedársela, porque la ruta le fuerza `assigned_to` = él;
+     - `clase_gratuita` → **409** ("Este proceso viene de la clase gratuita: se coordina
+       como un proceso nuevo"), sin cambiar nada: ese caso va por `contact_id`;
+     - sin contacto (`contact_id` vacío) → **409** (texto y motivo, más abajo);
+     - `ya_cambio_de_etapa` (el proceso ya no está en `request` ni en `scheduled` sin
+       día) → **409** ("El proceso ya cambió de etapa"), sin tocar nada.
+
+     No se resuelve con el booleano `puedeConvertirSolicitud` y un 404 para todo lo que dé
+     falso: esa función ya da falso para un proceso de la clase y para uno que cambió de
+     etapa, y entonces los 409 de la spec —y el aviso "El proceso ya cambió de etapa" de
+     la pantalla— no se alcanzarían salvo en la carrera justa entre la lectura y el
+     `update`. El filtro de etapa del `update` (paso 4) queda como red para esa carrera.
+     Sobre el 409 de la clase gratuita, motivo verificado: `notifyDealCreated` tira error
+     con ese origen
      (`lib/email/notifications/deal-created.ts:29`) y el error termina en un email de
-     "falló la notificación" a los admins. La ficha tampoco ofrece esa conversión (D2);
+     "falló la notificación" a los admins. La ficha tampoco ofrece esa conversión (D2).
      Si el proceso **no tiene contacto** (`contact_id` vacío: pasa cuando se borró el
      contacto), **409** ("Este proceso no tiene una persona vinculada: vinculala desde el
      proceso antes de coordinar"), sin escribir nada y sin email. Sin esto quedaría un
@@ -1258,11 +1337,22 @@ hoy**, y los tests que ya existen tienen que seguir pasando sin tocarlos.
      email y por teléfono**, y no se crea ningún contacto. Sin esto, cambiar el email en el
      formulario precargado podía encontrar otro contacto o crear uno nuevo;
   4. **primero el proceso:** en vez de insertar hace un `update` de `deals` con día, hora,
-     asesor, propiedad, notas, `stage: 'scheduled'`, **`stage_changed_at` y `updated_at`
+     asesor, propiedad, las notas según la regla de abajo, `stage: 'scheduled'`, **`stage_changed_at` y `updated_at`
      con la hora actual** (lo mismo que escribe `updateDealStage`, `deals.ts:211-222`; sin
      eso la columna "Actualizado" del CRM seguiría mostrando la fecha de entrada del lead)
      y `created_by`, **sin tocar `contact_id` ni `origin`**. Con supabase-js no hay
      `coalesce` en un `update`, así que se escribe así:
+     - **`notes` nunca se pisa.** Una solicitud llega con notas que otros leen: el mensaje
+       que dejó la persona (`lib/funnel/create-funnel-lead.ts:170`), lo que anota el
+       agente de WhatsApp (`lib/ai/tasacion-agent.ts:219-221`, que ya concatena para no
+       pisar) y el texto "Importado de GHL… Stage GHL" que usa el Panel de negocio
+       (`lib/metrics/panel/personas.ts:116`). El formulario de hoy manda
+       `notes: form.notes || null` (`pipeline/new/page.tsx:61`): escrito tal cual en el
+       `update` borraría todo eso. Regla, calculada en la ruta con la fila leída en el
+       paso 2: si el campo llega vacío (o solo espacios), `notes` **no se incluye** en el
+       `update`; si trae texto y el proceso no tenía notas, se guarda ese texto; si trae
+       texto y ya había notas, se guarda `<notas anteriores>` + un renglón en blanco +
+       `<texto nuevo>`. Sin `from_deal_id` (proceso nuevo) el campo se guarda como hoy;
      - `created_by` **se calcula en la ruta** con la fila leída en el paso 2: si venía
        vacío, quien coordina; si tenía valor, no se incluye en el `update`;
      - el filtro de etapa va en el propio `update`:
@@ -1338,8 +1428,11 @@ cliente para volver a ciertas etapas y puede responder 422. Por eso hay una ruta
 propia, `POST /api/deals/[id]/undo-lost`, que llaman dos botones de la ficha (el "Deshacer"
 del toast, 6 segundos, y el del ítem del proceso en "Procesos", los 10 minutos; D5):
 
-- `requireAuth` + permiso `pipeline.advance` (sin él, la misma respuesta que da hoy
-  `advance`) + `puedeCerrarProceso` (D2), con su **lista explícita de roles**: admin, dueño,
+- `requireAuth()` + chequeo explícito del permiso `pipeline.advance` con `hasPermission`:
+  sin él, **403** en JSON (`{ error }`). **No se usa `requirePermission`:** no devuelve un
+  error, hace `redirect('/')`; dentro del `try` eso es el 500 con `NEXT_REDIRECT` que da
+  hoy `advance`, y fuera sería una redirección que el `fetch` sigue hasta un 200 y la
+  ficha tomaría el "Deshacer" como hecho. Después, `puedeCerrarProceso` (D2), con su **lista explícita de roles**: admin, dueño,
   coordinador, o asesor dueño del proceso; si no, **404**. No alcanza con `canAccessDeal`,
   que deja pasar al rol viejo `agent`;
 - lee el proceso y la última fila de `deal_stage_history` (con service role: la RLS de esa
@@ -1476,6 +1569,18 @@ nombran al dueño en el reporte final (tarea 13.5).
     minutos.** La maqueta tenía el "Deshacer" solo en el toast (6 segundos). Motivo: el
     dueño confirmó 10 minutos, y pasado el toast no quedaba ningún botón para usarlos (D5).
 
+**Precisiones agregadas en la verificación final, ronda 2 (2026-11-25).** Tampoco cambian
+ninguna decisión confirmada, y también se le nombran al dueño en el reporte final.
+
+24. **El toast del perdido suma un renglón:** "Se puede deshacer durante 10 minutos desde
+    «Procesos» (en el celular, pestaña Tareas)." En la maqueta decía solo "Proceso marcado
+    como perdido." Motivo: el botón de los 10 minutos (diferencia 23) queda en "Procesos",
+    que en celular está dentro de la pestaña Tareas (D5).
+25. **Una tarea de la cadencia abierta desde `/tasks` abre la ficha y no el proceso.** La
+    página de tareas quedaba afuera de este change; se toca solo ese enlace, porque sin
+    eso la tarea "Llamar a {nombre}" de un asesor sobre un proceso ajeno lo llevaba a una
+    pantalla sin datos (D5). Las demás tareas abren lo mismo que hoy.
+
 ## Risks / Trade-offs
 
 - [La vista previa usa la base de producción] → el QA trabaja solo sobre los datos de la
@@ -1507,6 +1612,11 @@ nombran al dueño en el reporte final (tarea 13.5).
   qué tarea figura como "creada" por esa llamada. Hueco conocido: cerrar la escritura
   directa de `tasks` es de `crm-tareas-y-campanita` y queda anotado en su propuesta
   (tarea 13.1).
+- [Las notas del proceso se leen y se escriben en dos pasos al convertir] → si el agente
+  de WhatsApp agrega su nota justo entre la lectura y el `update` de la conversión, esa
+  nota se pierde. La ventana es de milisegundos y hoy el agente de tasación está apagado;
+  no se agrega una función de base para esto. Cuando el campo "Notas" llega vacío no hay
+  riesgo: la columna no se escribe.
 - [`POST /api/deals/[id]/advance` no revisa de quién es el proceso] → existe desde antes. La
   ficha solo dibuja "Marcar proceso como perdido" con `puedeCerrarProceso`, y la ruta nueva
   de deshacer sí lo revisa.
@@ -1628,7 +1738,11 @@ nombran al dueño en el reporte final (tarea 13.5).
 3. **Rama:** antes que nada se commitea lo que hoy está sin commitear en el worktree (la
    maqueta aprobada, `aprobacion.md` y los artefactos de este change; tarea 1.1). Después
    los documentos del módulo (OpenSpec, maqueta, skills) viajan a `main` en su propio PR
-   (dispara un deploy sin cambios de código), y la rama de este change se corta desde `origin/main` actualizado. Así
+   (dispara un deploy sin cambios de código). **No se corta una rama nueva ni se cambia
+   de rama:** se sigue en la rama local que ya existe en este worktree,
+   `feat/crm-ficha-contacto`, puesta al día con `origin/main`, y se sube a la rama remota
+   `feat/crm-ficha-y-llamadas` con `git push origin HEAD:feat/crm-ficha-y-llamadas`, sin
+   forzar (tarea 1.3). Así
    `git diff --name-only origin/main <rama>` lista solo archivos de este change, **más los
    documentos de `openspec/` que la rama lleva de más** (el archivado de
    `crm-sistema-diseno` con su spec vigente en `openspec/specs/`, y las respuestas del

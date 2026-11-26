@@ -70,3 +70,38 @@ solicitud sin contacto; el orden tarea → emails → Mailchimp al convertir; el
 de las columnas nuevas de `tasks`; las medidas táctiles del "Deshacer" del toast y de los
 botones del aviso; los escenarios de carga, de falla del pedido de la persona y el texto
 de la pantalla del abogado; y el nombre real de la rama local y su comando de push.
+
+### Verificación final, ronda 2 (2026-11-25)
+
+Dos niveles de auditoría dejaron 18 hallazgos (3 de peso, 15 menores). Los 18 se
+comprobaron contra el código y los documentos antes de tocar nada: los 18 eran ciertos y
+se corrigieron; ninguno se descartó. Sigue **abierto** hasta que la ronda siguiente no
+encuentre nada de peso.
+
+De peso:
+
+1. **Convertir una solicitud pisaba sus notas.** El `update` escribía el campo "Notas" del
+   formulario sobre `deals.notes`: se perdían el mensaje del lead, lo anotado por el agente
+   de WhatsApp y el texto "Importado de GHL…" que lee el Panel de negocio. Ahora la ruta
+   nunca pisa: campo vacío → la columna no se escribe; con texto → se agrega al final. El
+   formulario abierto con `?deal=` arranca con "Notas" vacío.
+2. **Los 409 de la conversión no se alcanzaban.** El paso 2 respondía 404 a todo lo que
+   `puedeConvertirSolicitud` daba falso, incluidos el proceso de la clase y el que ya
+   cambió de etapa. Se separó con `motivoNoConvertir`: primero permiso (404), después
+   clase gratuita, sin contacto y etapa (409).
+3. **Una tarea de la cadencia abierta desde `/tasks` llevaba al proceso.** Al asesor con
+   "Llamar a {nombre}" sobre un proceso ajeno lo dejaba en una pantalla sin datos (la API
+   le responde 403). Ahora `getTaskLink` manda las tareas de la cadencia a la ficha
+   (`enlaceTareaCadencia`, tarea 11.3). Es la diferencia 25, nueva.
+
+Menores: el requisito "La etapa nunca cambia sola" de la spec vigente entra al delta como
+MODIFIED; título largo y toque en el renglón en la actividad; `ultimaEn` por persona y no
+por proceso; el caso espejo de la llamada manual del asesor sin proceso; el renglón Asesor
+de Detalles en sus tres casos; `OpcionGrande` con un solo nombre; la cita "Última llamada:"
+y las dos respuestas del dueño que faltaban en la propuesta; el punto 3 del Migration Plan
+con la rama real; 403 en JSON (y no redirección) en `DELETE` de contactos y en `undo-lost`;
+la situación de prueba correcta para `/crm` con rol asesor; cómo se edita y se confirma el
+borrado de una nota; dos situaciones nuevas en la receta (`sin-ningun-proceso` y
+`solicitud-y-clase`); la regla general de limpieza de los datos de prueba; en qué pestaña
+quedan en celular los botones fijos y el texto del toast del perdido (diferencia 24); y
+los 744 px, donde ya hay dos columnas sin menú lateral.
