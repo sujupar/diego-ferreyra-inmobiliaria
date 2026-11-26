@@ -63,11 +63,15 @@ describe('GET /api/contacts — alcance forzado en el servidor', () => {
     expect(alcanceUsado()).toBe('asesor-1')
   })
 
-  it('el legacy agent (pipeline.view_own) también queda acotado', async () => {
-    estado.role = 'agent'
-    estado.id = 'agente-legacy'
-    await pedir(`?assigned_to=${AJENO}`)
-    expect(alcanceUsado()).toBe('agente-legacy')
+  // crm-ficha-y-llamadas, tarea 5.3: un rol sin alcance de contactos recibe 403 en vez
+  // de una lista acotada (antes el abogado/agent/viewer recibían 200 con su propio id).
+  it.each(['agent', 'abogado', 'viewer', 'inventado'])('%s → 403 y no se consulta la lista', async (role) => {
+    estado.role = role
+    estado.id = 'sin-crm-1'
+    const res = await pedir(`?assigned_to=${AJENO}`)
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'No tenés acceso a los contactos.' })
+    expect(getContactsMock).not.toHaveBeenCalled()
   })
 
   it.each(['admin', 'dueno', 'coordinador'])(
@@ -87,16 +91,6 @@ describe('GET /api/contacts — alcance forzado en el servidor', () => {
       estado.id = 'jefe-1'
       await pedir(`?assigned_to=${AJENO}`)
       expect(alcanceUsado()).toBe(AJENO)
-    },
-  )
-
-  it.each(['abogado', 'viewer'])(
-    'un %s queda acotado a su propio id (fail-closed: no tiene ninguno de los dos permisos)',
-    async (role) => {
-      estado.role = role
-      estado.id = 'sin-crm-1'
-      await pedir(`?assigned_to=${AJENO}`)
-      expect(alcanceUsado()).toBe('sin-crm-1')
     },
   )
 
