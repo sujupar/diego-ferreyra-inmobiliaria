@@ -7,7 +7,8 @@ import userEvent from '@testing-library/user-event'
 import { FichaContacto } from './FichaContacto'
 import { FormLlamada } from './FormLlamada'
 import { FormNota } from './FormNota'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, pedidosA, simularRed, tareaDePrueba } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { pedidosA, simularRed } from './red-prueba'
 import type { BloqueCadencia } from '@/lib/supabase/cadencia'
 
 vi.mock('next/link', () => ({

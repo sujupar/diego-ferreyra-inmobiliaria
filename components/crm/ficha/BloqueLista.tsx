@@ -90,7 +90,9 @@ function ItemProceso({
   const [enviando, setEnviando] = useState(false)
   const mostrarDeshacer = vigente && !ocultoPorError
   return (
-    <li className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1" data-proceso={p.id}>
+    // Las acciones van en su propio renglón, debajo del enlace: en la columna de 18rem no
+    // entran al costado (el título quedaba de una letra por renglón).
+    <li className="flex flex-col gap-1 py-1" data-proceso={p.id}>
       <Item
         href={`/pipeline/${encodeURIComponent(p.id)}`}
         Icono={Briefcase}
@@ -102,30 +104,34 @@ function ItemProceso({
           </>
         }
       />
-      {p.puede_convertir && (
-        <Link
-          href={`/pipeline/new?deal=${encodeURIComponent(p.id)}`}
-          className={cn(BOTON_ACCION, ALTO_CONTROL, 'bg-brand text-brand-foreground hover:bg-brand/90')}
-        >
-          <CalendarPlus aria-hidden className="size-4" />
-          Coordinar tasación
-        </Link>
-      )}
-      {mostrarDeshacer && (
-        <button
-          type="button"
-          disabled={enviando}
-          onClick={async () => {
-            setEnviando(true)
-            const ok = await onDeshacer(p.id)
-            setEnviando(false)
-            if (!ok) setOcultoPorError(true)
-          }}
-          className={cn(BOTON_ACCION, ALTO_CONTROL, 'border border-border bg-card hover:bg-accent disabled:opacity-60')}
-        >
-          <RotateCcw aria-hidden className="size-4" />
-          Deshacer
-        </button>
+      {(p.puede_convertir || mostrarDeshacer) && (
+        <div className="flex flex-wrap gap-2 pb-1 pl-11">
+          {p.puede_convertir && (
+            <Link
+              href={`/pipeline/new?deal=${encodeURIComponent(p.id)}`}
+              className={cn(BOTON_ACCION, ALTO_CONTROL, 'bg-brand text-brand-foreground hover:bg-brand/90')}
+            >
+              <CalendarPlus aria-hidden className="size-4" />
+              Coordinar tasación
+            </Link>
+          )}
+          {mostrarDeshacer && (
+            <button
+              type="button"
+              disabled={enviando}
+              onClick={async () => {
+                setEnviando(true)
+                const ok = await onDeshacer(p.id)
+                setEnviando(false)
+                if (!ok) setOcultoPorError(true)
+              }}
+              className={cn(BOTON_ACCION, ALTO_CONTROL, 'border border-border bg-card hover:bg-accent disabled:opacity-60')}
+            >
+              <RotateCcw aria-hidden className="size-4" />
+              Deshacer
+            </button>
+          )}
+        </div>
       )}
     </li>
   )
