@@ -143,6 +143,18 @@ export async function getMyTasks(userId: string, status?: string) {
   return data || []
 }
 
+/**
+ * A quién está asignada una tarea, o `null` si no existe. Lo usa `PUT /api/tasks/[id]`
+ * para decidir si quien pide la puede completar o descartar (revisión 12.1). Tira ante un
+ * error de la base: "no se pudo leer" no es "no existe".
+ */
+export async function leerAsignadoDeTarea(id: string): Promise<{ assigned_to: string | null } | null> {
+  const { data, error } = await getAdmin().from('tasks').select('assigned_to').eq('id', id).maybeSingle()
+  if (error) throw new Error(`leerAsignadoDeTarea: ${error.message}`)
+  const fila: { assigned_to: string | null } | null = data
+  return fila ? { assigned_to: fila.assigned_to ?? null } : null
+}
+
 export async function completeTask(id: string) {
   const { error } = await getAdmin()
     .from('tasks')
