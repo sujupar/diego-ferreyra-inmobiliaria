@@ -1,0 +1,20 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>ver</title><style>html,body{margin:0;background:#fff;overflow:hidden}iframe{border:0;display:block}</style></head>
+<body><script>
+// Visor para capturas (no se publica). w, h, p = pantalla; a = acciones separadas por «;» que se corren dentro de la maqueta:
+//   vercomo=<valor> · click=<selector css> · val=<selector>|<valor> (cambia un select) · q=<texto> (busca)
+var q = new URLSearchParams(location.search), w = q.get('w') || 390, h = q.get('h') || 844, p = q.get('p') || 'indice';
+var f = document.createElement('iframe'); f.width = w; f.height = h; f.src = (q.get('src') || 'index.html') + '#' + p; document.body.appendChild(f);
+f.onload = function () {
+  var acc = (q.get('a') || '').split(';').filter(Boolean), d = f.contentDocument, i = 0;
+  function sig() {
+    if (i >= acc.length) return;
+    var x = acc[i++], k = x.slice(0, x.indexOf('=')), v = x.slice(x.indexOf('=') + 1), el;
+    if (k === 'vercomo') { el = d.querySelector('[data-vercomo]'); el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (k === 'click') { d.querySelector(v).click(); }
+    if (k === 'val') { var par = v.split('|'); el = d.querySelector(par[0]); el.value = par[1]; el.dispatchEvent(new Event('change', { bubbles: true })); }
+    if (k === 'q') { el = d.querySelector('section:not([hidden]) [data-filtro="q"]'); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }
+    setTimeout(sig, 600);
+  }
+  setTimeout(sig, 600);
+};
+</script></body></html>

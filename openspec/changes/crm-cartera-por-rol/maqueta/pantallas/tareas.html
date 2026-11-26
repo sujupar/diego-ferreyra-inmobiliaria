@@ -1,0 +1,175 @@
+<!-- ══ Pantalla #tareas ══════════════════════════════════════════════════ -->
+<section class="pantalla" data-screen="tareas" data-titulo="Pendientes">
+  <div class="pagina tareas-pagina">
+
+    <header class="tareas-cabecera">
+      <div class="crece">
+        <h1 class="titulo-pagina" id="tareas-titulo">Mis pendientes</h1>
+        <p class="texto-suave tareas-resumen" id="tareas-resumen" aria-live="polite"></p>
+      </div>
+      <button type="button" class="btn btn--marca" data-abrir-hoja="tareas-hoja-nueva"><i data-icono="plus"></i>Nueva tarea</button>
+    </header>
+
+    <!-- Filtros en celular: dos listas nativas en una sola fila -->
+    <div class="tareas-selects solo-celular">
+      <span class="tareas-select">
+        <select class="entrada" id="tareas-sel-tipo" aria-label="Filtrar por tipo de tarea"></select>
+        <i data-icono="chevron-down"></i>
+      </span>
+      <span class="tareas-select" data-solo-rol="coordinadora admin">
+        <select class="entrada" id="tareas-sel-persona" aria-label="Ver las tareas de"></select>
+        <i data-icono="chevron-down"></i>
+      </span>
+    </div>
+
+    <!-- Filtros desde 768 px: chips -->
+    <div class="tareas-chips solo-escritorio">
+      <div class="tareas-chips__fila">
+        <span class="eyebrow tareas-chips__etiqueta">Tipo</span>
+        <div class="filtros tareas-chips__opciones" id="tareas-f-tipo" aria-label="Filtrar por tipo de tarea"></div>
+      </div>
+      <div class="tareas-chips__fila" data-solo-rol="coordinadora admin">
+        <span class="eyebrow tareas-chips__etiqueta">De quién</span>
+        <div class="filtros tareas-chips__opciones" id="tareas-f-persona" aria-label="Ver las tareas de"></div>
+      </div>
+    </div>
+
+    <!-- Vencidas / Hoy / Próximas (los dibuja tareas.js; un grupo sin tareas no aparece) -->
+    <div class="pila pila--grande" id="tareas-grupos"></div>
+
+    <!-- Sin fecha: plegado, con contador -->
+    <details class="plegable tareas-sinfecha" id="tareas-sinfecha" hidden>
+      <summary>
+        <i data-icono="calendar"></i>
+        <span>Sin fecha</span><span aria-hidden="true">·</span><span class="tareas-sinfecha__n" id="tareas-sinfecha-n">0</span>
+      </summary>
+      <div class="plegable__cuerpo">
+        <p class="texto-chico texto-suave tareas-sinfecha__nota">Nunca tuvieron fecha, así que no avisan en la campanita. Poneles fecha a las que sigan valiendo y completá las que no.</p>
+        <ul class="lista tareas-lista" id="tareas-sinfecha-lista"></ul>
+        <button type="button" class="btn btn--secundario btn--ancho" id="tareas-sinfecha-mas" hidden>Mostrar más</button>
+      </div>
+    </details>
+
+  </div>
+</section>
+
+<!-- ══ Hoja: Nueva tarea ═════════════════════════════════════════════════ -->
+<div class="hoja" id="tareas-hoja-nueva" data-global role="dialog" aria-modal="true" aria-labelledby="tareas-hoja-nueva-t" hidden>
+  <div class="hoja__fondo" data-cerrar-hoja></div>
+  <form class="hoja__panel" id="tareas-form-nueva" novalidate>
+    <div class="hoja__cabecera">
+      <h2 class="hoja__titulo" id="tareas-hoja-nueva-t">Nueva tarea</h2>
+      <button type="button" class="btn btn--icono" data-cerrar-hoja aria-label="Cerrar"><i data-icono="x"></i></button>
+    </div>
+    <div class="hoja__cuerpo">
+      <label class="campo">
+        <span class="campo__etiqueta">¿Qué hay que hacer?</span>
+        <input class="entrada" type="text" id="tareas-n-titulo" maxlength="120" placeholder="Ej.: Llamar al propietario de Yatay 540" autocomplete="off" data-foco>
+        <span class="campo__error" id="tareas-n-titulo-error" hidden><i data-icono="triangle-alert"></i>Escribí qué hay que hacer.</span>
+      </label>
+
+      <div class="campo">
+        <span class="campo__etiqueta" id="tareas-n-tipo-e">Tipo</span>
+        <!-- Los tipos salen de MQ.TIPOS_ELEGIBLES (base.js): la misma lista que los filtros de Pendientes -->
+        <div class="filtros tareas-n-tipos" id="tareas-n-tipo" role="group" aria-labelledby="tareas-n-tipo-e"></div>
+      </div>
+
+      <!-- Solo cuando el formulario se abre desde la ficha de alguien -->
+      <div class="campo" id="tareas-n-contacto" hidden>
+        <span class="campo__etiqueta">Contacto</span>
+        <p class="tareas-n-fijo"><i data-icono="contact"></i><span id="tareas-n-contacto-nombre"></span></p>
+      </div>
+
+      <div class="tareas-n-cuando">
+        <label class="campo">
+          <span class="campo__etiqueta">Día</span>
+          <input class="entrada" type="date" id="tareas-n-dia">
+        </label>
+        <label class="campo">
+          <span class="campo__etiqueta">Hora <span class="texto-suave">(opcional)</span></span>
+          <input class="entrada" type="time" id="tareas-n-hora" step="300">
+        </label>
+      </div>
+      <label class="tareas-n-check">
+        <input type="checkbox" id="tareas-n-todo">
+        <span>Todo el día <small>Sin hora. Avisa desde las 9:00.</small></span>
+      </label>
+      <p class="campo__ayuda" id="tareas-n-ayuda"></p>
+
+      <label class="campo" data-solo-rol="coordinadora admin">
+        <span class="campo__etiqueta">Asignada a</span>
+        <span class="tareas-select">
+          <select class="entrada" id="tareas-n-persona"></select>
+          <i data-icono="chevron-down"></i>
+        </span>
+      </label>
+      <div class="campo" data-solo-rol="asesor">
+        <span class="campo__etiqueta">Asignada a</span>
+        <p class="tareas-n-fijo"><i data-icono="user"></i><span id="tareas-n-yo">Vos</span></p>
+      </div>
+    </div>
+    <div class="hoja__pie">
+      <button type="button" class="btn btn--secundario" data-cerrar-hoja>Cancelar</button>
+      <button type="submit" class="btn btn--marca"><i data-icono="check"></i>Crear tarea</button>
+    </div>
+  </form>
+</div>
+
+<!-- ══ Hoja: Posponer / Poner fecha (la usan la página y la campanita) ═══ -->
+<div class="hoja" id="tareas-hoja-posponer" data-global role="dialog" aria-modal="true" aria-labelledby="tareas-hoja-posponer-t" hidden>
+  <div class="hoja__fondo" data-cerrar-hoja></div>
+  <form class="hoja__panel" id="tareas-form-posponer" novalidate>
+    <div class="hoja__cabecera">
+      <h2 class="hoja__titulo" id="tareas-hoja-posponer-t">Posponer</h2>
+      <button type="button" class="btn btn--icono" data-cerrar-hoja aria-label="Cerrar"><i data-icono="x"></i></button>
+    </div>
+    <div class="hoja__cuerpo">
+      <p class="tareas-p-tarea" id="tareas-p-tarea"></p>
+      <button type="button" class="opcion" data-tareas-cuando="1h" data-foco>
+        <span class="opcion__icono"><i data-icono="clock"></i></span>
+        <span>En 1 hora<small id="tareas-p-1h"></small></span>
+      </button>
+      <button type="button" class="opcion" data-tareas-cuando="manana">
+        <span class="opcion__icono"><i data-icono="calendar"></i></span>
+        <span>Mañana a las 9:00<small id="tareas-p-manana"></small></span>
+      </button>
+      <button type="button" class="opcion" data-tareas-cuando="elegir" aria-expanded="false" aria-controls="tareas-p-elegir">
+        <span class="opcion__icono"><i data-icono="calendar-days"></i></span>
+        <span>Elegir día y hora<small>Vos decidís cuándo</small></span>
+      </button>
+      <div class="pila pila--chica" id="tareas-p-elegir" hidden>
+        <div class="tareas-n-cuando">
+          <label class="campo">
+            <span class="campo__etiqueta">Día</span>
+            <input class="entrada" type="date" id="tareas-p-dia">
+          </label>
+          <label class="campo">
+            <span class="campo__etiqueta">Hora</span>
+            <input class="entrada" type="time" id="tareas-p-hora" step="300">
+          </label>
+        </div>
+        <span class="campo__error" id="tareas-p-error" hidden><i data-icono="triangle-alert"></i><span>Elegí un día y una hora que todavía no hayan pasado.</span></span>
+      </div>
+    </div>
+    <div class="hoja__pie" id="tareas-p-pie" hidden>
+      <button type="button" class="btn btn--secundario" data-cerrar-hoja>Cancelar</button>
+      <button type="submit" class="btn btn--marca"><i data-icono="check"></i>Guardar</button>
+    </div>
+  </form>
+</div>
+
+<!-- ══ Campanita (global): panel desde 768 px, hoja a pantalla completa en celular ══
+     El botón #btn-campanita y su número son del shell; esto es solo lo que se abre. -->
+<div class="hoja hoja--completa hoja--panel" id="tareas-campanita" data-global role="dialog" aria-modal="true" aria-labelledby="tareas-campanita-t" hidden>
+  <div class="hoja__fondo" data-cerrar-hoja></div>
+  <div class="hoja__panel">
+    <div class="hoja__cabecera">
+      <h2 class="hoja__titulo" id="tareas-campanita-t">Avisos</h2>
+      <button type="button" class="btn btn--icono" data-cerrar-hoja aria-label="Cerrar los avisos"><i data-icono="x"></i></button>
+    </div>
+    <div class="hoja__cuerpo tareas-campanita__cuerpo" id="tareas-campanita-cuerpo"></div>
+    <div class="hoja__pie tareas-campanita__pie">
+      <button type="button" class="btn btn--secundario" data-ir="tareas"><i data-icono="list-checks"></i>Ver todos los pendientes</button>
+    </div>
+  </div>
+</div>

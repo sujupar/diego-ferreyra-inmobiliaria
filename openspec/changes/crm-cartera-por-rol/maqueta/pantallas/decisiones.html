@@ -1,0 +1,83 @@
+<section class="pantalla" data-screen="decisiones" data-titulo="Qué cambia y preguntas" data-seccion="Sobre la maqueta">
+  <div class="pagina dec">
+    <header class="pila pila--chica">
+      <h1 class="titulo-pagina">Qué cambia en el CRM y por qué</h1>
+      <p class="texto-suave">La pantalla de hoy muestra números, pero no dice qué hacer. La nueva abre en la vista de cada persona y ordena la lista por lo que hay que hacer primero.</p>
+    </header>
+
+    <section class="card">
+      <div class="card__cabecera"><h2 class="card__titulo">Lo que viste y lo que cambia</h2></div>
+      <div class="card__cuerpo">
+        <table class="dec__tabla">
+          <thead><tr><th>Hoy</th><th>En la maqueta</th></tr></thead>
+          <tbody>
+            <tr><td data-l="Hoy">La misma pantalla para todos.</td><td data-l="En la maqueta">Cada rol abre en su vista: la coordinación ve primero a quién llamar, el asesor sus procesos por próximo paso, el dueño el embudo y lo trabado.</td></tr>
+            <tr><td data-l="Hoy">10 tarjetas de colores del mismo tamaño: «Descartado 472» pesa lo mismo que «Coordinada 15».</td><td data-l="En la maqueta">Una barra chica de números por etapa, sin colores, al lado del total de abiertos. Tocar una etapa filtra la lista. En las filas, la etapa también va sin color: lo único en rojo es lo vencido.</td></tr>
+            <tr><td data-l="Hoy">«Deals 984», que repite la suma.</td><td data-l="En la maqueta">Se saca. El total aparece una sola vez, en el botón «Abiertos» (y «Cerrados»).</td></tr>
+            <tr><td data-l="Hoy">Los descartados y captados mezclados con los abiertos.</td><td data-l="En la maqueta">Salen de la vista principal y quedan a un toque, en «Cerrados».</td></tr>
+            <tr><td data-l="Hoy">Tres filtros que dicen «Todas / Todos / Todos».</td><td data-l="En la maqueta">Cada filtro lleva su nombre arriba (Etapa, Origen, Asesor, Entró al CRM) y la opción dice qué es: «Todas las etapas».</td></tr>
+            <tr><td data-l="Hoy">Fechas «Todo / Hoy / Ayer / 7d / 15d / 30d / 90d / Custom».</td><td data-l="En la maqueta">Un selector «Entró al CRM»: Hoy, Ayer, Últimos 7 días… y «Elegir fechas».</td></tr>
+            <tr><td data-l="Hoy">Filas numeradas 01, 02 que repiten el nombre y no dicen qué pasó ni qué sigue.</td><td data-l="En la maqueta">Cada fila: nombre y propiedad, etapa, último contacto («ayer · llamada, no atendió»), próximo paso («Llamada 2 · Vencida hace 1 h», en rojo y con ícono) y asesor. Toda la fila abre la ficha.</td></tr>
+            <tr><td data-l="Hoy">Dos formas de ver la lista: fichas o tabla.</td><td data-l="En la maqueta">Una sola lista: en la computadora se lee como tabla, en el celular como tarjetas.</td></tr>
+            <tr><td data-l="Hoy">En el celular, la barra de abajo tiene Inicio, Pendientes, Contacto y Menú.</td><td data-l="En la maqueta">Inicio, CRM, Contactos y Menú. Pendientes sigue en el Menú y en la campanita.</td></tr>
+            <tr><td data-l="Hoy">Desde la ficha no hay forma visible de volver a la lista.</td><td data-l="En la maqueta">Arriba de la ficha, «‹ Volver al CRM» (o a Contactos), con los filtros como estaban.</td></tr>
+            <tr><td data-l="Hoy">Contactos: nombre, teléfono, email y origen.</td><td data-l="En la maqueta">La misma fila que el CRM: proceso, último contacto y próximo paso. El asesor ve solo sus contactos.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__cabecera"><h2 class="card__titulo">Lo que dimos por hecho (se puede cambiar)</h2></div>
+      <div class="card__cuerpo">
+        <ul class="dec__lista">
+          <li><strong>Último contacto</strong> es la última llamada, el último WhatsApp marcado o la última visita. Una nota interna no cuenta: no es hablar con la persona.</li>
+          <li><strong>Próximo paso</strong> es lo primero que vence: una tarea o una tasación agendada. El asesor ve solo sus tareas; la coordinación, las suyas; el dueño, la de cualquiera, con el nombre de quién la tiene.</li>
+          <li>Por eso <strong>la misma persona puede tener distinto próximo paso según quién mire</strong>: en Ernesto Villalba, Paula ve «Confirmar el horario · hoy» (su tarea) y Tomás ve «Tasación · mañana 11:00» (la suya). El dueño ve lo primero que vence, con el nombre de quién lo tiene, y la tasación debajo del nombre.</li>
+          <li><strong>Ficha y lista:</strong> arriba de la ficha dice «Última llamada» (solo cuenta llamadas); en la lista, «Último contacto» (también WhatsApp y visitas). Por eso Mirta Sosa dice «hace 12 días» en la ficha y «hace 4 días · visita» en la lista. Proponemos que, al programarlo, la ficha diga también «Último contacto» con la misma regla, salvo que prefieras que cuente solo llamadas.</li>
+          <li><strong>La coordinación</strong> ve Solicitud, Coordinada y No realizada (para volver a coordinar).</li>
+          <li><strong>«Ver como»</strong> es solo para mirar: muestra exactamente lo que ve esa persona y no cambia nada. Lo decide el servidor: un asesor nunca recibe procesos de otro. La campanita y el menú siguen siendo los tuyos.</li>
+          <li><strong>Clase gratuita y Comprador</strong> no son parte del embudo de tasación: en la vista del dueño van aparte, en la misma barra.</li>
+          <li><strong>Seguimiento sin movimiento:</strong> un seguimiento sin llamada, WhatsApp ni visita hace 14 días o más. La misma regla marca la fila («hace 22 días · sin movimiento») y cuenta en «Lo que está trabado».</li>
+          <li><strong>Tasaciones de hoy</strong> en la vista del asesor: las visitas con compradores siguen en Visitas, no en el CRM.</li>
+          <li><strong>El asesor ve sus compradores</strong> en su CRM, como una etapa más de la barra.</li>
+          <li>Los procesos de <strong>colegas</strong> siguen ocultos por defecto, con el mismo interruptor «Mostrar colegas» de hoy (no se dibujó en la maqueta).</li>
+          <li>«Seleccionar» (para eliminar varios) sigue como hoy, solo para quien ya lo tiene: está en la lista del dueño. No se suman acciones masivas nuevas.</li>
+          <li>Los números de la barra copian los de la pantalla que viste (984 procesos). Las listas muestran solo algunos ejemplos.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="card card--marca">
+      <div class="card__cabecera"><h2 class="card__titulo">Tres preguntas para vos</h2></div>
+      <div class="card__cuerpo">
+        <div class="dec__pregunta">
+          <strong>1. ¿Querés un tablero por columnas (Kanban), con una columna por etapa?</strong>
+          <span>Hoy no existe: el CRM tiene «fichas» y «tabla». Un tablero sirve para ver cuántos hay en cada etapa y mover tarjetas arrastrando.</span>
+          <span class="dec__propuesta">Lo que proponemos: no hacerlo. La barra de etapas ya dice cuántos hay, y la lista ordenada por próximo paso dice qué hacer. Mover de etapa arrastrando se saltearía los controles de hoy (datos del cliente obligatorios, por ejemplo).</span>
+        </div>
+        <div class="dec__pregunta">
+          <strong>2. ¿Cuántos días sin contacto hacen que un seguimiento cuente como «sin movimiento»?</strong>
+          <span>En la maqueta son 14 días. Con ese número, 61 de 100 seguimientos aparecen como trabados.</span>
+          <span class="dec__propuesta">Lo que proponemos: 14 días, y revisarlo en un mes con los datos reales.</span>
+        </div>
+        <div class="dec__pregunta">
+          <strong>3. ¿Paula sigue viendo las clases gratuitas en su CRM?</strong>
+          <span>Hoy Paula ve en el CRM las 138 personas que se anotaron a la clase gratuita y no pidieron tasación. En la maqueta dejan de aparecerle: solo las ve el dueño.</span>
+          <span class="dec__propuesta">Lo que proponemos: si Paula las llama, que las siga viendo como una etapa más de su barra. Si no las llama nadie, que queden solo para el dueño.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card card--plana">
+      <div class="card__cuerpo">
+        <h2 class="titulo-bloque">Queda afuera de este cambio</h2>
+        <ul class="dec__lista">
+          <li>Las métricas de negocio: siguen en Métricas.</li>
+          <li>Editar un proceso desde la lista: se edita en su ficha, como hoy.</li>
+          <li>El Inicio: es la lista corta del día. El CRM es la cartera entera. Los dos usan las mismas reglas de «vencido» y «próximo paso», para que nunca digan cosas distintas.</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+</section>
