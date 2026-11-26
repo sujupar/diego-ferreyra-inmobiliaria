@@ -72,9 +72,9 @@ Estado del código que condiciona el diseño (verificado en el worktree):
 **Non-Goals:**
 
 - Regenerar `types/database.types.ts`.
-- Arreglar `PUT /api/tasks/[id]` (cualquier usuario con sesión completa la tarea de otro),
-  las fechas en UTC de `getMyTasks`/`AddTaskDialog` y el techo de 50: son del change
-  `crm-tareas-y-campanita`. Acá se anotan como riesgo.
+- Las fechas en UTC de `AddTaskDialog` y el techo de 50: son del change
+  `crm-tareas-y-campanita`. Acá se anotan como riesgo. (`PUT /api/tasks/[id]` sin control
+  de dueño y el "hoy" en UTC de `getMyTasks` y `/tasks` se corrigieron en la revisión 12.1.)
 - Línea de tiempo con eventos del sistema (`crm-linea-de-tiempo`), campanita y página de
   tareas (`crm-tareas-y-campanita`), "Sin respuesta" del Inicio (`crm-inicio`). Mientras ese
   bloque no exista, ningún texto de la ficha lo nombra (ver D7).
@@ -1860,8 +1860,12 @@ en el reporte final.
 - [La lista `/contacts` del asesor sigue mostrando solo los asignados a él] → no cambia en
   este change: un contacto del embudo con proceso suyo se abre desde el CRM o desde el
   proceso, pero no figura en "Mis contactos". Se anota para `crm-inicio`.
-- [`PUT /api/tasks/[id]` no controla de quién es la tarea] → existe desde antes; la ficha lo
-  usa para completar. Se corrige en `crm-tareas-y-campanita` y queda anotado en su propuesta.
+- [`PUT /api/tasks/[id]` no controlaba de quién es la tarea] → **corregido en la revisión
+  12.1 (hallazgo 2)**: ahora exige que la tarea sea de quien pide o que quien pide sea de
+  operaciones (`pipeline.view_all`), igual que la policy de la base; 404 si no existe o el id
+  no es uuid. Efecto en la ficha: un asesor que toca el tilde de una tarea de otra persona
+  (p. ej. la de entrada de la coordinación sobre su proceso) recibe "Esta tarea es de otra
+  persona…" en vez de cerrarla. El abogado sigue cerrando las suyas (revisión legal).
 - [Las dos columnas nuevas de `tasks` se podían escribir con sesión propia] → **corregido en
   la revisión 12.1 (S1)**: las políticas de `tasks` dejan insertar a cualquier usuario con
   sesión (`WITH CHECK (true)`) y editar las propias, así que un usuario interno podía, por la
