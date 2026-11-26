@@ -243,3 +243,57 @@ export async function addUsersToAudience(audienceId: string, rows: string[][]) {
 export async function removeUsersFromAudience(audienceId: string, rows: string[][]) {
   return usersOp('DELETE', audienceId, rows)
 }
+
+export interface ResultadoReemplazo {
+  numReceived: number
+  numInvalid: number
+}
+
+/**
+ * Reemplaza TODOS los miembros de una lista de clientes con `filas` (`POST /{público}/usersreplace`).
+ * Meta saca a quien ya no está, agrega a los nuevos y NO reinicia el aprendizaje de los conjuntos que
+ * usan el público (a diferencia de borrar y volver a subir). Una sola tanda: admite hasta 10.000 filas.
+ *
+ * Verificado el 2026-11-26 con el token de la plataforma: `num_received` 393, sin el error
+ * "(#3) Application does not have the capability" que da editar conjuntos con la base de WhatsApp.
+ *
+ * A diferencia de `addUsersToAudience`, LANZA ante cualquier rechazo: la ruta lo anota como error.
+ */
+export async function reemplazarListaDeClientes(
+  audienceId: string,
+  esquema: readonly string[],
+  filas: string[][],
+): Promise<ResultadoReemplazo> {
+  if (filas.length === 0) throw new Error('No se reemplaza una lista con 0 filas.')
+  if (filas.length > 10_000) throw new Error(`Más de 10.000 filas (${filas.length}): hace falta mandar por tandas.`)
+  const accessToken = process.env.META_ACCESS_TOKEN
+  if (!accessToken) throw new Error('META_ACCESS_TOKEN faltante')
+  const body = new URLSearchParams({
+    access_token: accessToken,
+    payload: JSON.stringify({ schema: esquema, data: filas }),
+    session: JSON.stringify({
+      session_id: Date.now(),
+      batch_seq: 1,
+      last_batch_flag: true,
+      estimated_num_total: filas.length,
+    }),
+  })
+  const res = await fetch(`${META}/${META_API_VERSION}/${audienceId}/usersreplace`, {
+    method: 'POST',
+    body,
+    // Techo propio: sin él, un Meta colgado se lleva la función entera y no queda anotado nada.
+    // 15 s deja margen dentro del techo de Netlify (~26 s) para anotar la corrida en el log.
+    signal: AbortSignal.timeout(15_000),
+  })
+  const json = (await res.json().catch(() => ({}))) as {
+    num_received?: number
+    num_invalid_entries?: number
+    error?: { message?: string; code?: number; error_subcode?: number }
+  }
+  if (!res.ok || json.error) {
+    throw new Error(
+      `Meta usersreplace ${res.status}: ${json.error?.message ?? 'sin detalle'} (code ${json.error?.code ?? '-'}, subcode ${json.error?.error_subcode ?? '-'})`,
+    )
+  }
+  return { numReceived: json.num_received ?? 0, numInvalid: json.num_invalid_entries ?? 0 }
+}
