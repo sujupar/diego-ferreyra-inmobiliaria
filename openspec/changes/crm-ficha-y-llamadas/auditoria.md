@@ -30,28 +30,31 @@ diseño).
 
 ### Estado
 
-**Abierto.** La verificación final hizo cuatro rondas y no terminó limpia: la última
-(ronda 4) todavía encontró 2 hallazgos de peso.
+**Abierto — falta que un auditor nuevo confirme las correcciones de la ronda 5.** La
+verificación final hizo cinco rondas y no terminó limpia: la última (ronda 5) todavía
+encontró 3 hallazgos de peso.
 
 1. **Respuestas del dueño: recibidas el 2026-11-25.** Contestó "Ok a todo": quedó
    confirmada la opción más prudente de cada pregunta que cambia lo que se construye
    (`design.md`, "Open Questions", grupo A). El grupo B sigue con su opción por defecto y
    no frena.
-2. **Verificación final: hecha, sin cierre limpio.** Los 64 hallazgos que quedaron en pie
-   en las cuatro rondas (9 de peso) se corrigieron, y la validación estricta pasa. Pero la
+2. **Verificación final: hecha, sin cierre limpio.** Los 75 hallazgos que quedaron en pie
+   en las cinco rondas (12 de peso) se corrigieron, y la validación estricta pasa. Pero la
    regla para cerrar era una ronda sin hallazgos de peso, y esa ronda no ocurrió.
 
 Lo que falta para cerrar:
 
-- Que un auditor nuevo revise las correcciones de la ronda 4. Hasta ahora las verificó
-  solo quien las hizo; no hay una ronda 5 en el registro. Las dos de peso son el permiso
-  que un asesor se podía dar solo al vincular un contacto ajeno (D4, tarea 5.4) y la
-  situación de prueba `solicitud-para-asesor` del QA de permisos (2.5, 12.5, 14.5).
+- Que un auditor nuevo revise las correcciones de la ronda 5. Hasta ahora las verificó
+  solo quien las hizo. Las tres de peso son: la tercera ruta que vincula un contacto
+  (`PUT /api/deals/[id]/cliente`, con su nota automática y la columna `automatic`: D1, D2,
+  D4, tarea 5.5), los datos de prueba apilados en el QA (2.5, 12.5, 14.5) y los pasos de
+  QA que pedían ver en `/tasks` una tarea con fecha de mañana (11.3, 12.5).
 - Que esa ronda no encuentre nada de peso.
 
 Mientras tanto, lo que se construya parte de artefactos corregidos pero con esa última
 tanda sin segunda mirada. La auditoría del código (grupo 14 de `tasks.md`) tiene que
-mirar con atención especial esos dos puntos.
+mirar con atención especial esos tres puntos, y los dos de la ronda 4 (el permiso al
+vincular por id, tarea 5.4, y la situación `solicitud-para-asesor`).
 
 ### Verificación final (2026-11-25)
 
@@ -64,10 +67,15 @@ código o los documentos. El detalle de cada ronda está más abajo.
 | 1 | 20 | 4 | 17 | 3 | Corregidos los 17 |
 | 2 | 19 | 3 | 18 | 3 | Corregidos los 18 |
 | 3 | 16 | 0 | 16 | 1 | Corregidos los 16. El de peso lo sumó el segundo nivel |
-| 4 | 14 | 2 | 13 | 2 | Corregidos los 13. Sin ronda posterior que lo confirme |
+| 4 | 14 | 2 | 13 | 2 | Corregidos los 13. La ronda 5 los revisó y encontró lo que sigue |
+| 5 | — | — | 11 | 3 | Corregidos los 11. Sin ronda posterior que lo confirme |
 
-Resultado: **no terminó limpia**. Los hallazgos de peso bajaron de 3 a 1 y volvieron a 2
-en la última ronda, así que no se puede decir que los artefactos ya no tienen nada de peso.
+En la ronda 5 no quedó anotado cuántos hallazgos trajo el primer equipo: al corrector le
+llegaron los 11 que quedaron en pie.
+
+Resultado: **no terminó limpia**. Los hallazgos de peso bajaron de 3 a 1, volvieron a 2 en
+la ronda 4 y a 3 en la ronda 5, así que no se puede decir que los artefactos ya no tienen
+nada de peso.
 
 ### Verificación final, ronda 1 (2026-11-25)
 
@@ -237,3 +245,72 @@ Menores (11):
 - La constante del horario laboral ya no lleva hora de fin: ninguna regla la usaba (D2).
 - A 390 px se miran en el navegador el error del pedido de la persona (bloqueando el
   pedido), la pantalla del abogado y la de contacto no encontrado (12.4 y 12.5).
+
+### Verificación final, ronda 5 (2026-11-25)
+
+Cada hallazgo se comprobó contra el código antes de corregir. Los 11 eran ciertos; ninguno
+se descartó. Ninguna corrección cambia una decisión confirmada por el dueño.
+
+De peso (3):
+
+1. **Había una tercera ruta que vincula un contacto y ningún documento la nombraba.**
+   `PUT /api/deals/[id]/cliente` busca a la persona por email o teléfono
+   (`encontrarOCrearContacto`) y escribe `deals.contact_id` con el permiso de
+   `canAccessDeal` solamente. Un asesor podía desvincular la persona de un proceso suyo,
+   llamar a `/cliente` con el email de otra, abrir su ficha y volver a dejar todo como
+   estaba, sin rastro. Decisión: **no se bloquea** (es el flujo de completar los datos de
+   un referido ya cargado), **deja rastro**. Cuando un asesor queda vinculado a un contacto
+   que ya existía y que antes no podía ver, la ruta inserta una nota automática en la
+   ficha de esa persona, a nombre del asesor: "Nota automática: vinculó este contacto a su
+   proceso de {dirección} al completar los datos del cliente." (sin dirección: "…a un
+   proceso suyo…"). El texto vive solo en `textoNotaDeVinculo` (`lib/crm/actividades.ts`).
+   Si la nota no se puede insertar, el vínculo queda y hay un `console.error`.
+   **Ajuste a la tabla que hizo falta:** una nota común la puede borrar su autor, así que
+   el asesor habría borrado su propio rastro. Se sumó la columna `automatic` (la tabla
+   pasa de 14 a 15 columnas; los CHECK siguen siendo 8): la nota automática no la edita
+   nadie y la borra solo la coordinación.
+   Dónde: D1, D2 (lista real de las cinco rutas que escriben `contact_id`: dos por id y
+   tres por email o teléfono), D4 (fila nueva de `/cliente`), D10, Risks, `proposal.md`,
+   escenarios nuevos en `crm-ficha-contacto` y `crm-registro-actividad`, y tareas 1.4,
+   2.1, 3.3, 5.1, 5.5 (nueva), 6.5, 13.1 y 13.5 (punto n).
+2. **Datos de prueba apilados en el QA.** `crear solicitud-para-asesor` se pedía encima de
+   otros datos sin `borrar` en el medio, la receta no decía qué hace un segundo `crear`,
+   `borrar` corta con más de un contacto, y el archivo de ids es de una sesión mientras
+   que 14.5 la corre otra. Ahora 2.5 fija la regla: una situación base corta si ya hay
+   datos de prueba; cinco situaciones son aditivas y dicen sobre qué base van; y el
+   respaldo por nombre es el camino normal de `borrar` y `verificar` entre sesiones.
+   12.5 y 14.5 tienen el orden escrito, con `borrar` + `verificar` antes de cada base
+   (en 14.5: primero los tres toques sobre `solicitud`, después el caso del asesor), y
+   13.4 lo repite.
+3. **Pasos de QA imposibles por la fecha.** 11.3, 12.5 y un escenario de
+   `crm-cadencia-llamadas` pedían abrir desde `/tasks` una tarea que nace con fecha de
+   mañana; `getMyTasks` (`lib/supabase/tasks.ts:131-134`) solo lista pendientes sin fecha
+   o con fecha de hoy o anterior. Ahora 11.3 se verifica con "Atendió · volver a llamar"
+   con el día de hoy y una hora que todavía no pasó (lleva `source_activity_id` y
+   `contact_id`: prueba el mismo enlace), y 12.5, 14.5 y el escenario dicen "con el día de
+   hoy". El test unitario no cambia.
+
+Menores (8):
+
+- Risks y 13.1 nombran, además de `deals_update_owner_or_ops`, las políticas
+  `deals_insert_authenticated`, `appraisals_insert_self_or_ops` y
+  `appraisals_update_owner_or_ops` (`20260505000001`): el mismo atajo por la API directa.
+- Orden fijo en las dos `PATCH …/contact`: primero la pertenencia del proceso o de la
+  tasación (403), después el acceso al contacto (404). En D4 y 5.4, con su caso de test.
+- Test nombrado para "Asesor coordina una tasación con el teléfono de una persona ya
+  cargada": tarea 5.6 (nueva).
+- D2 y D4 dicen que la ruta de procesos acepta `created_by` como dueño, que
+  `canAccessContact` mira solo `deals.assigned_to`, y que no se unifican; caso en 5.4.
+- `tasks.due_time` es de tipo `time` y PostgREST devuelve `09:00:00`: el aviso lo
+  recorta a `9:00` (D3).
+- D5 ya no dice que quien tiene una tarea de la cadencia "siempre" puede abrir la ficha:
+  si le reasignaron el proceso que le daba acceso, ve "No encontramos este contacto".
+  Anotado para `crm-tareas-y-campanita` en 13.1.
+- Risks: borrar un proceso deja sus llamadas con `deal_id` vacío y se renumeran con las
+  "sin proceso".
+- Risks: cuando un asesor llama sobre un proceso propio, el aviso puede nombrar el título
+  de una tarea de la coordinación ligada solo al contacto, que la ficha no le lista. Se
+  acepta.
+
+`npx -y @fission-ai/openspec@2.2.0 validate crm-ficha-y-llamadas --strict` pasa después de
+estas correcciones. Falta que un auditor nuevo las confirme.

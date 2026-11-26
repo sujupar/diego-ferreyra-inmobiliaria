@@ -75,8 +75,8 @@ servidor, no en el menú ni en la pantalla.
 - **THEN** el proceso nuevo queda a su nombre ligado a ese contacto, y desde ese momento puede abrir la ficha de esa persona, porque tiene un proceso de ese contacto a su nombre
 
 ### Requirement: Un asesor no se da el permiso solo
-Un asesor MUST NOT poder darse acceso a un contacto vinculándolo él mismo: para vincular
-un contacto a un proceso o a una tasación suyos SHALL tener que poder verlo antes.
+Un asesor MUST NOT poder darse acceso a un contacto vinculándolo él mismo por su id: para
+vincular un contacto a un proceso o a una tasación suyos SHALL tener que poder verlo antes.
 Desvincular, y todo lo que hace la coordinación, SHALL seguir como hoy.
 
 #### Scenario: Asesor intenta vincular un contacto ajeno a su proceso
@@ -94,6 +94,28 @@ Desvincular, y todo lo que hace la coordinación, SHALL seguir como hoy.
 #### Scenario: Desvincular y vincular desde la coordinación siguen igual
 - **WHEN** un asesor desvincula el contacto de un proceso suyo, o una coordinadora vincula a un proceso un contacto asignado a un asesor
 - **THEN** los dos pedidos se guardan como hoy
+
+### Requirement: Completar los datos del cliente deja rastro si engancha un contacto ajeno
+Cuando un asesor completa los datos del cliente de un proceso suyo y, por el email o el
+teléfono, queda vinculado a un contacto que ya existía y que no podía ver, el vínculo SHALL
+hacerse igual y MUST quedar una nota automática en la ficha de ese contacto, que el asesor
+no puede editar ni borrar.
+
+#### Scenario: Completar los datos del cliente engancha un contacto ajeno
+- **WHEN** un asesor completa los datos del cliente de un proceso suyo que no tiene persona vinculada, con el email o el teléfono de un contacto que ya existe y que él no podía ver
+- **THEN** el proceso queda vinculado a ese contacto, y en la actividad de esa persona aparece una nota a nombre del asesor que dice "Nota automática: vinculó este contacto a su proceso de {dirección} al completar los datos del cliente.", con el `deal_id` de ese proceso
+
+#### Scenario: Completar los datos sin enganchar a nadie ajeno
+- **WHEN** un asesor completa los datos del cliente y la persona no existía como contacto, o ya era un contacto que él podía ver, o quien los completa es una coordinadora
+- **THEN** el proceso queda vinculado y no se agrega ninguna nota automática
+
+#### Scenario: El asesor no puede borrar la nota automática
+- **WHEN** ese asesor abre el menú de la nota automática, o pide por la red editarla o borrarla
+- **THEN** el menú no ofrece "Editar" ni "Borrar" y los dos pedidos responden 403; una coordinadora sí la puede borrar, y aunque el asesor vuelva a desvincular el contacto la nota sigue en la ficha
+
+#### Scenario: Falla el guardado de la nota automática
+- **WHEN** el vínculo se guarda pero la nota automática no se puede insertar
+- **THEN** el pedido responde bien, el proceso queda vinculado y el error queda en el registro del servidor
 
 ### Requirement: Editar un contacto respeta el mismo permiso
 Los datos de un contacto SHALL poder editarlos solo quienes pueden abrir su ficha, y solo
