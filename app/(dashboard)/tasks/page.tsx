@@ -15,6 +15,7 @@ import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import { UnidentifiedBanner } from '@/components/inbox/UnidentifiedBanner'
 import type { VisitaListado } from '@/lib/visitas/tipos'
 import { enlaceTareaCadencia } from '@/lib/crm/tareas-ficha'
+import { enArgentina } from '@/lib/crm/horario-laboral'
 import { formatearFechaHora } from '@/lib/visitas/horario'
 
 const TYPE_CONFIG: Record<string, { icon: typeof Bell; color: string; label: string; urgent?: boolean }> = {
@@ -128,7 +129,8 @@ function getTaskLink(task: Task): string {
 
 /** Sort: urgentes (new_assignment) → atrasadas → hoy → sin fecha → futuras */
 function ordenarTareas(tareas: Task[]): Task[] {
-  const today = new Date().toISOString().slice(0, 10)
+  // Día de Argentina, no de UTC (revisión 12.1): a las 21:30 en UTC ya es mañana.
+  const today = enArgentina(new Date()).fecha
   const priorityOf = (t: Task): number => {
     if (t.type === 'new_assignment') return 0
     if (!t.due_date) return 3
@@ -504,7 +506,7 @@ export default function TasksPage() {
                     )}
                     <div className="row-meta mt-0.5 text-[11px] text-muted-foreground tabular-n">
                       {task.due_date && (() => {
-                        const today = new Date().toISOString().slice(0, 10)
+                        const today = enArgentina(new Date()).fecha
                         const isOverdue = task.due_date < today
                         const isToday = task.due_date === today
                         const dateLabel = new Date(task.due_date + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
