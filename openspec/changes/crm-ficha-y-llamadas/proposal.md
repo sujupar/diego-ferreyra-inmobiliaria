@@ -36,8 +36,11 @@ hay tiempos, ni tasas, ni forma de mejorar ese paso.
   recién marcado y, cuando el aviso se fue, con un botón en ese proceso dentro de "Procesos".
 - **Permisos de los contactos.** Hoy cualquier usuario con sesión, incluido el abogado,
   puede leer y editar cualquier contacto si conoce su dirección. Se cierra: el abogado deja
-  de ver contactos, y el asesor ve solo los suyos. **Cambia algo que hoy "funciona":** un
-  asesor ya no puede abrir un contacto con el que no tiene ningún vínculo.
+  de ver la ficha y la lista de contactos, y el asesor ve solo los suyos. **Cambia algo que
+  hoy "funciona":** un asesor ya no puede abrir un contacto con el que no tiene ningún
+  vínculo. (Lo que no se cierra acá: con la dirección de un proceso, el abogado todavía
+  puede leer los datos de esa persona por la pantalla de procesos; es anterior a este
+  cambio y queda anotado.)
 - Se llega a la ficha tocando el nombre de la persona en el CRM, en el proceso y en la
   lista de contactos. Una tarea de llamada o de WhatsApp creada por la cadencia, abierta
   desde `/tasks`, también abre la ficha (hoy abriría el proceso, donde la llamada no se
@@ -147,7 +150,9 @@ asesor cierra solo las tareas que están a su nombre; y se acepta que, al deshac
   `app/globals.css` (dos tokens).
 - Efecto sobre otras pantallas: `ContactEditor` en `/pipeline/[id]` y `/appraisals/[id]`
   usa las rutas de contactos; con la regla de acceso de este change sigue funcionando para
-  el asesor y se prueba en el QA.
+  el asesor. En `/pipeline/[id]` se prueba en el QA (tarea 11.2); en `/appraisals/[id]`
+  se cubre con el test de ruta (asesor con solo una tasación a su nombre, tarea 5.2),
+  porque la receta de datos de prueba no crea tasaciones.
 - No hay variables de entorno nuevas ni procesos programados.
 - Depende de `crm-sistema-diseno`, aprobado y archivado (maqueta en
   `openspec/changes/archive/2026-11-25-crm-sistema-diseno/maqueta/`). Deja anotado trabajo para
