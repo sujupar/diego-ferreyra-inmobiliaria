@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { UserWithProfile } from '@/types/auth.types'
 import { alcanceTasaciones } from './appraisal-access'
+import { alcanceContactos, puedeVerContacto } from './contact-access'
 
 /**
  * Autorización a nivel de objeto (anti-IDOR) consistente con el resto del sistema
@@ -118,4 +119,57 @@ export async function canAccessAppraisal(
   if (!data) return false
   const d = data as { assigned_to: string | null; user_id: string | null }
   return d.assigned_to === user.id || d.user_id === user.id
+}
+
+/**
+ * contacts (design.md D2): operaciones ve todo; el asesor, si el contacto está asignado
+ * o lo creó él, o si tiene un proceso o una tasación de ese contacto a su nombre; el
+ * resto de los roles, nada. Hasta tres lecturas cortas, cortando en la primera que da
+ * acceso. FALLA CERRADO: un error de lectura devuelve `false` (nunca se asume el vínculo
+ * porque no se pudo mirar), y un contacto inexistente también.
+ *
+ * OJO: mira solo `deals.assigned_to`, no `deals.created_by`. `PATCH /api/deals/[id]/contact`
+ * acepta también al creador del proceso como dueño; no se unifican a propósito (D2):
+ * ampliarlo daría acceso a contactos de procesos que el asesor ya no lleva.
+ */
+export async function canAccessContact(user: UserWithProfile, id: string): Promise<boolean> {
+  const alcance = alcanceContactos(user.profile.role)
+  if (alcance === 'todos') return true
+  if (alcance === 'ninguno' || !id) return false
+  const u = { id: user.id, role: user.profile.role }
+  const vinculos = { assigned_to: null, created_by: null, asesoresDeProcesos: [], asesoresDeTasaciones: [] }
+  const db = admin()
+
+  const { data: contacto, error: errorContacto } = await db
+    .from('contacts')
+    .select('assigned_to, created_by')
+    .eq('id', id)
+    .maybeSingle()
+  if (errorContacto || !contacto) return false
+  const c = contacto as { assigned_to: string | null; created_by: string | null }
+  if (puedeVerContacto(u, { ...vinculos, assigned_to: c.assigned_to, created_by: c.created_by })) return true
+
+  const { data: proceso, error: errorProceso } = await db
+    .from('deals')
+    .select('assigned_to')
+    .eq('contact_id', id)
+    .eq('assigned_to', user.id)
+    .limit(1)
+    .maybeSingle()
+  if (errorProceso) return false
+  if (proceso) {
+    const p = proceso as { assigned_to: string | null }
+    if (puedeVerContacto(u, { ...vinculos, asesoresDeProcesos: [p.assigned_to] })) return true
+  }
+
+  const { data: tasacion, error: errorTasacion } = await db
+    .from('appraisals')
+    .select('assigned_to, user_id')
+    .eq('contact_id', id)
+    .or(`assigned_to.eq.${user.id},user_id.eq.${user.id}`)
+    .limit(1)
+    .maybeSingle()
+  if (errorTasacion || !tasacion) return false
+  const t = tasacion as { assigned_to: string | null; user_id: string | null }
+  return puedeVerContacto(u, { ...vinculos, asesoresDeTasaciones: [t.assigned_to, t.user_id] })
 }
