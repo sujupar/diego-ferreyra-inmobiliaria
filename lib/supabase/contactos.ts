@@ -59,6 +59,45 @@ export async function encontrarOCrearContacto(datos: DatosContacto): Promise<str
 }
 
 /**
+ * Guarda nombre, teléfono y email ya validados en UN contacto conocido (coordinar desde
+ * la ficha, crm-ficha-y-llamadas D9 paso 5). No busca ni crea a nadie: el contacto es el
+ * del proceso (o el que mandó la ficha). LANZA si la base devuelve error.
+ */
+export async function guardarDatosDeContacto(
+  contactId: string,
+  datos: { full_name: string; phone: string; email: string },
+): Promise<void> {
+  const { error } = await getAdmin().from('contacts').update(datos).eq('id', contactId)
+  if (error) throw new Error(`guardarDatosDeContacto: ${error.message}`)
+}
+
+/**
+ * ¿Hay OTRO contacto con ese email (tal cual o en minúsculas) o con ese teléfono (por
+ * los últimos 10 dígitos, `phone_norm`)? Es la misma búsqueda de "Coordinar tasación",
+ * excluyendo al contacto que se está corrigiendo. Solo se usa para avisar: no se unifica
+ * ni se bloquea nada (D9, Risks).
+ */
+export async function hayOtroContactoCon(
+  contactId: string,
+  datos: { emails: string[]; telefono: string },
+): Promise<boolean> {
+  const supabase = getAdmin()
+  const emails = [...new Set(datos.emails.map((e) => e.trim()).filter(Boolean))]
+  if (emails.length > 0) {
+    const { data, error } = await supabase
+      .from('contacts').select('id').in('email', emails).neq('id', contactId).limit(1).maybeSingle()
+    if (error) throw new Error(`hayOtroContactoCon (email): ${error.message}`)
+    if (data) return true
+  }
+  const clave = ultimos10Digitos(datos.telefono)
+  if (!clave) return false
+  const { data, error } = await supabase
+    .from('contacts').select('id').eq('phone_norm', clave).neq('id', contactId).limit(1).maybeSingle()
+  if (error) throw new Error(`hayOtroContactoCon (teléfono): ${error.message}`)
+  return !!data
+}
+
+/**
  * Deja en la ficha del contacto el rastro de que un asesor lo vinculó a su proceso al
  * completar los datos del cliente, cuando antes no podía ver a esa persona
  * (`PUT /api/deals/[id]/cliente`, crm-ficha-y-llamadas D4). Es la única nota que no
