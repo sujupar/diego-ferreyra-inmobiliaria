@@ -527,3 +527,17 @@ SIN HALLAZGOS DE PESO
 4. `PUT /api/contacts/[id]` guarda el email tal cual (sin pasarlo a minúsculas) y `encontrarOCrearContacto` busca en minúsculas: un email corregido con mayúsculas desde la ficha puede terminar en un contacto duplicado en `/cliente`. Ya pasaba antes, con el cuerpo crudo.
 
 Conforme: sí
+
+### Corrección de los menores 1, 2 y 4 del Auditor 2 (2026-11-26, commit `69283822`)
+
+1. Test nuevo en `lib/crm/cadencia.test.ts`: asesor sobre un proceso PROPIO cierra la
+   `update_contact` y la llamada manual de la coordinación ligadas solo al contacto. Pasa con el
+   código actual; con la regla vieja (`esDelMismoLugar` en `tareasACerrar`) se pone en rojo.
+2. `undo-lost` valida `esUuid` antes de leer la base: id mal formado → 404 (test de ruta; los
+   tests existentes pasaron a usar un uuid de verdad).
+3. `sanearDatosContacto` guarda el email en minúsculas, sin espacios y en NFC (tests del módulo
+   y de `PUT /api/contacts/[id]`). Grep de consumidores: ninguno depende del email con
+   mayúsculas (`POST /api/deals` y `hayOtroContactoCon` ya buscan la variante en minúsculas).
+
+El menor 3 (fechas UTC de `POST /api/tasks` y `AddTaskDialog`) sigue anotado para
+`crm-tareas-y-campanita`. Suite crm 1.450/1.450, `tsc` y `eslint` limpios.
