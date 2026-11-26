@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { requireAuth } from '@/lib/auth/require-role'
-import { canAccessDeal } from '@/lib/auth/entity-access'
+import { canAccessContact, canAccessDeal } from '@/lib/auth/entity-access'
+import { alcanceContactos } from '@/lib/auth/contact-access'
 import { camposFaltantes, puedeReasignarAsesor, validarDatosCliente, ORIGENES_MANUALES } from '@/lib/deals/proceso-manual'
 import { esAsesorAsignable } from '@/lib/deals/asesor-asignable'
-import { encontrarOCrearContacto } from '@/lib/supabase/contactos'
+import { encontrarOCrearContacto, registrarNotaDeVinculo } from '@/lib/supabase/contactos'
 import { leerDatosDelProceso } from '@/lib/deals/datos-cliente'
 
 type Contacto = { id: string; full_name: string | null; phone: string | null; email: string | null }
@@ -65,6 +66,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const { nombre, telefono, email } = cliente.valor
     const ahora = new Date().toISOString()
     let contactId: string
+    // crm-ficha-y-llamadas (D4, tarea 5.5): si un asesor engancha a su proceso un contacto
+    // que YA existía y que no podía ver, se vincula igual (es el uso normal de esta ruta:
+    // completar un referido ya cargado) pero queda una nota automática en la ficha.
+    let dejarNotaDeVinculo = false
 
     if (deal.contact_id) {
       // El contacto de ESTE proceso: se corrige entero.
@@ -79,6 +84,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         nombre, telefono, email, origen,
         asesorId: cambiaAsesor ? asesorPedido : deal.assigned_to,
       })
+      // ANTES de escribir `deals.contact_id`: con el vínculo hecho, el proceso ya le
+      // daría acceso y no se sabría si antes lo veía. Uno recién creado nace con
+      // `assigned_to` = el asesor del proceso (él), así que da verdadero.
+      if (alcanceContactos(user.profile.role) === 'propios') {
+        dejarNotaDeVinculo = !(await canAccessContact(user, contactId))
+      }
       // Si ya existía, se completan SOLO sus huecos (o lo que tiene mal).
       const { data: actual } = await db.from('contacts').select('id, full_name, phone, email').eq('id', contactId).maybeSingle()
       const c = actual as Contacto | null
@@ -104,6 +115,21 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     if (Object.keys(cambiosDelProceso).length > 0) {
       const { error } = await db.from('deals').update({ ...cambiosDelProceso, updated_at: ahora }).eq('id', id)
       if (error) throw new Error(error.message)
+    }
+
+    if (dejarNotaDeVinculo) {
+      // Si la nota falla, el vínculo NO se deshace y la respuesta sigue siendo 200: el
+      // asesor ya completó los datos. Se registra sin datos de la persona.
+      try {
+        await registrarNotaDeVinculo({ contactId, dealId: id, autorId: user.id, direccion: deal.property_address })
+      } catch (errorNota) {
+        console.error('PUT /api/deals/[id]/cliente: no se pudo dejar la nota de vínculo', {
+          dealId: id,
+          contactId,
+          userId: user.id,
+          error: errorNota instanceof Error ? errorNota.message : String(errorNota),
+        })
+      }
     }
 
     // Se relee: la pantalla reintenta el avance solo si de verdad quedó completo.
