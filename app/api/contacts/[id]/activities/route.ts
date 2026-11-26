@@ -6,7 +6,7 @@ import { esquemaNuevaActividad, numerarLlamadas, resolverOcurrio, validarVolverE
 import { armarActividadDeFicha } from '@/lib/crm/actividad-de-ficha'
 import { elegirDealActivo } from '@/lib/crm/deal-activo'
 import { instanteDesdeAR } from '@/lib/crm/horario-laboral'
-import { aplicarCadencia } from '@/lib/supabase/cadencia'
+import { aplicarCadencia, CADENCIA_VACIA } from '@/lib/supabase/cadencia'
 import {
   existeContacto,
   insertarActividad,
@@ -42,6 +42,20 @@ async function respuestaDeIntento(fila: FilaActividad, user: UserWithProfile) {
     }),
     cadencia,
     pendiente,
+  }
+}
+
+/** Una actividad que llega anulada: sin número (no ocupa uno) y con la cadencia vacía (D4, paso 2). */
+function respuestaDeAnulada(fila: FilaActividad, user: UserWithProfile) {
+  return {
+    actividad: armarActividadDeFicha(fila, {
+      intento: null,
+      autorNombre: user.profile.full_name ?? null,
+      tareaCreada: null,
+      usuario: { id: user.id, role: user.profile.role },
+    }),
+    cadencia: CADENCIA_VACIA,
+    pendiente: false,
   }
 }
 
@@ -172,8 +186,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       if (resultado.ok) {
         return NextResponse.json(await respuestaDeIntento(resultado.fila, user), { status: 201 })
       }
-      // Tarea 6.3: el guardado repetido de una llamada todavía no se reconoce.
-      return NextResponse.json(NO_SE_GUARDO, { status: 409 })
+      // El mismo guardado llegó dos veces (D4 y D7). Solo lo propio: otro autor, otro
+      // contacto o un token que usó una nota → 409 sin ningún dato del otro registro.
+      const existente = await leerActividadPorToken(nueva.client_token)
+      if (!existente || existente.contact_id !== id || existente.created_by !== user.id || existente.kind === 'note') {
+        return NextResponse.json(NO_SE_GUARDO, { status: 409 })
+      }
+      // Ya anulada ("Deshacer" antes de que llegara este reintento de red): se devuelve tal
+      // cual y NO se corre la cadencia, que volvería a cerrar lo que el deshacer reabrió.
+      if (existente.voided_at) {
+        return NextResponse.json(respuestaDeAnulada(existente, user), { status: 200 })
+      }
+      // Si no, se sigue con esa fila desde el paso 3: completa lo que haya faltado.
+      return NextResponse.json(await respuestaDeIntento(existente, user), { status: 200 })
     }
 
     // Lista cerrada: autor = sesión, proceso = el activo de ahora. Sin `occurred_at`:
