@@ -714,6 +714,14 @@ describe('tareasACerrar — con proceso, también lo ligado solo al contacto (D2
     expect(cierra([tarea({ deal_id: null, contact_id: 'contacto-2' })])).toEqual([])
   })
 
+  it('asesor sobre un proceso PROPIO: cierra la update_contact y la llamada manual de la coordinación ligadas solo al contacto (aceptado en Risks)', () => {
+    const actualizar = tarea({ deal_id: null, type: 'update_contact', channel: null, assigned_to: COORD_A })
+    const manualCoord = tarea({ deal_id: null, assigned_to: COORD_B, assigned_role: 'coordinador' })
+    expect(cierra([actualizar, manualCoord], { registranteId: ASESOR, soloPropias: false })).toEqual(
+      ids([actualizar, manualCoord]),
+    )
+  })
+
   it('la tarea de otro proceso del mismo contacto sigue sin cerrarse', () => {
     expect(cierra([tarea({ deal_id: 'deal-2' })])).toEqual([])
   })

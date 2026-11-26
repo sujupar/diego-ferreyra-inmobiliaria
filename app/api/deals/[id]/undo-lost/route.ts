@@ -3,6 +3,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { hasPermission } from '@/lib/auth/roles'
 import { puedeCerrarProceso } from '@/lib/crm/deal-activo'
 import { MENSAJE_NO_SE_PUEDE_DESHACER, puedeDeshacerPerdido } from '@/lib/crm/deshacer-perdido'
+import { esUuid } from '@/lib/crm/id-valido'
 import {
   deshacerPerdido,
   leerProcesoParaDeshacer,
@@ -28,6 +29,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   }
   try {
     const { id } = await params
+    // Un id que no es uuid no puede existir: 404, no el 500 del 22P02 de Postgres.
+    if (!esUuid(id)) return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     const proceso = await leerProcesoParaDeshacer(id)
     // Lista explícita de roles (`puedeCerrarProceso`): el rol viejo `agent` tiene
     // `pipeline.advance` pero no cierra ni deshace nada. Ajeno = inexistente.

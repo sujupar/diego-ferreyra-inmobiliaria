@@ -35,6 +35,15 @@ const textoNulable = (max: number, mensajeLargo: string) =>
     .transform((v) => (v === null ? null : normalizar(v) || null))
     .pipe(z.string().max(max, { error: mensajeLargo }).nullable())
 
+// El email se guarda en minúsculas y sin espacios: `encontrarOCrearContacto`
+// (lib/supabase/contactos.ts) lo busca así, y un "Ana@Gmail.com" corregido desde la ficha
+// no aparecía al completar los datos de un proceso (/cliente) y se creaba otro contacto
+// igual. Sigue sin validarse el formato (ver arriba).
+const emailNulable = z
+  .union([z.string(), z.null()], { error: 'El dato tiene que ser texto.' })
+  .transform((v) => (v === null ? null : normalizar(v).replace(/\s+/g, '').toLowerCase() || null))
+  .pipe(z.string().max(MAX_CORTO, { error: `El email no puede pasar de ${MAX_CORTO} caracteres.` }).nullable())
+
 const nombre = (mensajeFalta: string) =>
   z
     .string({ error: mensajeFalta })
@@ -50,7 +59,7 @@ const esquema = (modo: 'crear' | 'editar') =>
   z.object({
     full_name: modo === 'crear' ? nombre('El nombre es obligatorio.') : nombre('El nombre no puede quedar vacío.').optional(),
     phone: textoNulable(MAX_CORTO, `El teléfono no puede pasar de ${MAX_CORTO} caracteres.`).optional(),
-    email: textoNulable(MAX_CORTO, `El email no puede pasar de ${MAX_CORTO} caracteres.`).optional(),
+    email: emailNulable.optional(),
     origin: textoNulable(MAX_CORTO, 'Origen no válido.')
       .pipe(z.enum(ORIGENES_CONTACTO, { error: 'Origen no válido.' }).nullable())
       .optional(),
