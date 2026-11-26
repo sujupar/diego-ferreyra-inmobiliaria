@@ -463,3 +463,67 @@ la ficha, el "Llamar a" de un volver a llamar sin proceso, otro contacto sin pro
 otro proceso del mismo contacto no, y con `soloPropias` solo la del asesor. Suite crm
 1.444/1.444, `tsc` y `eslint` limpios. Los menores 1 a 5 quedan como están (aceptados o
 anteriores a este change); el 3 se anota para `crm-tareas-y-campanita`.
+
+## Auditoría del código (grupo 14) — Auditor 2 (2026-11-26)
+
+Auditor sin contexto previo. Leyó la propuesta, el design (D2, D3, D4, D9 y Risks en
+detalle), las cuatro specs, esta auditoría (Auditor 1 y la corrección de A1-1) y el código de
+`git diff origin/main...HEAD` sin `openspec/` ni `docs/`. No tocó la base ni el navegador ni
+editó código.
+
+### Resultado
+
+SIN HALLAZGOS DE PESO
+
+### Lo revisado con foco
+
+- **Corrección A1-1 (`b34078b3`).** `seCierraDesde` (`lib/crm/cadencia.ts`) = proceso igual,
+  o `deal_id` vacío y el mismo `contact_id`. Solo la usa `tareasACerrar`;
+  `hayTareaWhatsappDeCadenciaPendiente` sigue con `esDelMismoLugar` (solo el mismo proceso).
+  Coincide literal con D2 ("Reglas de `tareasACerrar`") y con la spec «Registrar una llamada
+  cierra lo pendiente de ese proceso». No abre un problema nuevo:
+  (a) con `soloPropias` (proceso ajeno, o asesor sin proceso) el filtro `assigned_to =
+  registrante` corre después, así que un asesor sobre un proceso ajeno sigue cerrando solo lo
+  suyo (lo fija el test nuevo);
+  (b) un asesor **sobre un proceso propio** (`soloPropias` falso) ahora sí cierra tareas de la
+  coordinación ligadas solo al contacto (una `update_contact` o una llamada manual). Es lo que
+  pide D2 y lo que Risks acepta por escrito ("El aviso puede nombrar tareas que la ficha no le
+  lista al asesor"); "Deshacer" las reabre por `closed_by_activity_id`;
+  (c) las tareas de entrada del embudo, del agente de tasación y de `advance` llevan `deal_id`
+  (`lib/funnel/side-effect-handlers.ts:46`, `lib/ai/tasacion-agent.ts:340`,
+  `app/api/deals/[id]/advance/route.ts:32`), así que «Dos solicitudes abiertas» se sigue
+  cumpliendo: la solicitud vieja no pierde sus tareas de entrada;
+  (d) `getPendingTasksForContact` ya traía las ligadas solo al contacto (`contact_id.eq`
+  dentro del `or`): no hacía falta tocar la lectura.
+- **Consumidores con comportamiento cambiado.** `getContact` (ahora `null` si no existe y
+  tira si una lista falla), `updateContact`/`deleteContact` (booleano) y `existePerfil`: el
+  único consumidor es `app/api/contacts/[id]/route.ts`, que maneja los tres. `GET
+  /api/contacts/[id]` lo leen `ContactEditor` (con `leerJson`, distingue el error) y
+  `FormCoordinarTasacion`; el `DELETE` lo usa el borrado masivo de `/contacts`, que ya miraba
+  `res.ok`. `PUT /api/tasks/[id]`: sus dos consumidores (`/tasks` y `LateralTareas`) muestran
+  el error del 403/404. `getMyTasks` (hoy de Argentina) lo consume solo `GET /api/tasks`
+  (Inicio y `/tasks`); su `select('*')` trae `source_activity_id`, que usa
+  `enlaceTareaCadencia`. `/api/contacts`: 403 para roles sin alcance, alta con lista cerrada y
+  `created_by` puesto por el servidor.
+- **Casos borde.** Ids no uuid → 404 en las rutas de contactos y actividades y en
+  `existeContacto`; la página de la ficha cae en `ContactoNoEncontrado` (para el asesor,
+  `canAccessContact` falla cerrado ante el error de Postgres). Fechas: `validarVolverEl`,
+  `siguienteDiaHabil` y `vencimientoDeTarea` trabajan en hora de Argentina. NFD:
+  `sanearDatosContacto` y `esElMismoGuardado` normalizan a NFC. Duplicado: `client_token`
+  único + 409 si cambian los datos; `createCadenceTask` con índice único y relectura tras
+  23505. Red que falla: `conUnReintento` + `pendiente` + "Reintentar"; anular con fallo en las
+  tareas → `ANULADA_SIN_TAREAS`. Rol sin permiso: `alcanceContactos` falla cerrado.
+- **Revisión del trabajo del Auditor 1.** Sus conclusiones de "bien" se confirmaron en el
+  código (nota de `/cliente` con `automatic`, orden 403/404 en las dos `PATCH …/contact`,
+  hallazgos de 12.1, anti-metas). A1-1 era real y quedó bien corregido. Ningún "menor" suyo
+  es de peso: el 2 (`advance` sin control de dueño) viene de `main` y está en Risks; el 4 no
+  se puede dar porque `/cliente` exige asesor antes.
+
+### Menores
+
+1. Los tests nuevos de A1-1 prueban el cierre de lo ligado solo al contacto con registrante coordinadora; falta un caso que fije lo aceptado en Risks para un **asesor sobre un proceso propio** (cierra la `update_contact` de la coordinación ligada solo al contacto).
+2. `POST /api/deals/[id]/undo-lost` no valida que el id sea uuid: uno mal formado da 500 en vez de 404 (el hallazgo 8 de 12.1 cubrió solo las rutas de contactos).
+3. `POST /api/tasks` y `AddTaskDialog` (el "+ Tarea" de la ficha) siguen con "hoy" en UTC: de 21 a 24 h de Argentina no se puede agendar una tarea para hoy. Ya está anotado para `crm-tareas-y-campanita`.
+4. `PUT /api/contacts/[id]` guarda el email tal cual (sin pasarlo a minúsculas) y `encontrarOCrearContacto` busca en minúsculas: un email corregido con mayúsculas desde la ficha puede terminar en un contacto duplicado en `/cliente`. Ya pasaba antes, con el cuerpo crudo.
+
+Conforme: sí
