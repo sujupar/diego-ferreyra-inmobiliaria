@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2 } from 'lucide-react'
 import { ORIGENES_MANUALES } from '@/lib/deals/proceso-manual'
+import { leerJson } from '@/lib/crm/leer-json'
 
 interface ContactPayload {
     full_name: string
@@ -55,6 +56,10 @@ export function ContactEditor({
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    // En edición, si no se pudo leer el contacto NO se muestra el formulario: vacío, guardarlo
+    // pisaría los datos de la persona con vacíos (revisión 12.1, hallazgo 6).
+    const [errorCarga, setErrorCarga] = useState<string | null>(null)
+    const [intentoCarga, setIntentoCarga] = useState(0)
     const [form, setForm] = useState<ContactPayload>({
         full_name: '',
         phone: '',
@@ -84,27 +89,39 @@ export function ContactEditor({
         wasOpenRef.current = true
 
         setError(null)
+        setErrorCarga(null)
         const seed = initialRef.current
 
         if (contactId) {
             setLoading(true)
             fetch(`/api/contacts/${contactId}`)
-                .then(r => r.json())
-                .then((j) => {
-                    const c = j.contact || j.data || j
-                    if (c && c.full_name !== undefined) {
-                        setForm({
-                            full_name: c.full_name || '',
-                            phone: c.phone || '',
-                            email: c.email || '',
-                            origin: c.origin || '',
-                            notes: c.notes || '',
-                        })
+                .then(r => leerJson<Record<string, unknown>>(r))
+                .then((r) => {
+                    if (!r.ok) {
+                        setErrorCarga(r.error)
+                        return
                     }
+                    const j = r.data
+                    const c: unknown = j.contact || j.data || j
+                    if (typeof c !== 'object' || c === null || !('full_name' in c)) {
+                        setErrorCarga('No se pudo cargar el contacto.')
+                        return
+                    }
+                    const texto = (k: string): string => {
+                        const v: unknown = Reflect.get(c, k)
+                        return typeof v === 'string' ? v : ''
+                    }
+                    setForm({
+                        full_name: texto('full_name'),
+                        phone: texto('phone'),
+                        email: texto('email'),
+                        origin: texto('origin'),
+                        notes: texto('notes'),
+                    })
                 })
                 .catch(err => {
                     console.error('[ContactEditor] load:', err)
-                    setError('No se pudo cargar el contacto.')
+                    setErrorCarga('No se pudo cargar el contacto.')
                 })
                 .finally(() => setLoading(false))
         } else {
@@ -116,7 +133,7 @@ export function ContactEditor({
                 notes: seed?.notes || '',
             })
         }
-    }, [open, contactId, appraisalId])
+    }, [open, contactId, appraisalId, intentoCarga])
 
     function update<K extends keyof ContactPayload>(field: K, value: ContactPayload[K]) {
         setForm(prev => ({ ...prev, [field]: value }))
@@ -219,6 +236,28 @@ export function ContactEditor({
 
                 {loading ? (
                     <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                ) : errorCarga ? (
+                    <div className="space-y-4">
+                        <p role="alert" className="text-sm text-red-600 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded px-3 py-2">
+                            {errorCarga}
+                        </p>
+                        <div className="flex gap-3">
+                            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
+                                Cerrar
+                            </Button>
+                            <Button
+                                type="button"
+                                className="flex-1"
+                                onClick={() => {
+                                    // Vuelve a correr la carga: el efecto solo corre al abrir.
+                                    wasOpenRef.current = false
+                                    setIntentoCarga(n => n + 1)
+                                }}
+                            >
+                                Reintentar
+                            </Button>
+                        </div>
+                    </div>
                 ) : (
                     <form onSubmit={handleSave} className="space-y-4">
                         <div className="space-y-2">
