@@ -368,8 +368,8 @@ tener dos solicitudes abiertas, o una solicitud y un proceso de clase más nuevo
 no cambia: **el activo es el más reciente**, y a él se ligan las llamadas, el número de
 intento y la cadencia. El otro proceso abierto no se toca: sigue en "Procesos", con sus
 tareas pendientes, y si es una solicitud se convierte desde su propio botón. No se cambia
-la regla para preferir la solicitud sobre la clase: es una decisión de negocio (Open
-Questions) y cambiar el activo movería el número de intento de llamadas ya cargadas.
+la regla para preferir la solicitud sobre la clase: es una decisión de negocio, confirmada por el
+dueño el 2026-11-25 (el activo sigue siendo el más reciente), y cambiar el activo movería el número de intento de llamadas ya cargadas.
 `esProcesoPropio` usa una **lista explícita de roles y falla cerrado**: admin, dueño y
 coordinador → siempre verdadero; asesor → solo si `deal.assigned_to` = él (un proceso **sin
 asesor no es suyo**); cualquier otro rol (`abogado`, `agent`, `viewer`, uno nuevo) → falso.
@@ -589,7 +589,7 @@ un "volver a llamar", así que lleva `source_activity_id`; la próxima llamada d
 lleva el proceso (o de la coordinación) la cierra, y el aviso la nombra. Es la regla
 aprobada en la maqueta —toda llamada completa las llamadas pendientes de la cadencia— y
 vale igual entre dos coordinadoras. La llamada que el asesor se agendó **a mano** no lleva
-`source_activity_id` y no se toca. Queda como pregunta al dueño (Open Questions).
+`source_activity_id` y no se toca. Confirmado por el dueño el 2026-11-25.
 
 Tests: una tabla con cada escenario de la spec (racha 1, 2 y 3; WhatsApp antes y después de
 "atendió"; anuladas; sin proceso; viernes; las ocho filas de la tabla de "ofrecer";
@@ -643,7 +643,10 @@ vez anterior y no se toca. **No distingue por dónde se descartó:** "Descartar"
 `/pipeline/[id]` usa el mismo `advance` y deja la misma fila en el historial, así que un
 proceso descartado desde ahí hace menos de 10 minutos también se puede deshacer (la spec
 lo dice en un escenario). Lo que sí frena es que el proceso haya vuelto a cambiar de etapa
-después. Tests: recién descartado; hace 11 minutos; la última fila no es a
+después. **El plazo se
+puede usar entero en pantalla:** el toast dura 6 segundos, pero el ítem del proceso
+descartado en "Procesos" lleva un botón "Deshacer" mientras esta función diga que vale
+(D5, "Deshacer del perdido"). Tests: recién descartado; hace 11 minutos; la última fila no es a
 `lost`; sin `from_stage`; `lost_at` viejo; proceso que no está en `lost`.
 
 **`lib/auth/contact-access.ts`** (puro) y `canAccessContact` en `lib/auth/entity-access.ts`:
@@ -718,18 +721,25 @@ export async function undoTasksOfActivity(activityId: string): Promise<{ descart
 ```ts
 export function tareasVisiblesEnFicha<T extends { type: string; deal_id: string | null; assigned_to: string | null }>(
   tareas: T[],
-  c: { dealsConTasacionAgendada: string[]; dealsOcultos: string[]; usuarioId: string },
+  c: { dealsConTasacionAgendada: string[]; dealsOcultos: string[]; usuarioId: string; soloPropiasSinProceso: boolean },
 ): T[]
 ```
 Saca (a) las `new_assignment` cuyo `deal_id` está en `dealsConTasacionAgendada` (esa
-tasación ya se ve en su tarjeta: no se repite) y (b) las tareas cuyo `deal_id` está en
-`dealsOcultos`, **salvo las que están asignadas a quien mira** (`assigned_to` =
-`usuarioId`): **una tarea propia nunca se oculta**, aunque su proceso no sea suyo. Es el
+tasación ya se ve en su tarjeta: no se repite), (b) las tareas cuyo `deal_id` está en
+`dealsOcultos` y (c), cuando `soloPropiasSinProceso` es verdadero, **las tareas sin
+`deal_id` (ligadas solo al contacto) que no están asignadas a quien mira**. En (b) y en
+(c) vale la misma salvedad: **una tarea asignada a quien mira (`assigned_to` =
+`usuarioId`) nunca se oculta**, aunque su proceso no sea suyo. Es el
 caso del asesor que registró "volver a llamar" sobre un proceso de otro: su tarea "Llamar a
 {nombre}" tiene que aparecer en su ficha.
 `dealsOcultos` es, para un asesor, **todo proceso del contacto que no está asignado a él:
 los de otros asesores y también los que no tienen asesor**; para operaciones, lista vacía
-(ver "Lo que ve un asesor" en D4). La aplica `GET …/tasks` y nadie más: **el cierre
+(ver "Lo que ve un asesor" en D4). `soloPropiasSinProceso` es verdadero para el alcance
+`propios` (asesor) y falso para operaciones. Motivo de (c): toda tarea creada con
+"+ Tarea" desde la ficha queda ligada solo al contacto (`AddTaskDialog` manda
+`contact_id`, y una tarea se liga a una sola entidad), así que sin (c) un asesor vería —y
+podría completar— las tareas que la coordinación u otro asesor se anotaron sobre esa
+persona. El dueño confirmó que en Tareas el asesor ve solo lo que está a su nombre. La aplica `GET …/tasks` y nadie más: **el cierre
 de tareas de la cadencia trabaja sobre la lista completa** de `getPendingTasksForContact`,
 sin este filtro. El número de "Tareas · N" y el de la pestaña del celular es el largo de la
 lista ya filtrada: **cuenta lo que se lista**.
@@ -771,14 +781,15 @@ para todas:
 
 | Método y ruta | Qué hace |
 | --- | --- |
-| `GET /api/contacts/[id]/ficha` | Persona, proceso activo y su situación, detalles, asesor, última llamada, procesos (cada uno con `puede_convertir` = `puedeConvertirSolicitud` de quien mira sobre ese proceso), tasaciones agendadas y archivos, calculados en el servidor con las funciones de D2. No devuelve permisos sueltos que ninguna pieza use: "Coordinar como proceso nuevo", "Abrir el proceso" y "Marcar proceso como perdido" existen solo en el aviso y salen de `cadencia.ofrecer`. |
+| `GET /api/contacts/[id]/ficha` | Persona, proceso activo y su situación, detalles, asesor, última llamada, procesos (cada uno con `puede_convertir` = `puedeConvertirSolicitud` de quien mira sobre ese proceso, y con `deshacer_hasta` = el instante hasta el que quien mira puede deshacer su "perdido", o `null`: sale de `puedeDeshacerPerdido` + `puedeCerrarProceso`, y la última fila de `deal_stage_history` se lee solo para los procesos en `lost` cuyo `stage_changed_at` es de los últimos 10 minutos), tasaciones agendadas y archivos, calculados en el servidor con las funciones de D2. No devuelve permisos sueltos que ninguna pieza use: "Coordinar como proceso nuevo", "Abrir el proceso" y "Marcar proceso como perdido" existen solo en el aviso y salen de `cadencia.ofrecer`. |
 | `GET /api/contacts/[id]/activities?filtro=todo\|llamadas\|notas\|actividad&antes=<iso>` | 50 registros no anulados + `hay_mas`, cada uno con `intento`, autor, tarea que creó y `puede_editar`/`puede_anular`. `llamadas` = solo `call`; `actividad` = lo que no es llamada ni nota (acá, `whatsapp_sent`). |
 | `POST /api/contacts/[id]/activities` | Guarda nota, llamada o WhatsApp y corre la cadencia. |
 | `PATCH /api/contacts/[id]/activities/[activityId]` | Edita una nota o anula un registro. |
 | `POST /api/contacts/[id]/activities/[activityId]/cadencia` | Sin cuerpo. Reintenta, sin duplicar, lo que la cadencia debía hacer. |
 | `GET /api/contacts/[id]/tasks` | Tareas pendientes del contacto y sus procesos, pasadas por `tareasVisiblesEnFicha` (D3). Devuelve la lista y `total` = su largo. |
 | `GET` y `PUT /api/contacts/[id]` (existentes) | Se les agrega el permiso (`canAccessContact`, con la regla de D2); el `PUT` pasa a validar con Zod una lista cerrada de campos (`full_name`, `phone`, `email`, `origin`, `notes`, y `assigned_to` solo si `puedeReasignarContacto`). **`phone`, `email`, `origin` y `notes` aceptan `null` y texto vacío** (los dos se guardan como `null`): `ContactEditor` los manda en `null` cuando están vacíos (`ContactEditor.tsx:135-141`) y con un esquema que solo aceptara texto el botón "Editar" de hoy empezaría a dar 400. El Background se guarda con este `PUT` (`{ notes }`), así que **el esquema es parcial**: todos los campos son opcionales, se exige al menos uno de la lista (si no, 400) y `full_name`, cuando viene, no puede quedar vacío. **Un `assigned_to` o `created_by` mandado por quien no puede reasignar se descarta en silencio** (no da error): el resto de la edición se guarda, como dice la spec. Si después de descartar no queda ningún campo, 400. **El esquema no valida el formato de `email` ni de `phone`**: los recorta y les pone un tope de largo (nombre, teléfono y email 200 caracteres; `notes` 10.000; la tarea 5.1 mide el largo máximo que hay hoy en la base y, si algún contacto lo supera, se sube el tope antes de codear). Motivo: `ContactEditor` manda siempre los cinco campos, y si se rechazara un email viejo mal cargado, "Editar" daría 400 para ese contacto aunque solo se le cambie el teléfono. **`origin`** acepta vacío o uno de los cuatro valores del CHECK de la base (`embudo`, `referido`, `historico`, `clase_gratuita`); otro valor responde 400 "Origen no válido" (hoy ya falla, con un 500 de Postgres: no se rompe nada que funcione). **`assigned_to`** de quien sí puede reasignar tiene que ser el id de un perfil que existe: si no tiene forma de id o no existe, **400** "Ese usuario no existe" (hoy es un 500 por la clave foránea); vacío o `null` deja el contacto sin asesor. |
-| `POST /api/contacts` (existente) | Deja de pasar el cuerpo crudo a `createContact`: arma el insert con una **lista cerrada** (`full_name`, `phone`, `email`, `origin`, `notes`). `created_by` lo pone **siempre el servidor** (= usuario). `assigned_to`: si quien crea es asesor, el servidor pone su id y descarta lo que venga; si es de operaciones, se acepta el que mande (o vacío). |
+| `GET /api/contacts` (existente, la lista) | Se le agrega el corte por rol: **403** cuando `alcanceContactos(role)` es `ninguno` (hoy el abogado recibe 200 con la lista vacía). Para los demás no cambia: el asesor sigue recibiendo solo los asignados a él (`resolverAlcanceAsignado`). El menú del abogado no tiene "Contactos", así que ninguna pantalla suya la pide. |
+| `POST /api/contacts` (existente) | **403** cuando `alcanceContactos(role)` es `ninguno`. Deja de pasar el cuerpo crudo a `createContact`: arma el insert con una **lista cerrada** (`full_name`, `phone`, `email`, `origin`, `notes`). `created_by` lo pone **siempre el servidor** (= usuario). `assigned_to`: si quien crea es asesor, el servidor pone su id y descarta lo que venga; si es de operaciones, se acepta el que mande (o vacío). |
 | `DELETE /api/contacts/[id]` (existente) | Se saca `requireRole` de adentro del `try` (hoy un rol sin permiso recibe 500). |
 | `POST /api/deals` (existente) | Acepta `from_deal_id` o `contact_id` (D9). Sin ninguno de los dos, no cambia nada. |
 | `POST /api/deals/[id]/undo-lost` (nueva) | Deshace un "perdido" recién marcado (D9). |
@@ -793,8 +804,9 @@ tiene alcance `propios`:
   Lo de otros asesores no se lista ni se cuenta, y así ningún enlace de la ficha le da 403.
 - "A su nombre" es literal: un proceso **sin asesor** tampoco se le lista (es de la
   coordinación; `/pipeline/<id>` le respondería 403 y el CRM ya le oculta esas etapas).
-- "Tareas" no lista las tareas ligadas a un proceso que no es suyo (`dealsOcultos`, D3),
-  **salvo las que están asignadas a él**, que ve siempre.
+- "Tareas" no lista las tareas ligadas a un proceso que no es suyo (`dealsOcultos`, D3) ni
+  las ligadas solo al contacto que están a nombre de otra persona
+  (`soloPropiasSinProceso`, D3). **Las que están asignadas a él las ve siempre.**
 - Si registra una llamada y el proceso activo no es suyo, la llamada se guarda pero no
   mueve tareas de otros (regla "Asesor sobre un proceso que no es suyo", D2), y ningún
   botón del aviso lo lleva a ese proceso.
@@ -973,7 +985,7 @@ components/crm/ficha/
   Actividad.tsx            filtros en pastilla + lista + "Ver más" + vacíos
   ItemActividad.tsx        .evento: ícono, título, autor, fecha relativa/exacta, tarea agendada sola, menú ⋯ (Editar, Borrar, Anular)
   LateralTareas.tsx        cabecera "Tareas · N" + AddTaskDialog (entity contact, onCreated → recargar) + ItemTarea con completar
-  BloqueLista.tsx          Tasaciones agendadas, Procesos, Archivos (se oculta sin ítems); cada ítem acepta una acción al lado del enlace: en Procesos, "Coordinar tasación" si `puede_convertir`
+  BloqueLista.tsx          Tasaciones agendadas, Procesos, Archivos (se oculta sin ítems); cada ítem acepta una acción al lado del enlace: en Procesos, "Coordinar tasación" si `puede_convertir` y "Deshacer" si `deshacer_hasta` todavía no pasó
 components/crm/ui/
   ChipEtapa.tsx  ChipResultado.tsx  OpcionGrande.tsx  FiltroPastilla.tsx  EstadoBloque.tsx  FechaRelativa.tsx
 lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (504 de Netlify)
@@ -1046,7 +1058,23 @@ lib/crm/leer-json.ts       lee la respuesta tolerando un cuerpo que no es JSON (
   barra inferior, y moverlo afectaría a toda la plataforma. **Todo toast con "Deshacer"
   (llamada, WhatsApp, nota, proceso perdido) dura 6 segundos** (`duration: 6000` en ese
   toast, como en la maqueta); los demás usan la duración de siempre. Pasado ese tiempo, lo
-  guardado se anula desde el menú "⋯" del registro; el perdido, desde `/pipeline/<id>`.
+  guardado se anula desde el menú "⋯" del registro, y el perdido se deshace desde el botón
+  "Deshacer" del ítem de ese proceso en "Procesos" (punto siguiente). `/pipeline/<id>` no
+  sirve para eso: no dibuja ninguna acción en un proceso descartado (`page.tsx:601`). **El
+  botón de acción del toast lleva alto mínimo de 44 px en táctil** (una clase propia en
+  esos toasts; el `Toaster` global no se toca).
+- **"Deshacer" del perdido tiene un lugar que dura los 10 minutos.** El dueño confirmó 10
+  minutos para deshacer, y un toast de 6 segundos solo no los da. Por eso, en el bloque
+  "Procesos", el ítem de un proceso descartado lleva al lado del enlace un botón "Deshacer"
+  mientras `deshacer_hasta` (ruta `ficha`, D4) no haya pasado. Es hermano del enlace, como
+  "Coordinar tasación", y mide 44 px en táctil. Llama al mismo `undo-lost` que el toast.
+  La ficha lo saca sola cuando llega la hora (un temporizador hasta `deshacer_hasta`, sin
+  recargar). Si el servidor responde 409, la pantalla dice "Ya no se puede deshacer:
+  pasaron más de 10 minutos o el proceso cambió de etapa." y el botón desaparece. Al
+  marcar perdido y al deshacer, la ficha vuelve a pedir sus datos: así el botón aparece
+  junto con el toast y se va al deshacer. Vale también para un proceso descartado desde
+  `/pipeline/<id>` hace menos de 10 minutos (misma regla, D2). Un asesor lo ve solo en
+  sus procesos (`puedeCerrarProceso`).
 - "Ver en Tareas" del aviso (celular) cambia a la pestaña Tareas de la ficha.
 - `AddTaskDialog` se usa tal cual (incluye el tipo "Email" que la maqueta no muestra);
   unificarlo es del change de tareas.
@@ -1220,6 +1248,12 @@ hoy**, y los tests que ya existen tienen que seguir pasando sin tocarlos.
      `contact_id`. Motivo verificado: `notifyDealCreated` tira error con ese origen
      (`lib/email/notifications/deal-created.ts:29`) y el error termina en un email de
      "falló la notificación" a los admins. La ficha tampoco ofrece esa conversión (D2);
+     Si el proceso **no tiene contacto** (`contact_id` vacío: pasa cuando se borró el
+     contacto), **409** ("Este proceso no tiene una persona vinculada: vinculala desde el
+     proceso antes de coordinar"), sin escribir nada y sin email. Sin esto quedaría un
+     proceso coordinado sin persona, un email "Tasación agendada" sin datos y una vuelta
+     a `/contacts/` sin id. La ruta `ficha` no llega a ofrecerlo (la ficha es de un
+     contacto), así que es solo una barrera por la red;
   3. **el contacto es siempre `deals.contact_id` de ese proceso: se saltea la búsqueda por
      email y por teléfono**, y no se crea ningún contacto. Sin esto, cambiar el email en el
      formulario precargado podía encontrar otro contacto o crear uno nuevo;
@@ -1257,7 +1291,12 @@ hoy**, y los tests que ya existen tienen que seguir pasando sin tocarlos.
      la etiqueta de "agendada" quedaría en el email viejo. Por eso **no se llama desde
      adentro de la función que hace el `update`** del proceso: si en `lib/supabase/deals.ts`
      se suma una función `convertirSolicitud` para ese `update`, esa función no toca
-     Mailchimp. Un fallo de la sincronización no corta la respuesta (ya atrapa sus errores). Motivo verificado: el lead del embudo entra
+     Mailchimp. Un fallo de la sincronización no corta la respuesta (ya atrapa sus errores).
+     **Orden de los tres efectos, fijo:** primero la tarea `new_assignment`, después
+     `notifyDealCreated` y **Mailchimp al final**. Lo que le sirve al equipo (la tarea y
+     el email al asesor) sale primero; si la función se corta en el medio, lo que se
+     pierde es la etiqueta de Mailchimp, y el reintento del formulario recibe 409 sin
+     repetir nada (Risks). Motivo verificado: el lead del embudo entra
      a Mailchimp con la etiqueta de "solicitó"; si al coordinar nadie sincroniza, la
      persona sigue recibiendo los emails de "solicitaste una tasación" con la tasación ya
      agendada.
@@ -1282,7 +1321,8 @@ esa escritura falla): si al lead de la clase le faltaba el email y la coordinado
 tipeó, tiene que quedar guardado en la persona, o después `advance` respondería 422 por
 datos faltantes. `from_deal_id` y `contact_id` juntos → 400 (paso 1 de arriba).
 El proceso de la clase gratuita no se toca. Convertir un lead de la clase en vez de abrirle
-un proceso nuevo es una decisión de negocio que queda para el dueño (Open Questions).
+un proceso nuevo es una decisión de negocio: el dueño confirmó el 2026-11-25 que se le
+abre un proceso nuevo, como hoy.
 
 **Marcar proceso como perdido** usa lo que ya existe: `POST /api/deals/[id]/advance` con
 `{ stage: 'lost' }` (permiso `pipeline.advance`). El botón se dibuja solo con
@@ -1295,7 +1335,8 @@ texto del botón aprobado en la maqueta.
 trigger deja `lost_at` cargado y `vw_funnel_daily` cuenta las perdidas por `lost_at`, así que
 el proceso deshecho seguiría contando como perdido ese día; (2) `advance` exige datos del
 cliente para volver a ciertas etapas y puede responder 422. Por eso hay una ruta chica y
-propia, `POST /api/deals/[id]/undo-lost`:
+propia, `POST /api/deals/[id]/undo-lost`, que llaman dos botones de la ficha (el "Deshacer"
+del toast, 6 segundos, y el del ítem del proceso en "Procesos", los 10 minutos; D5):
 
 - `requireAuth` + permiso `pipeline.advance` (sin él, la misma respuesta que da hoy
   `advance`) + `puedeCerrarProceso` (D2), con su **lista explícita de roles**: admin, dueño,
@@ -1312,8 +1353,8 @@ propia, `POST /api/deals/[id]/undo-lost`:
   la secuencia de emails, y el deshacer tiene que volver a ponerla donde estaba.
   **Efecto que se acepta y se dice:** para Mailchimp eso es apagar una etiqueta y volver a
   prenderla; según cómo esté armada la automatización, la persona puede volver a recibir
-  la secuencia **desde el primer email**. Desde el código no se puede saber ni evitar: se
-  le pregunta al dueño (Open Questions) y queda en Risks;
+  la secuencia **desde el primer email**. Desde el código no se puede saber ni evitar: el
+  dueño lo aceptó el 2026-11-25 y queda en Risks;
 - no manda emails ni WhatsApp, ni crea tareas. El historial suma una fila
   `lost → <etapa>`: es lo que pasó de verdad y no se borra.
 
@@ -1420,6 +1461,21 @@ Con la sección 8 del diseño general:
     que un **asesor** se agendó a mano, y sí cierra las `update_contact` que crea el agente
     de tasación por WhatsApp (son del mismo tipo y del mismo proceso).
 
+**Precisiones agregadas en la verificación final (2026-11-25).** No estaban entre las
+veinte que cubrió el "Ok a todo": no cambian ninguna decisión confirmada, pero se le
+nombran al dueño en el reporte final (tarea 13.5).
+
+21. **Un intento cargado fuera de orden no crea ni cierra tareas, tampoco con "volver a
+    llamar".** 8.2 dice que "volver a llamar" "siempre crea la tarea" (diferencia 19). Si
+    la llamada se carga con la hora corregida y queda antes de otro intento más nuevo, se
+    guarda pero no mueve nada: el aviso dice que quedó anotada antes de otra más nueva.
+22. **Cada ítem de "Tasaciones agendadas" abre `/pipeline/<id>` de ese proceso.** La
+    maqueta decía "abre la tasación agendada, como hoy"; como el bloque sale de los
+    procesos en Coordinada, esa es su pantalla (D4).
+23. **Botón "Deshacer" en el ítem de un proceso descartado, en "Procesos", durante los 10
+    minutos.** La maqueta tenía el "Deshacer" solo en el toast (6 segundos). Motivo: el
+    dueño confirmó 10 minutos, y pasado el toast no quedaba ningún botón para usarlos (D5).
+
 ## Risks / Trade-offs
 
 - [La vista previa usa la base de producción] → el QA trabaja solo sobre los datos de la
@@ -1443,6 +1499,14 @@ Con la sección 8 del diseño general:
   proceso, pero no figura en "Mis contactos". Se anota para `crm-inicio`.
 - [`PUT /api/tasks/[id]` no controla de quién es la tarea] → existe desde antes; la ficha lo
   usa para completar. Se corrige en `crm-tareas-y-campanita` y queda anotado en su propuesta.
+- [Las dos columnas nuevas de `tasks` se pueden escribir con sesión propia] → las políticas
+  de `tasks` que ya existen dejan insertar a cualquier usuario con sesión (`WITH CHECK
+  (true)`) y editar las propias. Un usuario interno podría, por la API de la base, crear
+  una tarea con el `source_activity_id` de una llamada ajena, y `createCadenceTask` la
+  daría por buena ante el 23505. No es alcanzable desde ninguna pantalla y solo afecta a
+  qué tarea figura como "creada" por esa llamada. Hueco conocido: cerrar la escritura
+  directa de `tasks` es de `crm-tareas-y-campanita` y queda anotado en su propuesta
+  (tarea 13.1).
 - [`POST /api/deals/[id]/advance` no revisa de quién es el proceso] → existe desde antes. La
   ficha solo dibuja "Marcar proceso como perdido" con `puedeCerrarProceso`, y la ruta nueva
   de deshacer sí lo revisa.
@@ -1468,15 +1532,20 @@ Con la sección 8 del diseño general:
   embudo (esas miran `origin`). Quien coordina ya podía ver y editar ese proceso.
 - [Un asesor no ve en la ficha los procesos de otro asesor sobre el mismo contacto] → puede
   no enterarse de que la persona ya tiene otra tasación en curso; sí ve la etapa del proceso
-  activo y toda la actividad. Es la opción que muestra menos; el dueño decide si la abre.
+  activo y toda la actividad. Es la opción que muestra menos; confirmada por el dueño el 2026-11-25.
 - [Endurecer `PUT /api/contacts/[id]` rompe a quien mandaba campos de más] → el único
   cliente es `ContactEditor`, que manda campos de la lista permitida; se cubre con un test
   que envía **exactamente el cuerpo que arma `ContactEditor`, con `phone`, `email`, `origin`
   y `notes` en `null`**, y espera 200.
 - [Convertir y deshacer llaman a Mailchimp dentro del pedido] → es una llamada a un
   tercero, igual que hoy en `advance` (`updateDealStage`). Atrapa sus errores y no corta la
-  respuesta, pero suma su tiempo al pedido. No se agrega ningún barrido que lo repare
-  después: si falla, queda el `console.warn` de hoy.
+  respuesta, pero suma su tiempo al pedido. **En la conversión el peor caso suma más que
+  hoy:** en un mismo pedido van los emails de `notifyDealCreated` (como en toda
+  coordinación) y además la llamada a Mailchimp. Es la misma suma de terceros que dio el
+  504 de `/api/funnel/submit` (CLAUDE.md). Por eso el orden es fijo (tarea → emails →
+  Mailchimp al final, D9): si la función se corta, se pierde lo menos importante. El
+  reintento recibe 409 y lo que no salió no se repite. No se agrega ningún barrido que lo
+  repare después: si falla, queda el `console.warn` de hoy.
 - [Deshacer un "perdido" puede reiniciar la secuencia de emails de un cliente real] →
   marcar perdido apaga la etiqueta de su secuencia (`seq-solicita` o `seq-agendada`) y
   deshacer la vuelve a prender. Si la automatización de Mailchimp permite reingreso, la
@@ -1488,8 +1557,10 @@ Con la sección 8 del diseño general:
   etiqueta de secuencia no mira el origen para `scheduled` con día ni para `visited`, y
   `syncDealToMailchimp` crea el email en la audiencia si no existe. Lo dispara `undo-lost`
   y también, sin que nadie toque nada, el barrido `reconcileMailchimp`. Por eso la receta
-  **suprime el email de prueba en `mailchimp_suppressions` antes de crear cualquier
-  proceso**, y la limpieza controla que no haya ningún renglón `synced` (tareas 2.5, 12.7
+  **suprime los dos emails de prueba en `mailchimp_suppressions` antes de crear cualquier
+  proceso** (el del contacto y el segundo, que es el único al que se puede cambiar el
+  email en el QA; ese cambio se hace solo sobre la situación `solicitud`, que no lleva
+  etiqueta de secuencia), y la limpieza controla que no haya ningún renglón `synced` (tareas 2.5, 12.7
   y 13.4). Lo que no se pudo confirmar desde acá: si la sincronización está prendida en
   las vistas previas (`MAILCHIMP_SYNC_ENABLED`) y si el barrido está programado; la receta
   no depende de ninguna de las dos cosas. Límite que queda: `isSuppressed` responde "no
@@ -1503,12 +1574,12 @@ Con la sección 8 del diseño general:
   trabajo de `crm-tareas-y-campanita` y queda anotado en su propuesta (tarea 13.1).
 - [Un asesor registra sobre un proceso que no es suyo] → la llamada queda y cuenta en la
   racha, pero no agenda ni cierra tareas de otros (D2). Es la opción que menos toca lo
-  ajeno; el dueño decide si la abre (Open Questions).
+  ajeno; confirmada por el dueño el 2026-11-25.
 - [Un asesor registra sobre una persona sin proceso abierto] → cierra solo las tareas
   ligadas al contacto que están a su nombre; las de la coordinación (una `update_contact`,
   una llamada agendada a mano) quedan pendientes aunque el asesor ya haya hablado con la
-  persona, y las completa a mano quien las tiene. Misma idea que el punto anterior; el
-  dueño decide si la abre (Open Questions).
+  persona, y las completa a mano quien las tiene. Misma idea que el punto anterior;
+  confirmada por el dueño el 2026-11-25.
 - [Coordinar desde el botón fijo o desde el menú sin registrar antes una llamada] → las
   tareas de entrada del lead (una `update_contact` por coordinador) **quedan pendientes**:
   lo que las cierra es registrar una llamada, no coordinar. Es igual que hoy cuando se
@@ -1523,8 +1594,8 @@ Con la sección 8 del diseño general:
   "Procesos" con su botón "Coordinar tasación" y su enlace para descartarla); y con
   solicitud + clase más nueva, "Agendó" ofrece abrir un proceso nuevo, aunque la solicitud
   se puede convertir desde "Procesos". Si la coordinadora usa el aviso en vez del botón de
-  la solicitud, queda un proceso de más. Se le pregunta al dueño si en ese caso el activo
-  tiene que ser la solicitud (Open Questions).
+  la solicitud, queda un proceso de más. El dueño confirmó el 2026-11-25 que en ese caso el activo
+  sigue siendo el más reciente (la clase).
 - [Convertir puede dejar dos contactos con el mismo email o teléfono] → al convertir (y al
   coordinar con `contact_id`) se escribe en el contacto del proceso el email o el teléfono
   tipeado, sin mirar si ya lo tiene otro contacto. La búsqueda de `POST /api/deals` de hoy
@@ -1558,7 +1629,11 @@ Con la sección 8 del diseño general:
    maqueta aprobada, `aprobacion.md` y los artefactos de este change; tarea 1.1). Después
    los documentos del módulo (OpenSpec, maqueta, skills) viajan a `main` en su propio PR
    (dispara un deploy sin cambios de código), y la rama de este change se corta desde `origin/main` actualizado. Así
-   `git diff --name-only origin/main <rama>` lista solo archivos de este change.
+   `git diff --name-only origin/main <rama>` lista solo archivos de este change, **más los
+   documentos de `openspec/` que la rama lleva de más** (el archivado de
+   `crm-sistema-diseno` con su spec vigente en `openspec/specs/`, y las respuestas del
+   dueño) y lo que toca la tarea 13.1 (`CLAUDE.md` y las propuestas de
+   `crm-tareas-y-campanita` y `crm-inicio`).
 4. **Código:** PR en borrador desde el principio (da la vista previa); QA; auditoría doble
    cerrada; merge con `--rebase` (squash no despliega).
 5. **Procesos programados:** ninguno.
