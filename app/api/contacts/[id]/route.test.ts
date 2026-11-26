@@ -177,6 +177,11 @@ describe('PUT /api/contacts/[id]', () => {
     const res = await put({ full_name: 'Ana', phone: '11 2222 3333', email: 'ana@@mal', origin: 'referido', notes: null })
     expect(res.status).toBe(200)
   })
+  it('email con mayúsculas y espacios → se guarda en minúsculas y sin espacios (si no, /cliente no lo encuentra y duplica)', async () => {
+    const res = await put({ email: ' Ana.Perez@Gmail.COM ' })
+    expect(res.status).toBe(200)
+    expect(m.updateContact).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', { email: 'ana.perez@gmail.com' })
+  })
   it('origin fuera de la lista → 400', async () => {
     const res = await put({ origin: 'tasacion' })
     expect(res.status).toBe(400)

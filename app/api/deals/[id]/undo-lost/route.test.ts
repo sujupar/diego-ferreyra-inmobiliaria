@@ -34,8 +34,11 @@ vi.mock('@/lib/deals/datos-cliente', () => ({ leerDatosDelProceso: m.leerDatosDe
 
 import { POST } from './route'
 
+// Un uuid de verdad: la ruta devuelve 404 antes de leer la base si el id no lo es.
+const ID = '11111111-2222-4333-8444-555555555555'
+
 const hace = (minutos: number) => new Date(Date.now() - minutos * 60_000).toISOString()
-const post = (id = 'd-1') =>
+const post = (id = ID) =>
   POST(new Request(`http://local/api/deals/${id}/undo-lost`, { method: 'POST' }) as never, { params: Promise.resolve({ id }) })
 const como = (role: string, id: string) => {
   m.usuario = { id, email: `${id}@x.com`, profile: { id, role } }
@@ -45,7 +48,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   como('coordinador', 'coord-1')
   const cuando = hace(2)
-  m.proceso = { id: 'd-1', stage: 'lost', lost_at: cuando, assigned_to: 'asesor-1' }
+  m.proceso = { id: ID, stage: 'lost', lost_at: cuando, assigned_to: 'asesor-1' }
   m.ultimo = { from_stage: 'request', to_stage: 'lost', changed_at: cuando }
   m.cambia = true
   m.leerProcesoParaDeshacer.mockImplementation(async () => m.proceso)
@@ -60,9 +63,9 @@ describe('POST /api/deals/[id]/undo-lost', () => {
     const res = await post()
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true, stage: 'request' })
-    expect(m.deshacerPerdido).toHaveBeenCalledWith('d-1', { volverA: 'request', limpiarLostAt: true })
+    expect(m.deshacerPerdido).toHaveBeenCalledWith(ID, { volverA: 'request', limpiarLostAt: true })
     expect(m.syncMailchimpBestEffort).toHaveBeenCalledTimes(1)
-    expect(m.syncMailchimpBestEffort).toHaveBeenCalledWith('d-1')
+    expect(m.syncMailchimpBestEffort).toHaveBeenCalledWith(ID)
   })
 
   it('a una solicitud a la que le faltan datos no le pide completarlos', async () => {
@@ -74,7 +77,7 @@ describe('POST /api/deals/[id]/undo-lost', () => {
   it('un lost_at viejo (de otro descarte) no se limpia', async () => {
     m.proceso = { ...m.proceso!, lost_at: hace(60 * 24 * 30) }
     await post()
-    expect(m.deshacerPerdido).toHaveBeenCalledWith('d-1', { volverA: 'request', limpiarLostAt: false })
+    expect(m.deshacerPerdido).toHaveBeenCalledWith(ID, { volverA: 'request', limpiarLostAt: false })
   })
 
   it('fuera de tiempo (hace 11 minutos) → 409, sin update y sin Mailchimp', async () => {
@@ -101,6 +104,13 @@ describe('POST /api/deals/[id]/undo-lost', () => {
     const res = await post()
     expect(res.status).toBe(409)
     expect(m.syncMailchimpBestEffort).not.toHaveBeenCalled()
+  })
+
+  it('un id que no es uuid → 404 sin consultar la base (antes Postgres daba 22P02 y la ruta, 500)', async () => {
+    const res = await post('no-es-un-uuid')
+    expect(res.status).toBe(404)
+    expect(m.leerProcesoParaDeshacer).not.toHaveBeenCalled()
+    expect(m.deshacerPerdido).not.toHaveBeenCalled()
   })
 
   it('proceso inexistente → 404', async () => {

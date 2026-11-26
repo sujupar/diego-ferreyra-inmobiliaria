@@ -62,6 +62,16 @@ describe('sanearDatosContacto (editar, parcial)', () => {
   it('recorta espacios y normaliza a NFC', () => {
     expect(editar({ full_name: '  José  ' })).toEqual({ ok: true, cambios: { full_name: 'José' } })
   })
+  it('el email se guarda en minúsculas y sin espacios (así lo encuentra encontrarOCrearContacto)', () => {
+    expect(editar({ email: '  Ana.Perez@Gmail.COM ' })).toEqual({ ok: true, cambios: { email: 'ana.perez@gmail.com' } })
+    expect(editar({ email: 'ana @gmail .com' })).toEqual({ ok: true, cambios: { email: 'ana@gmail.com' } })
+  })
+  it('un email con tilde en forma NFD queda en NFC y en minúsculas', () => {
+    expect(editar({ email: 'JOSÉ@x.com' })).toEqual({ ok: true, cambios: { email: 'josé@x.com' } })
+  })
+  it('el email solo con espacios sigue siendo null', () => {
+    expect(editar({ email: '   ' })).toEqual({ ok: true, cambios: { email: null } })
+  })
   it('tope de 200 en nombre, teléfono y email', () => {
     expect(editar({ full_name: 'a'.repeat(200) }).ok).toBe(true)
     expect(editar({ full_name: 'a'.repeat(201) }).ok).toBe(false)
