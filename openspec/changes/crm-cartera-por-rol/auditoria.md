@@ -231,3 +231,18 @@ Ajuste posterior, encontrado al cerrar (no lo trajo un auditor): la sesión de l
 este worktree `lib/crm/formato-fecha.ts` (`fechaRelativa`, `fechaExacta`, `cuandoEs`,
 `textoVencimiento`). El diseño ya no crea `textos-tiempo.ts`: amplía ese módulo con
 `haceCuanto` y `duracion` (D5 y tarea 3.3), para que haya un solo módulo de fechas.
+
+## Ronda 4 (2026-11-26, verificación de la ronda 3 contra el código)
+
+Cada hallazgo se verificó contra el código antes de aplicarlo; ninguno resultó falso.
+
+| # | Gravedad | Hallazgo | Qué se hizo |
+|---|---|---|---|
+| 1 | ALTA | La lectura (d) de completadas de coordinación estaba en la tanda 1, en paralelo con (b), de la que depende (el corte sale de la copia pendiente más vieja). Y el corte `created_at >= más vieja pendiente` dejaba afuera a la hermana que `createTaskForRole` inserta milisegundos antes en el mismo bucle (`lib/supabase/tasks.ts:99-118`, verificado). Además "mismo minuto", truncado, separaba un par 12:00:59,9 / 12:01:00,1. | Aplicado: (d) pasa a la tanda 2 (en paralelo con la RPC), con corte = copia pendiente más vieja **menos 60 s**; copias = 60 s o menos de diferencia entre instantes, sin truncar (D3, D4); (d) respeta el tope, avisa `truncado` y su falla cuenta como falla de las tareas; tests en 3.5 (el par 59,9/00,1 y uno a 61 s) y 4.1 (hermana completada creada segundos antes; columnas `source_activity_id` y `created_at`); medición de (d) en 4.3. |
+| 2 | ALTA | `cargarContactos` no hacía la lectura (d): en Contactos del equipo una copia ya completada por la otra coordinadora aparecería pendiente. | Aplicado: D3 y D6 lo dicen; tarea 4.2 con la misma lectura, el mismo corte y el test "hermana completada → no aparece". |
+| 3 | ALTA | Borrar `crm-stages.ts` rompía `lib/crm/ficha.ts:9`, que lo importa para `etapaDelCRM` (~línea 132, verificado); D9 decía que solo lo importaba `crm/page`. Y sus etiquetas ("No Realizada", "Clase Gratuita") no son las de `NOMBRE_ETAPA` ("No realizada", "Clase gratuita"). | Aplicado: D9 suma `lib/crm/ficha.ts` (y `DealsList`/`StagePipeline`) a los consumidores y saca "lo importan solo…"; la tarea 6.4 pasa primero `etapaDelCRM` a `etapaCRM` + `NOMBRE_ETAPA` con el test antes (ficha y lista escriben igual cada etapa) y recién después borra. |
+| 4 | BAJA | D1 decía que la spec de la ficha "todavía dice Última llamada" y que `formato-fecha.ts` estaba sin commitear; la tarea 1.1 frenaba por eso. | Aplicado: verificado que spec y cabecera ya dicen "Último contacto" y que `formato-fecha.ts` está en la rama (commit `30acc591`); D1, D5 y 1.1 corregidos (1.1 solo confirma). |
+| 5 | BAJA | La tarea 1.5, la 7.4 y las Diferencias 6 y 10 seguían condicionadas a respuestas del dueño que ya llegaron ("Ok a las 4", 2026-11-26). | Aplicado: quedan con la opción por defecto elegida; 7.4 pasa a "no se toca, se verifica". |
+| 6 | BAJA | Faltaba aceptar por escrito que en Contactos un asesor ve "hace N días · Visita de tasación" de una visita hecha en un proceso de otro asesor. | Aplicado: en Risks, como aceptado (solo viaja el instante y coincide con la ficha). |
+
+`openspec validate crm-cartera-por-rol --strict`: válido.
