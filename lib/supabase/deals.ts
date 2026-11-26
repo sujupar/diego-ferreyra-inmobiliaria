@@ -245,6 +245,60 @@ export async function leerProcesoParaConvertir(id: string): Promise<ProcesoParaC
   return (data as ProcesoParaConvertir | null) ?? null
 }
 
+/** Lo que `undo-lost` necesita del proceso (D9). */
+export async function leerProcesoParaDeshacer(
+  id: string,
+): Promise<{ id: string; stage: string; lost_at: string | null; assigned_to: string | null } | null> {
+  const { data, error } = await getAdmin()
+    .from('deals')
+    .select('id, stage, lost_at, assigned_to')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw new Error(`leerProcesoParaDeshacer: ${error.message}`)
+  return (data as { id: string; stage: string; lost_at: string | null; assigned_to: string | null } | null) ?? null
+}
+
+/**
+ * La última fila del historial de etapas. Con service role: la RLS de
+ * `deal_stage_history` no deja leer al asesor.
+ */
+export async function ultimoCambioDeEtapa(
+  dealId: string,
+): Promise<{ from_stage: string | null; to_stage: string; changed_at: string } | null> {
+  const { data, error } = await getAdmin()
+    .from('deal_stage_history')
+    .select('from_stage, to_stage, changed_at')
+    .eq('deal_id', dealId)
+    .order('changed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`ultimoCambioDeEtapa: ${error.message}`)
+  return (data as { from_stage: string | null; to_stage: string; changed_at: string } | null) ?? null
+}
+
+/**
+ * Vuelve un proceso descartado a la etapa que tenía (D9). Filtra `stage = 'lost'` en el
+ * propio `update`: si en el medio alguien lo movió, no toca nada y devuelve `false`.
+ * Limpia `lost_at` solo si el descarte que se deshace es el que lo escribió: si no, el
+ * embudo lo seguiría contando como perdido ese día. NO llama a Mailchimp (lo hace la ruta).
+ */
+export async function deshacerPerdido(
+  id: string,
+  d: { volverA: string; limpiarLostAt: boolean },
+): Promise<boolean> {
+  const ahora = new Date().toISOString()
+  const updates: Record<string, unknown> = { stage: d.volverA, stage_changed_at: ahora, updated_at: ahora }
+  if (d.limpiarLostAt) updates.lost_at = null
+  const { data, error } = await getAdmin()
+    .from('deals')
+    .update(updates)
+    .eq('id', id)
+    .eq('stage', 'lost')
+    .select('id')
+  if (error) throw new Error(`deshacerPerdido: ${error.message}`)
+  return (data ?? []).length > 0
+}
+
 /** Lo que la ruta calculó para convertir una solicitud (D9, paso 4). */
 export interface CamposConversion {
   scheduled_date: string
