@@ -3,6 +3,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* `raton:` = puntero fino que puede pasar por encima (mouse o trackpad). Es la ÚNICA
+   condición para las medidas chicas de la ficha (36 px de alto, 14 px en campos):
+   en toda pantalla táctil, también una tablet de 1024 px, quedan los 44 px y los
+   16 px (crm-ficha-y-llamadas, design.md D6). No es `md:`: el ancho no dice si hay dedo. */
+@custom-variant raton (@media (hover: hover) and (pointer: fine));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -28,6 +34,9 @@
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-destructive-suave: var(--destructive-suave);
+  --color-destructive-texto: var(--destructive-texto);
+  --color-texto-suave: var(--texto-suave);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
@@ -82,6 +91,13 @@
   --brand-foreground: oklch(0.99 0 0);
   --brand-soft: oklch(0.93 0.05 260);
 
+  /* Derivados de la ficha CRM (maqueta crm-sistema-diseno, base.css). Se mezclan en
+     `srgb` A PROPÓSITO: en `oklch` el rojo se corre al magenta (GUIA.md §9). Van
+     repetidos en `.dark` porque una variable con `var()` se resuelve donde se declara. */
+  --destructive-suave: color-mix(in srgb, var(--destructive) 10%, var(--card));
+  --destructive-texto: color-mix(in srgb, var(--destructive) 72%, var(--foreground));
+  --texto-suave: color-mix(in oklch, var(--muted-foreground) 80%, var(--foreground));
+
   --border: oklch(0.92 0.005 247.839);
   --input: oklch(0.92 0.005 247.839);
   --ring: oklch(0.13 0.01 260);
@@ -132,6 +148,13 @@
   --brand: oklch(0.60 0.18 260);
   --brand-foreground: oklch(0.13 0.01 260);
   --brand-soft: oklch(0.28 0.08 260);
+
+  /* Derivados de la ficha CRM (maqueta crm-sistema-diseno, base.css). Se mezclan en
+     `srgb` A PROPÓSITO: en `oklch` el rojo se corre al magenta (GUIA.md §9). Van
+     repetidos en `.dark` porque una variable con `var()` se resuelve donde se declara. */
+  --destructive-suave: color-mix(in srgb, var(--destructive) 10%, var(--card));
+  --destructive-texto: color-mix(in srgb, var(--destructive) 72%, var(--foreground));
+  --texto-suave: color-mix(in oklch, var(--muted-foreground) 80%, var(--foreground));
 
   --border: oklch(0.25 0.01 260);
   --input: oklch(0.25 0.01 260);
