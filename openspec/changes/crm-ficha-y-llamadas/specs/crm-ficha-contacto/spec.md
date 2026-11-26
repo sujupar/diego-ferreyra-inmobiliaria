@@ -50,13 +50,21 @@ servidor, no en el menú ni en la pantalla.
 - **WHEN** ese asesor tiene una tarea asignada a él ligada a un proceso que no es suyo
 - **THEN** esa tarea aparece en "Tareas" y entra en el número del título y de la pestaña
 
+#### Scenario: Tarea de otra persona ligada solo al contacto
+- **WHEN** un asesor abre la ficha de un contacto suyo que tiene una tarea pendiente ligada solo al contacto (sin proceso) y asignada a la coordinación o a otro asesor
+- **THEN** esa tarea no se le lista ni se le cuenta en "Tareas", el pedido de tareas por la red tampoco se la devuelve, y a una coordinadora sí se le lista
+
 #### Scenario: Ningún enlace de la ficha lleva a una pantalla prohibida
 - **WHEN** un asesor toca cualquier proceso, tasación o archivo listado en una ficha que puede abrir
 - **THEN** la pantalla de destino abre, sin error de permiso
 
 #### Scenario: Abogado
 - **WHEN** un abogado abre `/contacts/<id>` o pide por la red los datos, la actividad o las tareas de un contacto
-- **THEN** no ve ningún dato y cada pedido responde 403
+- **THEN** la pantalla dice "No tenés permiso para ver contactos", no muestra ningún dato y cada pedido responde 403
+
+#### Scenario: Abogado pide la lista o crea un contacto
+- **WHEN** un abogado pide por la red la lista de contactos o intenta crear uno
+- **THEN** cada pedido responde 403 y en la base no se creó nada
 
 #### Scenario: Sin sesión
 - **WHEN** alguien sin sesión pide los datos de una ficha
@@ -381,8 +389,8 @@ mensaje de vacío, con la acción para crear el primero cuando existe.
 El bloque Tareas SHALL listar las tareas pendientes ligadas al contacto o a cualquiera de
 sus procesos, con su vencimiento y a quién están asignadas, y permitir crear una nueva y
 completar una existente. Sin tareas muestra solo el botón "+ Tarea". Para un asesor, de las
-tareas ligadas a un proceso que no está a su nombre se listan solo las que están asignadas
-a él (ver «Quién puede abrir la ficha»).
+tareas ligadas a un proceso que no está a su nombre, y de las ligadas solo al contacto, se
+listan solo las que están asignadas a él (ver «Quién puede abrir la ficha»).
 
 #### Scenario: Contacto con dos tareas pendientes
 - **WHEN** el contacto tiene una tarea ligada a él y otra ligada a su proceso
@@ -451,6 +459,14 @@ decirlo y nunca mostrar un vacío o un cero en su lugar.
 - **WHEN** un pedido de la ficha recibe una respuesta que no es JSON
 - **THEN** el bloque muestra "No se pudo cargar" con "Reintentar", y no un texto técnico
 
+#### Scenario: Mientras carga
+- **WHEN** se abre la ficha y un pedido todavía no respondió
+- **THEN** ese bloque muestra filas grises de carga, marcadas como "Cargando…" para lectores de pantalla, y no un vacío, un cero ni "+ Tarea" solo; los bloques que ya respondieron se ven y funcionan
+
+#### Scenario: Falla el pedido de la persona
+- **WHEN** en 390 px el pedido de los datos de la persona falla y los de actividad y tareas responden bien
+- **THEN** la cabecera y la pestaña "Datos" dicen "No se pudo cargar" con "Reintentar", sin nombre ni etapa inventados, las pestañas "Actividad" y "Tareas" muestran sus datos, y no hay desplazamiento horizontal
+
 ### Requirement: Uso táctil de la ficha
 En celular y en toda pantalla táctil (incluidas las tablets desde 768 px), todo elemento
 tocable de la ficha SHALL medir al menos 44 × 44 px y todo campo de texto SHALL usar letra
@@ -468,6 +484,10 @@ controles pueden medir 36 px y los campos usar 14 px.
 #### Scenario: Tablet táctil
 - **WHEN** se abre la ficha en una tablet táctil de 1024 px, donde se ven dos columnas
 - **THEN** los filtros, los resultados de llamada, el menú "⋯" y los botones siguen midiendo 44 px de alto y los campos siguen con letra de 16 px
+
+#### Scenario: Botones de los avisos
+- **WHEN** se miden en 390 px el "Deshacer" de un toast y cada botón del aviso que aparece al guardar una llamada
+- **THEN** cada uno mide 44 px o más de alto
 
 ### Requirement: Coordinar la tasación sin duplicar el proceso
 Desde la ficha, "Coordinar tasación" SHALL abrir el formulario de coordinación de hoy con
@@ -506,6 +526,10 @@ la puede convertir un coordinador, un admin o un dueño, y un asesor solo si est
 #### Scenario: Conversión pedida sin día
 - **WHEN** llega por la red la conversión de una solicitud sin el día de la tasación, o con el día mal escrito
 - **THEN** responde 400, el proceso sigue en Solicitud y no sale ningún email
+
+#### Scenario: Solicitud sin persona vinculada
+- **WHEN** llega por la red la conversión de una solicitud que no tiene contacto vinculado
+- **THEN** responde 409, el proceso no cambia, no se crea ningún contacto y no sale ningún email
 
 #### Scenario: El asesor de la tasación puede abrir la ficha
 - **WHEN** se coordina la tasación de un contacto que no tenía asesor asignado
@@ -565,8 +589,9 @@ ficha, la pantalla SHALL volver a esa ficha.
 ### Requirement: Cerrar el proceso lo decide la persona
 "Marcar proceso como perdido" SHALL pasar el proceso activo a Descartado solo cuando una
 persona con permiso lo toca, y SHALL ofrecer "Deshacer". Deshacer SHALL dejar el proceso
-como estaba antes de marcarlo, incluida la fecha en que se lo cuenta como perdido, y solo
-vale en los minutos siguientes. Ninguna otra acción de la ficha cambia la etapa de un proceso.
+como estaba antes de marcarlo, incluida la fecha en que se lo cuenta como perdido, y vale
+durante diez minutos: en el aviso recién marcado (que dura 6 segundos) y, cuando el aviso
+ya se fue, en un botón "Deshacer" del ítem de ese proceso en "Procesos". Ninguna otra acción de la ficha cambia la etapa de un proceso.
 
 #### Scenario: Marcar como perdido
 - **WHEN** se toca "Marcar proceso como perdido" en el aviso posterior a una llamada
@@ -579,6 +604,18 @@ vale en los minutos siguientes. Ninguna otra acción de la ficha cambia la etapa
 #### Scenario: Deshacer
 - **WHEN** se toca "Deshacer" en ese aviso
 - **THEN** el proceso vuelve a la etapa en la que estaba, la cabecera la muestra otra vez, y en la base `lost_at` queda vacío, de modo que ese proceso no cuenta como perdido en las métricas
+
+#### Scenario: Deshacer cuando el aviso ya se fue
+- **WHEN** se marca un proceso como perdido, el aviso desaparece, y cinco minutos después se mira "Procesos" en esa ficha (también después de recargarla)
+- **THEN** el ítem de ese proceso, en "Descartado", muestra un botón "Deshacer"; al tocarlo el proceso vuelve a la etapa en la que estaba, `lost_at` queda vacío y el botón desaparece
+
+#### Scenario: Pasados los diez minutos
+- **WHEN** se mira "Procesos" once minutos después de marcar el proceso como perdido
+- **THEN** el ítem ya no muestra "Deshacer", sin necesidad de recargar; y si se llegó a tocar justo al vencer, la pantalla dice "Ya no se puede deshacer: pasaron más de 10 minutos o el proceso cambió de etapa." y el proceso sigue descartado
+
+#### Scenario: Descartado hace tiempo
+- **WHEN** se abre la ficha de un contacto con un proceso descartado hace días
+- **THEN** ese ítem de "Procesos" no muestra "Deshacer"
 
 #### Scenario: Deshacer en una solicitud a la que le faltan datos
 - **WHEN** se deshace el "perdido" de una solicitud cuyo contacto no tiene email cargado
@@ -598,7 +635,7 @@ vale en los minutos siguientes. Ninguna otra acción de la ficha cambia la etapa
 
 #### Scenario: Asesor sobre un proceso ajeno
 - **WHEN** un asesor pide por la red deshacer o cerrar desde la ficha un proceso que no está asignado a él
-- **THEN** no ve el botón en pantalla y el pedido de deshacer responde 404
+- **THEN** no ve el botón en pantalla, ni en el aviso ni en "Procesos", y el pedido de deshacer responde 404
 
 #### Scenario: Rol viejo sin lugar en la ficha
 - **WHEN** un usuario con el rol viejo `agent` pide por la red deshacer el "perdido" de cualquier proceso

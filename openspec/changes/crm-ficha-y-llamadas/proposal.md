@@ -21,7 +21,8 @@ hay tiempos, ni tasas, ni forma de mejorar ese paso.
   tras dos seguidas, tarea de enviar WhatsApp; "volver a llamar" pide día y hora.
   Registrar una llamada cierra las tareas de entrada del lead y las de llamada pendientes
   de ese proceso, también las de otro coordinador.
-- "Días sin contacto" en la cabecera de la ficha.
+- "Última llamada" en la cabecera de la ficha: hace cuánto fue la última ("Última llamada
+  hace 2 días") o "Sin llamar todavía".
 - **Coordinar convierte la solicitud.** Desde la ficha, "Coordinar tasación" abre el
   formulario de hoy con los datos cargados y, al guardar, la misma solicitud pasa a
   Coordinada. Hoy ese formulario siempre crea un proceso nuevo y la solicitud queda abierta.
@@ -29,7 +30,8 @@ hay tiempos, ni tasas, ni forma de mejorar ese paso.
   ficha, en cada solicitud, para que no se pierda al cerrar el aviso. Coordinar desde el
   menú sigue exactamente igual.
 - **"Marcar proceso como perdido" con "Deshacer"**, que deja el proceso como estaba y no lo
-  cuenta como perdido en las métricas.
+  cuenta como perdido en las métricas. Se puede deshacer durante 10 minutos: en el aviso
+  recién marcado y, cuando el aviso se fue, con un botón en ese proceso dentro de "Procesos".
 - **Permisos de los contactos.** Hoy cualquier usuario con sesión, incluido el abogado,
   puede leer y editar cualquier contacto si conoce su dirección. Se cierra: el abogado deja
   de ver contactos, y el asesor ve solo los suyos. **Cambia algo que hoy "funciona":** un
@@ -65,8 +67,9 @@ la sección 8 del diseño general o lo aprobado en la maqueta; el detalle está 
 7. A un lead de la clase gratuita que acepta una tasación se le abre un proceso nuevo, como hoy.
 8. **Cambia una ruta que ya existe:** a un asesor, la ficha y `GET /api/contacts/[id]` le
    devuelven solo los procesos, tasaciones, archivos y tareas que están a su nombre. Lo de
-   otros asesores, y los procesos sin asesor, no se le listan (sí ve la persona, la etapa
-   del proceso activo y toda la actividad). Una tarea asignada a él la ve siempre.
+   otros asesores, los procesos sin asesor y las tareas de otras personas ligadas solo al
+   contacto no se le listan (sí ve la persona, la etapa del proceso activo y toda la
+   actividad). Una tarea asignada a él la ve siempre.
 9. Al convertir una solicitud en Coordinada se completa "quién coordinó" (`created_by`) del
    proceso si estaba vacío, para que el email de confirmación salga igual que hoy.
 10. Si un asesor registra una llamada y el proceso activo no es suyo (es de otro asesor o
@@ -92,6 +95,12 @@ la sección 8 del diseño general o lo aprobado en la maqueta; el detalle está 
   abierto usa pestañas y no dos columnas (decisión 5), y con el menú colapsado pasa a tres
   columnas antes de los 1280 px. El cambio está en `specs/crm-sistema-diseno/spec.md` de
   este change y el dueño lo confirmó el 2026-11-25.
+- **Excepción temporal, sin cambio de spec:** la spec vigente de `crm-sistema-diseno` dice
+  que "+ Tarea" abre el formulario con cinco tipos (Llamada, Mensaje, Visita, Documentación
+  y Otro). En este change la ficha usa el formulario de tareas de hoy sin tocarlo, que
+  además muestra "Email" (diferencia 7 de `design.md`, confirmada). Ese escenario no se
+  modifica: se cumple cuando `crm-tareas-y-campanita` unifique el formulario, y queda
+  anotado en su propuesta (tarea 13.1).
 
 ## Impact
 
@@ -102,7 +111,8 @@ la sección 8 del diseño general o lo aprobado en la maqueta; el detalle está 
 - Rutas nuevas: `app/api/contacts/[id]/ficha`, `…/activities`, `…/tasks`,
   `app/api/deals/[id]/undo-lost`.
 - Rutas que ya existen y cambian (caminos críticos):
-  - `app/api/contacts` y `app/api/contacts/[id]`: permiso por rol y lista cerrada de campos;
+  - `app/api/contacts` y `app/api/contacts/[id]`: permiso por rol (el abogado recibe 403
+    también en la lista y al crear) y lista cerrada de campos;
   - `app/api/deals` (`POST`): acepta `from_deal_id` (convierte la solicitud) y `contact_id`
     (usa ese contacto). Sin esos dos campos no cambia nada.
 - Mailchimp: convertir una solicitud y deshacer un "perdido" avisan a Mailchimp del cambio

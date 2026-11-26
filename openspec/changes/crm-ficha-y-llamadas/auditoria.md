@@ -38,3 +38,35 @@ diseño).
 2. **Verificación final.** Las correcciones de la ronda 3 las verificó quien las hizo
    (validación estricta incluida), no un auditor nuevo. Con las respuestas del dueño
    aplicadas, pasa una última ronda de dos auditores y recién ahí se cierra esta sección.
+
+### Verificación final, ronda 1 (2026-11-25)
+
+Dos niveles de auditoría dejaron 17 hallazgos (3 de peso, 14 menores). Los 17 se
+comprobaron contra el código y los documentos antes de tocar nada: los 17 eran ciertos y
+se corrigieron; ninguno se descartó. Sigue **abierto** hasta que la ronda siguiente no
+encuentre nada de peso.
+
+De peso:
+
+1. **El "Deshacer" del perdido no duraba los 10 minutos.** En pantalla solo estaba el toast
+   de 6 segundos, y `/pipeline/<id>` no dibuja acciones en un proceso descartado. Ahora el
+   ítem del proceso descartado en "Procesos" lleva un botón "Deshacer" mientras valgan los
+   10 minutos (ruta `ficha`: `deshacer_hasta`). Es la diferencia 23, nueva: se le avisa al
+   dueño en el reporte final.
+2. **Un asesor veía tareas de otros ligadas solo al contacto.** `tareasVisiblesEnFicha`
+   suma `soloPropiasSinProceso`: para el asesor, una tarea sin proceso se lista solo si
+   está a su nombre.
+3. **El freno de Mailchimp del QA cubría un solo email.** El cambio de email se prueba solo
+   sobre `solicitud` y hacia un segundo email fijo, que `crear` suprime, `borrar` limpia y
+   `verificar` controla.
+
+Menores: frases que seguían diciendo "pendiente del dueño"; dos diferencias que faltaban
+en la lista (21 y 22); la excepción del formulario "+ Tarea" con "Email"; la lista
+explícita del reporte final y la nota de "Mis contactos" para `crm-inicio`; la comprobación
+de la diferencia con `main`; "Última llamada" en la propuesta; el orden de las
+verificaciones en 8.3, 9.2, 9.3 y 9.6 y el test de que guardar o deshacer vuelve a pedir
+tareas y ficha; 403 al abogado en la lista y en el alta de contactos; 409 al convertir una
+solicitud sin contacto; el orden tarea → emails → Mailchimp al convertir; el hueco conocido
+de las columnas nuevas de `tasks`; las medidas táctiles del "Deshacer" del toast y de los
+botones del aviso; los escenarios de carga, de falla del pedido de la persona y el texto
+de la pantalla del abogado; y el nombre real de la rama local y su comando de push.
