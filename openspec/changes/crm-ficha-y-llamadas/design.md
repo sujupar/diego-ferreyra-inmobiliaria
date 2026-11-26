@@ -116,6 +116,11 @@ CREATE TABLE IF NOT EXISTS public.contact_activities (
   automatic     boolean NOT NULL DEFAULT false   -- nota escrita por el sistema (D4, `/cliente`)
 );
 
+-- Por si alguna vez se aplicó una versión anterior de este archivo sin la columna: el
+-- CREATE TABLE IF NOT EXISTS no la agregaría nunca.
+ALTER TABLE public.contact_activities
+  ADD COLUMN IF NOT EXISTS automatic boolean NOT NULL DEFAULT false;
+
 -- Los 8 CHECK van aparte, cada uno con DROP + ADD (como en 20260806000001): dentro de
 -- un CREATE TABLE IF NOT EXISTS no se actualizarían al volver a correr el archivo.
 ALTER TABLE public.contact_activities DROP CONSTRAINT IF EXISTS contact_activities_kind_check;
@@ -452,7 +457,7 @@ resto de las notas sigue igual (edita el autor; anula el autor u operaciones).
 `Nota automática: vinculó este contacto a su proceso de {dirección} al completar los datos del cliente.`,
 con la dirección del proceso recortada a 200 caracteres; si el proceso no tiene dirección,
 `Nota automática: vinculó este contacto a un proceso suyo al completar los datos del
-cliente.` La usan la ruta (D4) y sus tests; ningún otro archivo repite la frase.
+cliente.` La usan la ruta (D4) y sus tests; ningún otro archivo de código repite la frase (la spec `crm-ficha-contacto` y el test de `textoNotaDeVinculo` la escriben literal a propósito: son los que fijan el texto).
 `numerarLlamadas` ordena por `occurred_at` y desempata por `created_at`; numera por proceso
 (las llamadas sin proceso se numeran entre sí, como un grupo aparte). `esUltimoIntento` usa
 el mismo orden: es verdadero si no hay otro intento no anulado posterior del mismo proceso.

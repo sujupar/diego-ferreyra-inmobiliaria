@@ -30,31 +30,27 @@ diseño).
 
 ### Estado
 
-**Abierto — falta que un auditor nuevo confirme las correcciones de la ronda 5.** La
-verificación final hizo cinco rondas y no terminó limpia: la última (ronda 5) todavía
-encontró 3 hallazgos de peso.
+**Cerrada para construir (2026-11-25), con una salvedad escrita.** La verificación final
+hizo siete rondas, cada una con un auditor nuevo que revisó las correcciones de la
+anterior. Ninguna terminó en cero hallazgos de peso: la regla de cierre original no se
+cumplió al pie de la letra. Se cierra igual porque desde la ronda 6 lo de peso dejó de
+tocar el producto (SQL, permisos, cadencia, rutas): fue solo el orden de los pasos de QA
+con los datos de prueba, que la ronda 7 recorrió entero.
 
 1. **Respuestas del dueño: recibidas el 2026-11-25.** Contestó "Ok a todo": quedó
    confirmada la opción más prudente de cada pregunta que cambia lo que se construye
    (`design.md`, "Open Questions", grupo A). El grupo B sigue con su opción por defecto y
-   no frena.
-2. **Verificación final: hecha, sin cierre limpio.** Los 75 hallazgos que quedaron en pie
-   en las cinco rondas (12 de peso) se corrigieron, y la validación estricta pasa. Pero la
-   regla para cerrar era una ronda sin hallazgos de peso, y esa ronda no ocurrió.
+   se le cuenta en el reporte final (13.5).
+2. **Verificación final: 86 hallazgos en pie en siete rondas, 15 de peso, todos
+   corregidos.** La validación estricta de OpenSpec pasa.
+3. **Lo que queda sin segunda mirada:** la corrección de la ronda 7 (una línea de 12.5,
+   paso 3: `vincular proceso` antes de `crear dos-asesores-coordinada`). La comprobó el
+   corrector contra la regla de acceso de D2.
 
-Lo que falta para cerrar:
-
-- Que un auditor nuevo revise las correcciones de la ronda 5. Hasta ahora las verificó
-  solo quien las hizo. Las tres de peso son: la tercera ruta que vincula un contacto
-  (`PUT /api/deals/[id]/cliente`, con su nota automática y la columna `automatic`: D1, D2,
-  D4, tarea 5.5), los datos de prueba apilados en el QA (2.5, 12.5, 14.5) y los pasos de
-  QA que pedían ver en `/tasks` una tarea con fecha de mañana (11.3, 12.5).
-- Que esa ronda no encuentre nada de peso.
-
-Mientras tanto, lo que se construya parte de artefactos corregidos pero con esa última
-tanda sin segunda mirada. La auditoría del código (grupo 14 de `tasks.md`) tiene que
-mirar con atención especial esos tres puntos, y los dos de la ronda 4 (el permiso al
-vincular por id, tarea 5.4, y la situación `solicitud-para-asesor`).
+La auditoría del código (grupo 14 de `tasks.md`) tiene que mirar con atención especial:
+la nota automática de `/cliente` y la columna `automatic` (D1, D2, D4, tarea 5.5), el
+permiso al vincular por id (tarea 5.4), la situación `solicitud-para-asesor` y el orden de
+la receta de datos de prueba (2.5, 12.5, 14.5).
 
 ### Verificación final (2026-11-25)
 
@@ -68,14 +64,40 @@ código o los documentos. El detalle de cada ronda está más abajo.
 | 2 | 19 | 3 | 18 | 3 | Corregidos los 18 |
 | 3 | 16 | 0 | 16 | 1 | Corregidos los 16. El de peso lo sumó el segundo nivel |
 | 4 | 14 | 2 | 13 | 2 | Corregidos los 13. La ronda 5 los revisó y encontró lo que sigue |
-| 5 | — | — | 11 | 3 | Corregidos los 11. Sin ronda posterior que lo confirme |
+| 5 | — | — | 11 | 3 | Corregidos los 11 |
+| 6 | 7 | 2 | 7 | 2 | Corregidos los 7. Los dos de peso eran pasos de QA con datos de prueba en un orden que la receta no permite |
+| 7 | 4 | 1 | 4 | 1 | Corregidos los 4. El de peso: un paso de 12.5 sin `vincular proceso` |
 
 En la ronda 5 no quedó anotado cuántos hallazgos trajo el primer equipo: al corrector le
 llegaron los 11 que quedaron en pie.
 
-Resultado: **no terminó limpia**. Los hallazgos de peso bajaron de 3 a 1, volvieron a 2 en
-la ronda 4 y a 3 en la ronda 5, así que no se puede decir que los artefactos ya no tienen
-nada de peso.
+Resultado: **ninguna ronda terminó en cero hallazgos de peso**, pero desde la ronda 6 los
+de peso dejaron de tocar lo que se construye. Las rondas 6 y 7 confirmaron sin
+objeciones el SQL, los permisos y la cadencia. Lo único de peso que encontraron fue el
+orden de pasos del QA con los datos de prueba: 2 en la ronda 6 y 1 en la ronda 7. La ronda
+7 recorrió todos los pasos de la receta de punta a punta y dejó ejecutables 8.4, 9.7,
+10.2, 11.2, 11.3, 12.3, 12.4, 13.3, 13.4 y 14.5. Su único hallazgo de peso (12.5, paso 3)
+es una línea que el corrector comprobó contra la regla de acceso de D2.
+
+### Verificación final, rondas 6 y 7 (2026-11-25)
+
+Ronda 6 (auditor nuevo sobre las correcciones de la ronda 5):
+
+- La nota automática de `/cliente` distingue bien el contacto recién creado (nace con el
+  asesor del proceso) del ajeno que ya existía, y no se puede crear desde la ruta pública.
+- De peso 1: los pasos 8.4, 9.7, 10.2 y 12.3 encadenaban situaciones sin `borrar` en el
+  medio. Se arregló con una regla general en 2.5 y los cuatro pasos reescritos.
+- De peso 2: 14.5 corre en otra sesión sin archivo de ids. Ahora empieza con `borrar` →
+  `verificar` → `crear solicitud` propios.
+- Menores: `ADD COLUMN IF NOT EXISTS automatic`; dónde se repite el texto de la nota; las
+  aditivas no van sobre `sin-ningun-proceso`.
+
+Ronda 7 (auditor nuevo sobre las correcciones de la ronda 6):
+
+- De peso: 12.5 paso (3) perdía el `vincular proceso` después de `borrar`, y el asesor
+  habría recibido "No encontramos este contacto". Se agregó.
+- Menores: excepción de las 09:00 UTC para el humo de 13.3; 4.2 dice `crear solicitud`;
+  redacción de "tareas que no son suyas" en 12.5.
 
 ### Verificación final, ronda 1 (2026-11-25)
 
