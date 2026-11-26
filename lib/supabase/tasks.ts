@@ -36,6 +36,10 @@ export interface CreateTaskInput {
   due_time?: string | null // HH:MM (24h), null si all_day
   all_day?: boolean
   created_by?: string | null
+  // La tarea la creó la cadencia de llamadas a partir de esta actividad
+  // (`contact_activities.id`). Tiene índice único: una tarea por intento. Una tarea
+  // creada a mano no lo manda y la fila queda sin esa columna.
+  source_activity_id?: string | null
 }
 
 /**
@@ -152,4 +156,200 @@ export async function dismissTask(id: string) {
     .update({ status: 'dismissed', completed_at: new Date().toISOString() })
     .eq('id', id)
   if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Cadencia de llamadas y ficha de contacto (change crm-ficha-y-llamadas, design.md D3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Una tarea pendiente tal como la usan la ficha (bloque Tareas) y la cadencia
+ * (`tareasACerrar`). Los campos de `TareaPendiente` de `lib/crm/cadencia.ts` más lo que
+ * dibuja el bloque. `assigned_role` y `assigned_name` NO son columnas de `tasks`: salen
+ * del perfil del asignado (`profiles.role` / `full_name`), `null` si no hay asignado o
+ * el perfil ya no existe.
+ */
+export interface TareaDeFicha {
+  id: string
+  title: string
+  type: string
+  channel: string | null
+  assigned_to: string | null
+  assigned_role: string | null
+  assigned_name: string | null
+  created_at: string
+  deal_id: string | null
+  contact_id: string | null
+  appraisal_id: string | null
+  source_activity_id: string | null
+  description: string | null
+  due_date: string | null
+  due_time: string | null // columna `time`: llega como "09:00:00"
+  all_day: boolean | null
+  status: string
+}
+
+type FilaTarea = Omit<TareaDeFicha, 'assigned_role' | 'assigned_name'>
+
+const COLUMNAS_TAREA_FICHA =
+  'id, title, type, channel, assigned_to, created_at, deal_id, contact_id, appraisal_id, ' +
+  'source_activity_id, description, due_date, due_time, all_day, status'
+
+// Los ids van dentro de un filtro `or()` de PostgREST: una coma o un paréntesis
+// cambiarían el filtro. Los ids reales son uuid; se exige solo letras, números y guiones.
+const RE_ID_SEGURO = /^[A-Za-z0-9-]+$/
+function exigirIdSeguro(id: string): string {
+  if (!RE_ID_SEGURO.test(id)) throw new Error(`Id con caracteres no permitidos: ${JSON.stringify(id)}`)
+  return id
+}
+
+/**
+ * Pendientes del contacto (ligadas a él) o de cualquiera de sus procesos, de cualquier
+ * usuario. Sin el filtro de fecha de `getMyTasks` (que esconde las futuras). El nombre y
+ * el rol del asignado se traen con una segunda consulta: `tasks` se creó a mano y no hay
+ * constancia de una FK a `profiles`, así que un embed de PostgREST podría fallar.
+ * Tira ante cualquier error: un rol vacío por un fallo cambiaría qué tareas se cierran.
+ */
+export async function getPendingTasksForContact(contactId: string, dealIds: string[]): Promise<TareaDeFicha[]> {
+  exigirIdSeguro(contactId)
+  dealIds.forEach(exigirIdSeguro)
+  const supabase = getAdmin()
+  let query = supabase.from('tasks').select(COLUMNAS_TAREA_FICHA).eq('status', 'pending')
+  query =
+    dealIds.length > 0
+      ? query.or(`contact_id.eq.${contactId},deal_id.in.(${dealIds.join(',')})`)
+      : query.eq('contact_id', contactId)
+  const { data, error } = await query.order('created_at', { ascending: true })
+  if (error) throw new Error(`getPendingTasksForContact: ${error.message}`)
+  const filas = (data ?? []) as unknown as FilaTarea[]
+  if (filas.length === 0) return []
+
+  const asignados = [...new Set(filas.map((t) => t.assigned_to).filter((x): x is string => !!x))]
+  const perfiles = new Map<string, { full_name: string | null; role: string | null }>()
+  if (asignados.length > 0) {
+    const { data: perfilesData, error: perfilesError } = await supabase
+      .from('profiles')
+      .select('id, full_name, role')
+      .in('id', asignados)
+    if (perfilesError) throw new Error(`getPendingTasksForContact (perfiles): ${perfilesError.message}`)
+    for (const p of (perfilesData ?? []) as { id: string; full_name: string | null; role: string | null }[]) {
+      perfiles.set(p.id, { full_name: p.full_name, role: p.role })
+    }
+  }
+  return filas.map((t) => {
+    const perfil = t.assigned_to ? perfiles.get(t.assigned_to) : undefined
+    return { ...t, assigned_role: perfil?.role ?? null, assigned_name: perfil?.full_name ?? null }
+  })
+}
+
+/**
+ * Crea la tarea de la cadencia. Si ya existe una para esa actividad (choque 23505 con
+ * `uq_tasks_source_activity`), devuelve esa: así el guardado repetido y "Reintentar" no
+ * duplican. No pasa por el dedupe de `createTask` ni por `createTaskForRole`.
+ */
+export async function createCadenceTask(
+  input: CreateTaskInput & { source_activity_id: string },
+): Promise<{ id: string; yaExistia: boolean }> {
+  const supabase = getAdmin()
+  const { data, error } = await supabase.from('tasks').insert(input).select('id').single()
+  if (!error) return { id: (data as { id: string }).id, yaExistia: false }
+  if (error.code !== '23505') throw new Error(`createCadenceTask: ${error.message}`)
+  const { data: existente, error: errorLectura } = await supabase
+    .from('tasks')
+    .select('id')
+    .eq('source_activity_id', input.source_activity_id)
+    .maybeSingle()
+  if (errorLectura) throw new Error(`createCadenceTask (lectura tras choque): ${errorLectura.message}`)
+  if (!existente) throw new Error('createCadenceTask: chocó con el índice único pero no se encontró la tarea')
+  return { id: (existente as { id: string }).id, yaExistia: true }
+}
+
+/**
+ * Completa las tareas elegidas por `tareasACerrar` y anota qué actividad las cerró.
+ * Solo toca las que siguen pendientes: correrlo dos veces no cambia nada la segunda.
+ * Devuelve los ids que cerró de verdad.
+ */
+export async function closeTasksByActivity(ids: string[], activityId: string): Promise<string[]> {
+  if (ids.length === 0) return []
+  const { data, error } = await getAdmin()
+    .from('tasks')
+    .update({ status: 'completed', completed_at: new Date().toISOString(), closed_by_activity_id: activityId })
+    .in('id', ids)
+    .eq('status', 'pending')
+    .select('id')
+  if (error) throw new Error(`closeTasksByActivity: ${error.message}`)
+  return ((data ?? []) as { id: string }[]).map((t) => t.id)
+}
+
+/**
+ * Deshace lo que la cadencia hizo por una actividad (al anularla, D8): la tarea que
+ * creó y sigue pendiente pasa a `dismissed` (no se borra nada) y las que cerró vuelven a
+ * `pending` de a una. Al reabrir se vacían `completed_at` y `closed_by_activity_id`: una
+ * tarea pendiente no puede seguir diciendo que una llamada la cerró. La que choca con un
+ * índice único de pendientes (23505) se saltea. Se puede correr dos veces: la segunda
+ * encuentra solo lo que la primera no llegó a hacer.
+ */
+export async function undoTasksOfActivity(activityId: string): Promise<{ descartadas: number; reabiertas: number }> {
+  const supabase = getAdmin()
+  const { data: descartadas, error: errorDescarte } = await supabase
+    .from('tasks')
+    .update({ status: 'dismissed', completed_at: new Date().toISOString() })
+    .eq('source_activity_id', activityId)
+    .eq('status', 'pending')
+    .select('id')
+  if (errorDescarte) throw new Error(`undoTasksOfActivity (descartar): ${errorDescarte.message}`)
+
+  const { data: cerradas, error: errorCerradas } = await supabase
+    .from('tasks')
+    .select('id')
+    .eq('closed_by_activity_id', activityId)
+    .eq('status', 'completed')
+  if (errorCerradas) throw new Error(`undoTasksOfActivity (leer cerradas): ${errorCerradas.message}`)
+
+  let reabiertas = 0
+  for (const { id } of (cerradas ?? []) as { id: string }[]) {
+    const { data, error } = await supabase
+      .from('tasks')
+      .update({ status: 'pending', completed_at: null, closed_by_activity_id: null })
+      .eq('id', id)
+      .eq('status', 'completed')
+      .select('id')
+    if (error?.code === '23505') {
+      console.warn('[undoTasksOfActivity] no se reabre una tarea que chocaría con otra pendiente', { id, activityId })
+      continue
+    }
+    if (error) throw new Error(`undoTasksOfActivity (reabrir): ${error.message}`)
+    reabiertas += ((data ?? []) as unknown[]).length
+  }
+  return { descartadas: ((descartadas ?? []) as unknown[]).length, reabiertas }
+}
+
+/**
+ * Lo que la cadencia hizo por una actividad, leído de la base. Las respuestas de las
+ * rutas se arman con esto y no con lo que devolvió cada escritura: así el guardado
+ * repetido y el reintento responden lo mismo. Una tarea descartada no figura como creada
+ * y una reabierta no figura como cerrada.
+ */
+export async function getTasksOfActivity(activityId: string): Promise<{
+  creada: { id: string; title: string; due_date: string; due_time: string; channel: string } | null
+  cerradas: { id: string; title: string }[]
+}> {
+  const supabase = getAdmin()
+  const { data: creada, error: errorCreada } = await supabase
+    .from('tasks')
+    .select('id, title, due_date, due_time, channel')
+    .eq('source_activity_id', activityId)
+    .neq('status', 'dismissed')
+    .maybeSingle()
+  if (errorCreada) throw new Error(`getTasksOfActivity (creada): ${errorCreada.message}`)
+  const { data: cerradas, error: errorCerradas } = await supabase
+    .from('tasks')
+    .select('id, title')
+    .eq('closed_by_activity_id', activityId)
+    .eq('status', 'completed')
+  if (errorCerradas) throw new Error(`getTasksOfActivity (cerradas): ${errorCerradas.message}`)
+  return {
+    creada: (creada as { id: string; title: string; due_date: string; due_time: string; channel: string } | null) ?? null,
+    cerradas: (cerradas ?? []) as { id: string; title: string }[],
+  }
 }
