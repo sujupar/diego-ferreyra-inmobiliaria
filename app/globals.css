@@ -969,3 +969,83 @@ html:has(.landing-root) {
   from { transform: translateY(14px); opacity: 0.35; }
   to { transform: none; opacity: 1; }
 }
+
+/* ══ FICHA DE CONTACTO (components/crm/ficha, crm-ficha-y-llamadas D6) ══════════════
+   Un solo árbol: la ficha decide su estructura con CONTAINER QUERIES sobre su propio
+   ancho (el que queda después del menú lateral), nunca con JavaScript (sin desajuste de
+   hidratación). < 40rem: una columna con cabecera fija, pestañas y "+"; 40–60rem: dos
+   columnas (datos y lateral a la izquierda, actividad a la derecha); ≥ 60rem: tres.
+   En `@layer components` para que las utilidades de Tailwind sigan mandando en lo fino. */
+@layer components {
+  .ficha {
+    container: ficha / inline-size;
+    display: flex;
+    flex: 1 1 auto; /* `flex-1` y no `min-h-full`: Safari no siempre toma el alto en % de un hijo flex */
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+  }
+  .ficha-grilla { display: block; min-width: 0; }
+  .ficha-panel { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; padding-top: 0.75rem; }
+  .ficha-panel[data-activa='false'] { display: none; }
+  .ficha-solo-columnas { display: none !important; }
+
+  /* Cabecera fija dentro de #contenido (el que scrollea), como PropertyTabsNav. Los
+     márgenes negativos siguen al relleno real de #contenido (p-4 md:p-6, layout.tsx): con
+     solo -mx-4, entre 768 y ~930 px quedaba una franja por donde pasaba el contenido. */
+  .ficha-cab {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--background);
+    margin: -1rem -1rem 0; padding: 0.75rem 1rem 0;
+    display: flex; flex-direction: column; gap: 0.625rem; min-width: 0;
+  }
+  @media (min-width: 768px) {
+    .ficha-cab { margin: -1.5rem -1.5rem 0; padding: 0.75rem 1.5rem 0; }
+  }
+
+  /* El "+": último en la ficha, empujado al fondo con margin-top:auto (si no, con pocos
+     registros quedaba flotando a mitad de pantalla) y pegado abajo mientras se desplaza. */
+  .ficha-mas { margin-top: auto; position: sticky; bottom: 1rem; align-self: flex-end; z-index: 30; flex-shrink: 0; }
+
+  .ficha-resaltado { animation: ficha-resaltar 1.6s ease both; border-radius: var(--radius-md); }
+
+  @container ficha (min-width: 40rem) {
+    .ficha-grilla {
+      display: grid; gap: 1rem; align-items: start;
+      grid-template-columns: 17.5rem minmax(0, 1fr);
+      grid-template-rows: auto auto 1fr;
+      grid-template-areas: 'cab centro' 'persona centro' 'lado centro';
+      max-width: 96rem; width: 100%; margin: 0 auto;
+    }
+    .ficha-panel, .ficha-panel[data-activa='false'] { display: flex; padding-top: 0; gap: 1rem; }
+    .ficha-solo-pestanas { display: none !important; }
+    .ficha-solo-columnas { display: flex !important; }
+    section.ficha-solo-columnas { display: block !important; }
+    .ficha-cab {
+      grid-area: cab; position: static; margin: 0; padding: 1rem; gap: 0.75rem;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: calc(var(--radius) + 4px); box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+    }
+    .ficha-cab__avatar { width: 3rem !important; height: 3rem !important; font-size: 1rem !important; }
+    .ficha-cab__nombre { font-size: 1.125rem !important; }
+    .ficha-persona { grid-area: persona; }
+    .ficha-centro { grid-area: centro; }
+    .ficha-lado { grid-area: lado; }
+  }
+  @container ficha (min-width: 60rem) {
+    .ficha-grilla {
+      grid-template-columns: 16.5rem minmax(0, 1fr) 18rem;
+      grid-template-rows: auto 1fr;
+      grid-template-areas: 'cab centro lado' 'persona centro lado';
+    }
+  }
+  @container ficha (min-width: 75rem) {
+    .ficha-grilla { grid-template-columns: 18.75rem minmax(0, 1fr) 20rem; gap: 1.25rem; }
+  }
+}
+@keyframes ficha-resaltar {
+  from { background: var(--brand-soft); box-shadow: 0 0 0 0.5rem var(--brand-soft); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ficha-resaltado { animation: none; }
+}
