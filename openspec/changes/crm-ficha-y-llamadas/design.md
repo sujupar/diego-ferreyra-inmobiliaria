@@ -43,7 +43,8 @@ Estado del código que condiciona el diseño (verificado en el worktree):
   `CREATE TABLE` en migraciones (se creó a mano). Se trabaja con tipos propios.
 - **Tareas:** `follow_up` + `channel` + `due_date`/`due_time` ya alcanzan para la cadencia,
   sin tocar los CHECK. `createTask` no deduplica `follow_up`. No existe forma de completar
-  en lote, ni columna que diga qué creó o cerró una tarea. Las fechas se calculan en UTC.
+  en lote, ni columna que diga qué creó o cerró una tarea. Las fechas se calculaban en UTC
+  (`getMyTasks` y `/tasks` ya usan el día de Argentina desde la revisión 12.1).
 - **`createTaskForRole` crea una tarea `update_contact` por coordinador** cuando entra un
   lead (hoy hay 2 coordinadores activos).
 - **No hay pantalla para coordinar una solicitud existente.** `/pipeline/new` no lee nada de
@@ -1881,11 +1882,12 @@ en el reporte final.
   ficha solo dibuja "Marcar proceso como perdido" con `puedeCerrarProceso`, y la ruta nueva
   de deshacer sí lo revisa.
 - [Fechas de tareas: este change empieza a producir tareas con fecha todos los días] → las
-  tareas de la cadencia se guardan con fecha y hora de Argentina, pero `getMyTasks` compara
-  contra "hoy" en UTC (`lib/supabase/tasks.ts:132`). **Síntoma concreto:** entre las 21:00 y
-  las 24:00 de Argentina, la "Llamada 2" de mañana ya aparece en `/tasks` como de hoy. No es
-  una falla nueva de este change; se corrige en `crm-tareas-y-campanita`. Se muestra en el QA
-  (tarea 12.3) y se le avisa al dueño.
+  tareas de la cadencia se guardan con fecha y hora de Argentina, y `getMyTasks` comparaba
+  contra "hoy" en UTC: entre las 21:00 y las 24:00 de Argentina, la "Llamada 2" de mañana
+  aparecía en `/tasks` como de hoy. **Corregido en la revisión 12.1 (hallazgo 5):**
+  `getMyTasks` y la página `/tasks` (orden y etiqueta "Hoy"/"Vencida") usan el día de
+  Argentina (`enArgentina`), con pruebas a las 21:30. Queda en UTC el formulario
+  `AddTaskDialog`, que es de `crm-tareas-y-campanita`.
 - [Leads que quedan sin tarea hasta `crm-inicio`] → ver D7: siguen en la columna Solicitud
   del CRM, pero no hay lista que los junte.
 - [Dos personas registran la misma llamada a la vez] → quedan dos llamadas y, a lo sumo, dos

@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { TaskChannel } from '@/lib/tasks/validate-task-input'
 import type { TareaPendiente } from '@/lib/crm/cadencia'
+import { enArgentina } from '@/lib/crm/horario-laboral'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -134,7 +135,9 @@ export async function getMyTasks(userId: string, status?: string) {
   // Para tareas pending, ocultar las que están agendadas a futuro: solo se ven
   // las que vencen hoy o antes (atrasadas), o las legacy sin due_date.
   if (effectiveStatus === 'pending') {
-    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+    // "Hoy" de Argentina, no de UTC (revisión 12.1): entre las 21:00 y las 24:00 de
+    // Argentina en UTC ya es mañana, y la "Llamada 2" de mañana aparecía como de hoy.
+    const today = enArgentina(new Date()).fecha // YYYY-MM-DD
     query = query.or(`due_date.is.null,due_date.lte.${today}`)
   }
 

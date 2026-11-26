@@ -33,6 +33,7 @@ export default defineConfig({
       'app/*/contacts/**/*.test.tsx',
       'app/*/crm/**/*.test.tsx',
       'app/*/pipeline/**/*.test.tsx',
+      'app/*/tasks/**/*.test.tsx',
     ],
     exclude: ['**/node_modules/**', '.next', '.netlify', '**/.claude/worktrees/**'],
   },

@@ -293,3 +293,30 @@ describe('/tasks — D35: sin identidad no hay spinner eterno', () => {
     }
   })
 })
+
+describe('/tasks — "hoy" es el día de Argentina, no el de UTC (revisión 12.1)', () => {
+  it('a las 21:30 de Argentina, la tarea de mañana no dice "Hoy" ni va antes que la de hoy', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    // 2026-11-26 00:30 UTC = martes 25/11 21:30 de Argentina: en UTC ya es "mañana".
+    vi.setSystemTime(new Date('2026-11-26T00:30:00Z'))
+    try {
+      porEstado.pending = ok({
+        data: [
+          tarea('manana', { title: 'La de mañana', due_date: '2026-11-26' }),
+          tarea('hoy', { title: 'La de hoy', due_date: '2026-11-25' }),
+        ],
+      })
+      render(<TasksPage />)
+      const deHoy = await screen.findByText('La de hoy')
+      const deManana = screen.getByText('La de mañana')
+      const tarjeta = (el: HTMLElement) => el.closest('[data-slot="card"]') as HTMLElement
+      expect(tarjeta(deHoy)).toHaveTextContent('Hoy')
+      expect(tarjeta(deManana)).not.toHaveTextContent('Hoy')
+      expect(tarjeta(deManana)).toHaveTextContent('26/11')
+      // Orden: hoy antes que las futuras.
+      expect(deHoy.compareDocumentPosition(deManana) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
