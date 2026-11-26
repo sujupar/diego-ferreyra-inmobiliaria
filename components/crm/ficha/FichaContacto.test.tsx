@@ -7,7 +7,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FichaContacto } from './FichaContacto'
 import { SinAcceso } from './Pantallas'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, simularRed, tareaDePrueba, pedidosA } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { simularRed, pedidosA } from './red-prueba'
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...p }: { href: string; children: React.ReactNode }) => (

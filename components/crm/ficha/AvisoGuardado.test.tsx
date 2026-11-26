@@ -8,7 +8,8 @@ import { armarAviso, type EntradaAviso } from '@/lib/crm/aviso-guardado'
 import type { BloqueCadencia } from '@/lib/supabase/cadencia'
 import { AvisoGuardado } from './AvisoGuardado'
 import { FichaContacto } from './FichaContacto'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, pedidosA, simularRed, tareaDePrueba } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { pedidosA, simularRed } from './red-prueba'
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...p }: { href: string; children: React.ReactNode }) => (

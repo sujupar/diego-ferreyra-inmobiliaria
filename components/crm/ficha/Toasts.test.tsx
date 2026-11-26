@@ -7,7 +7,8 @@ import userEvent from '@testing-library/user-event'
 import type { ExternalToast } from 'sonner'
 import type { BloqueCadencia } from '@/lib/supabase/cadencia'
 import { FichaContacto } from './FichaContacto'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, pedidosA, simularRed, tareaDePrueba } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { pedidosA, simularRed } from './red-prueba'
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...p }: { href: string; children: React.ReactNode }) => (
@@ -18,8 +19,8 @@ vi.mock('next/link', () => ({
 }))
 const s = vi.hoisted(() => {
   let n = 0
-  const toast = vi.fn((_t: string, _o?: unknown) => `t${++n}`)
-  const error = vi.fn((_t: string, _o?: unknown) => `e${++n}`)
+  const toast = vi.fn<(texto: string, opciones?: unknown) => string>(() => `t${++n}`)
+  const error = vi.fn<(texto: string, opciones?: unknown) => string>(() => `e${++n}`)
   const dismiss = vi.fn()
   return { toast, error, dismiss, reiniciar: () => (n = 0) }
 })
