@@ -203,3 +203,30 @@ export function intentosHasta(a: Intento, intentosDelProceso: Intento[]): Intent
   )
   return [...previos, a].sort(compararIntentos)
 }
+
+/** Lo que define "el mismo guardado" cuando un `client_token` llega dos veces. */
+export interface DatosDelGuardado {
+  kind: string
+  call_outcome: string | null
+  callback_at: string | null
+  body: string | null
+}
+
+/**
+ * ¿El pedido repetido trae los mismos datos que la fila ya guardada con ese `client_token`?
+ * Un reintento de red sí; un formulario corregido y vuelto a mandar con el mismo token no
+ * (revisión 12.1): devolver la fila vieja en silencio le haría creer a la persona que quedó lo
+ * que corrigió. La hora se compara como instante (la base la devuelve con `+00:00` y el
+ * servidor la arma con `Z`); texto vacío y sin texto son lo mismo, y las tildes NFC/NFD también.
+ * `occurred_at` no entra: "hace N minutos" se recalcula en cada pedido.
+ */
+export function esElMismoGuardado(guardada: DatosDelGuardado, pedida: DatosDelGuardado): boolean {
+  const texto = (t: string | null) => (t ?? '').normalize('NFC')
+  const instante = (t: string | null) => (t ? Date.parse(t) : null)
+  return (
+    guardada.kind === pedida.kind &&
+    (guardada.call_outcome ?? null) === (pedida.call_outcome ?? null) &&
+    instante(guardada.callback_at) === instante(pedida.callback_at) &&
+    texto(guardada.body) === texto(pedida.body)
+  )
+}

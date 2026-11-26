@@ -13,6 +13,7 @@ import {
   textoNotaDeVinculo,
   esUltimoIntento,
   intentosHasta,
+  esElMismoGuardado,
 } from './actividades'
 import type { Actividad, Intento } from './tipos'
 
@@ -394,5 +395,31 @@ describe('esUltimoIntento e intentosHasta', () => {
   it('las notas no son intentos', () => {
     const nota = intento('n', '2026-11-24T00:00:00Z', { kind: 'note', call_outcome: null })
     expect(intentosHasta(b, [a, nota, b]).map((i) => i.id)).toEqual(['a', 'b'])
+  })
+})
+
+describe('esElMismoGuardado (client_token repetido, revisión 12.1)', () => {
+  const guardada = { kind: 'call', call_outcome: 'volver_a_llamar', callback_at: '2026-11-27T15:00:00+00:00', body: 'Llamar a la tarde' }
+  it('los mismos datos → sí, aunque la hora venga escrita distinto', () => {
+    expect(esElMismoGuardado(guardada, { ...guardada, callback_at: '2026-11-27T15:00:00.000Z' })).toBe(true)
+  })
+  it('otro resultado → no', () => {
+    expect(esElMismoGuardado(guardada, { ...guardada, call_outcome: 'no_atendio', callback_at: null })).toBe(false)
+  })
+  it('otro tipo (llamada contra WhatsApp) → no', () => {
+    const wa = { kind: 'whatsapp_sent', call_outcome: null, callback_at: null, body: null }
+    expect(esElMismoGuardado(wa, { ...wa, kind: 'call', call_outcome: 'no_atendio' })).toBe(false)
+  })
+  it('otra hora de volver a llamar → no', () => {
+    expect(esElMismoGuardado(guardada, { ...guardada, callback_at: '2026-11-27T16:00:00.000Z' })).toBe(false)
+  })
+  it('otro texto → no; texto vacío y sin texto son lo mismo', () => {
+    expect(esElMismoGuardado(guardada, { ...guardada, body: 'Llamar a la mañana' })).toBe(false)
+    const sin = { kind: 'call', call_outcome: 'no_atendio', callback_at: null, body: null }
+    expect(esElMismoGuardado(sin, { ...sin, body: '' })).toBe(true)
+  })
+  it('texto con tildes en forma NFD contra NFC → es el mismo', () => {
+    const nota = { kind: 'note', call_outcome: null, callback_at: null, body: 'Atendió'.normalize('NFC') }
+    expect(esElMismoGuardado(nota, { ...nota, body: 'Atendió'.normalize('NFD') })).toBe(true)
   })
 })

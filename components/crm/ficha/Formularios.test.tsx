@@ -89,6 +89,26 @@ describe('FormLlamada', () => {
     expect(c).not.toBe(a)
   })
 
+  it('tras un error, cambiar un dato manda un client_token NUEVO; el 409 del servidor se muestra tal cual', async () => {
+    let n = 0
+    const red = simularRed({
+      [POST]: () =>
+        ++n === 1
+          ? { status: 409, body: { error: 'Esa llamada ya se había guardado con otros datos. Revisá la línea de tiempo.' } }
+          : respuestaLlamada(`a-${n}`),
+    })
+    render(<FormLlamada contactoId={CONTACTO} onGuardado={() => {}} reloj={reloj10} />)
+    const usr = u()
+    await usr.click(screen.getByRole('button', { name: /No atendió/ }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Esa llamada ya se había guardado con otros datos. Revisá la línea de tiempo.')
+    await usr.click(screen.getByRole('button', { name: /no le interesa/ }))
+    await usr.click(screen.getByRole('button', { name: 'Guardar llamada' }))
+    await waitFor(() => expect(pedidosA(red, '/activities', 'POST')).toHaveLength(2))
+    const [a, b] = cuerpos(red)
+    expect(b).toMatchObject({ call_outcome: 'no_interesa' })
+    expect(b.client_token).not.toBe(a.client_token)
+  })
+
   it('"volver a llamar" sin fecha: "Elegí día y hora para volver a llamar", campos en rojo y no se manda nada', async () => {
     const red = simularRed({})
     render(<FormLlamada contactoId={CONTACTO} onGuardado={() => {}} reloj={reloj10} />)
@@ -225,6 +245,30 @@ describe('FormLlamada', () => {
 })
 
 describe('FormNota', () => {
+  it('tras un error, el mismo texto reintenta con el MISMO token y un texto corregido con uno nuevo', async () => {
+    let n = 0
+    const red = simularRed({
+      [POST]: () =>
+        ++n <= 2
+          ? { status: 500, body: { error: 'No se pudo guardar. Probá de nuevo.' } }
+          : { status: 201, body: { actividad: actividadDePrueba({ id: 'n-1' }), cadencia: null, pendiente: false } },
+    })
+    render(<FormNota contactoId={CONTACTO} onGuardada={() => {}} />)
+    const usr = u()
+    const campo = screen.getByRole('textbox', { name: 'Nota' })
+    await usr.type(campo, 'Hola')
+    await usr.click(screen.getByRole('button', { name: 'Guardar nota' }))
+    await screen.findByRole('alert')
+    await usr.click(screen.getByRole('button', { name: 'Guardar nota' }))
+    await waitFor(() => expect(pedidosA(red, '/activities', 'POST')).toHaveLength(2))
+    await usr.type(campo, ' corregido')
+    await usr.click(screen.getByRole('button', { name: 'Guardar nota' }))
+    await waitFor(() => expect(pedidosA(red, '/activities', 'POST')).toHaveLength(3))
+    const [a, b, c] = cuerpos(red).map((x) => x.client_token)
+    expect(b).toBe(a)
+    expect(c).not.toBe(a)
+  })
+
   it('vacía: "Escribí algo para guardar la nota" y no se manda nada', async () => {
     const red = simularRed({})
     render(<FormNota contactoId={CONTACTO} onGuardada={() => {}} />)

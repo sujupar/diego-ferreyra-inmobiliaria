@@ -224,6 +224,16 @@ describe('POST — client_token repetido en una nota', () => {
     expect(body.pendiente).toBe(false)
   })
 
+  it('mismo autor y contacto con OTRO texto → 409 que lo dice', async () => {
+    m.insertarActividad.mockResolvedValue({ ok: false, motivo: 'token_repetido' })
+    m.leerActividadPorToken.mockResolvedValue(
+      filaGuardada({ id: 'act-vieja', contact_id: 'c-1', deal_id: 'd-sol', kind: 'note', body: 'Hola', created_by: 'coord-1', client_token: TOKEN }),
+    )
+    const res = await post({ kind: 'note', body: 'Hola, corregido', client_token: TOKEN })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: 'Esa nota ya se había guardado con otro texto. Revisá la línea de tiempo.' })
+  })
+
   it('token de otro autor → 409 sin datos del otro registro', async () => {
     m.insertarActividad.mockResolvedValue({ ok: false, motivo: 'token_repetido' })
     m.leerActividadPorToken.mockResolvedValue(

@@ -43,3 +43,26 @@ export async function guardarActividad(contactoId: string, cuerpo: CuerpoActivid
 export function nuevoToken(): string {
   return crypto.randomUUID()
 }
+
+/** El último envío que falló: con qué token y con qué datos. */
+export interface EnvioFallido {
+  token: string
+  firma: string
+}
+
+/** Los datos de un envío, sin el token: lo que tiene que coincidir para que sea "el mismo". */
+export function firmaDelEnvio(cuerpo: CuerpoActividad): string {
+  // JSON.stringify omite las claves con `undefined`: el token no entra en la firma.
+  return JSON.stringify({ ...cuerpo, client_token: undefined })
+}
+
+/**
+ * Token con que se manda `cuerpo` (revisión 12.1). Un reintento tras un error con los MISMOS
+ * datos reusa el token (si el primer pedido sí llegó, no se duplica); si después del error se
+ * cambió cualquier dato, es otro guardado y va con un token nuevo. Con el mismo token, el
+ * servidor respondería 409 "ya se había guardado con otros datos".
+ */
+export function tokenParaEnviar(actual: string, cuerpo: CuerpoActividad, fallido: EnvioFallido | null): string {
+  if (fallido && fallido.token === actual && fallido.firma !== firmaDelEnvio(cuerpo)) return nuevoToken()
+  return actual
+}
