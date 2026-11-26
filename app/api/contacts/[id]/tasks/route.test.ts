@@ -148,4 +148,19 @@ describe('GET /api/contacts/[id]/tasks', () => {
     expect((await res.json()).error).toMatch(/Probá de nuevo/)
     err.mockRestore()
   })
+
+  // Tarea 9.7, escenario de crm-cadencia-llamadas "El proceso se cierra con tareas de la
+  // cadencia pendientes": cerrar un proceso no completa ni descarta tareas, y la ficha
+  // las sigue mostrando hasta que alguien las complete a mano.
+  it.each(['lost', 'captured'])('con el proceso en %s, la "Llamada 2" pendiente se sigue devolviendo', async (stage) => {
+    m.leerProcesosDelContacto.mockResolvedValue({ existe: true, procesos: [proceso('d-cerrado', 'coord-1', stage)] })
+    const llamada2 = tarea('t-llamada-2', { title: 'Llamada 2 a María', deal_id: 'd-cerrado', source_activity_id: 'a-1' })
+    m.getPendingTasksForContact.mockResolvedValue([llamada2])
+    const res = await get()
+    expect(res.status).toBe(200)
+    const cuerpo = await res.json()
+    expect(cuerpo.tareas.map((t: { id: string }) => t.id)).toEqual(['t-llamada-2'])
+    expect(cuerpo.total).toBe(1)
+    expect(m.getPendingTasksForContact).toHaveBeenCalledWith('c-1', ['d-cerrado'])
+  })
 })
