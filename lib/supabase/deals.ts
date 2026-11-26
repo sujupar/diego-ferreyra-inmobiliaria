@@ -5,8 +5,10 @@ function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-// lib/supabase/deals.ts — helper de enganche (dynamic import: nunca rompe el flujo)
-async function syncMailchimpBestEffort(dealId: string): Promise<void> {
+// lib/supabase/deals.ts — helper de enganche (dynamic import: nunca rompe el flujo).
+// Exportada para `POST /api/deals` con `from_deal_id` y para `undo-lost`
+// (crm-ficha-y-llamadas, D9): ahí la llama la ruta, después de guardar el contacto.
+export async function syncMailchimpBestEffort(dealId: string): Promise<void> {
   try {
     const { syncDealToMailchimp } = await import('@/lib/integrations/mailchimp/sync-deal')
     await syncDealToMailchimp(dealId)
@@ -43,12 +45,12 @@ export const DEAL_STAGES: { key: DealStage; label: string; color: string }[] = [
 export interface DealInput {
   contact_id: string
   property_address: string
-  scheduled_date?: string
-  scheduled_time?: string
-  origin?: string
+  scheduled_date?: string | null
+  scheduled_time?: string | null
+  origin?: string | null
   assigned_to?: string
   created_by?: string
-  notes?: string
+  notes?: string | null
   property_type?: 'departamento' | 'casa' | 'ph' | 'otro'
   property_type_other?: string | null
   neighborhood?: string
@@ -219,6 +221,83 @@ export async function updateDealStage(id: string, stage: DealStage, notes?: stri
   const { error } = await getAdmin().from('deals').update(updates).eq('id', id)
   if (error) throw error
   await syncMailchimpBestEffort(id)
+}
+
+/** Lo que `POST /api/deals` con `from_deal_id` necesita leer del proceso (D9, paso 2). */
+export interface ProcesoParaConvertir {
+  id: string
+  stage: string
+  scheduled_date: string | null
+  origin: string | null
+  assigned_to: string | null
+  contact_id: string | null
+  notes: string | null
+  created_by: string | null
+}
+
+export async function leerProcesoParaConvertir(id: string): Promise<ProcesoParaConvertir | null> {
+  const { data, error } = await getAdmin()
+    .from('deals')
+    .select('id, stage, scheduled_date, origin, assigned_to, contact_id, notes, created_by')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw new Error(`leerProcesoParaConvertir: ${error.message}`)
+  return (data as ProcesoParaConvertir | null) ?? null
+}
+
+/** Lo que la ruta calculó para convertir una solicitud (D9, paso 4). */
+export interface CamposConversion {
+  scheduled_date: string
+  scheduled_time: string | null
+  assigned_to: string
+  property_address: string
+  property_type: 'departamento' | 'casa' | 'ph' | 'otro'
+  property_type_other: string | null
+  neighborhood: string
+  rooms: number
+  covered_area: number | null
+  /** Solo si hay que escribirlas: la ruta ya juntó las anteriores con el texto nuevo. */
+  notes?: string | null
+  /** Solo si el proceso no tenía `created_by` (la ruta lo decide con la fila leída). */
+  created_by?: string
+}
+
+/**
+ * Convierte una solicitud en tasación coordinada SIN crear otro proceso
+ * (crm-ficha-y-llamadas, D9 paso 4). El filtro de etapa va en el propio `update`: si
+ * entre la lectura de la ruta y esta escritura el proceso cambió de etapa, no se toca
+ * nada y devuelve `false` (la ruta responde 409). Nunca escribe `contact_id` ni `origin`
+ * (el proceso sigue contando como del embudo) y NO llama a Mailchimp: la sincronización
+ * busca a la persona por el email del contacto, que la ruta guarda después.
+ */
+export async function convertirSolicitud(id: string, campos: CamposConversion): Promise<boolean> {
+  const ahora = new Date().toISOString()
+  // Lista cerrada: aunque la entrada traiga de más, al `update` va solo esto.
+  const updates: Record<string, unknown> = {
+    scheduled_date: campos.scheduled_date,
+    scheduled_time: campos.scheduled_time,
+    assigned_to: campos.assigned_to,
+    property_address: campos.property_address,
+    property_type: campos.property_type,
+    property_type_other: campos.property_type_other,
+    neighborhood: campos.neighborhood,
+    rooms: campos.rooms,
+    covered_area: campos.covered_area,
+    stage: 'scheduled',
+    stage_changed_at: ahora,
+    updated_at: ahora,
+  }
+  if (campos.notes !== undefined) updates.notes = campos.notes
+  if (campos.created_by !== undefined) updates.created_by = campos.created_by
+
+  const { data, error } = await getAdmin()
+    .from('deals')
+    .update(updates)
+    .eq('id', id)
+    .or('stage.eq.request,and(stage.eq.scheduled,scheduled_date.is.null)')
+    .select('id')
+  if (error) throw new Error(`convertirSolicitud: ${error.message}`)
+  return (data ?? []).length > 0
 }
 
 export async function updateDealNotes(id: string, notes: string) {
