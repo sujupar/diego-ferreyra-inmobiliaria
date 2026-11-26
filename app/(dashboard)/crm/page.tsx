@@ -21,6 +21,7 @@ import { ORIGIN_LABELS } from './_components/constants'
 import { timeAgo } from './_components/format'
 import { StagePipeline } from './_components/StagePipeline'
 import { DealsList } from './_components/DealsList'
+import { EnlaceContacto } from '@/components/crm/EnlaceContacto'
 import type { Deal } from './_components/types'
 
 const PAGE_SIZE = 50
@@ -473,7 +474,8 @@ function CRMClient() {
           <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">{r.contact_name.charAt(0).toUpperCase()}</span>
         </div>
         <div>
-          <span className="font-medium text-sm">{r.contact_name}</span>
+          {/* El nombre abre la ficha (11.1); el clic no sube a la fila, que abre el proceso. */}
+          <EnlaceContacto contactoId={r.contacts?.id} rol={userInfo?.role} detenerClic className="font-medium text-sm">{r.contact_name}</EnlaceContacto>
           {r.contact_phone && <span className="block text-xs text-muted-foreground">{r.contact_phone}</span>}
         </div>
       </div>
@@ -671,6 +673,7 @@ function CRMClient() {
           selectedIds={selectedIds}
           onToggleSelection={toggleSelection}
           isGlobal={!!isGlobal}
+          rol={userInfo?.role ?? null}
         />
       )}
 

@@ -12,6 +12,7 @@ import { DateRangeFilter } from '@/components/filters/DateRangeFilter'
 import { useFiltrosUrl } from '@/lib/filters/use-filtros-url'
 import { usePedidosVersionados } from '@/lib/filters/use-pedidos-versionados'
 import { DataTable, Column } from '@/components/ui/DataTable'
+import { EnlaceContacto } from '@/components/crm/EnlaceContacto'
 import { BulkActionsBar } from '@/components/ui/BulkActionsBar'
 import { Loader2, Plus, User, Phone, Mail, Calendar, ChevronRight, Search, LayoutList, Table2, Trash2 } from 'lucide-react'
 
@@ -320,7 +321,11 @@ function ContactsClient() {
   // llamarlo. La fecha de alta se esconde: no cambia ninguna decisión en la
   // calle y es lo que menos aporta de las cinco columnas.
   const columns: Column<Contact>[] = [
-    { key: 'full_name', label: 'Nombre', sortable: true, card: 'title', render: r => <span className="font-medium">{r.full_name}</span> },
+    // El nombre es un enlace de verdad a la ficha (crm-ficha-y-llamadas, 11.1): se abre con
+    // el teclado y en otra pestaña. El clic no sube a la fila, que navega al mismo lugar.
+    { key: 'full_name', label: 'Nombre', sortable: true, card: 'title', render: r => (
+      <EnlaceContacto contactoId={r.id} rol={userInfo?.role} detenerClic className="font-medium">{r.full_name}</EnlaceContacto>
+    ) },
     { key: 'phone', label: 'Telefono', sortable: true, card: 'meta', render: r => <span className="text-muted-foreground">{r.phone || '—'}</span> },
     // `wrap`: un email es UN token sin espacios y es la columna que estiraba la
     // tabla a ~820px. En la ficha se corta con puntos suspensivos.

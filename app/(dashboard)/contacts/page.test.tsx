@@ -374,3 +374,24 @@ describe('ContactsPage — "Limpiar todo" y el buscador (D34)', () => {
     expect(screen.getByText('Limpiar todo')).toBeInTheDocument()
   })
 })
+
+// crm-ficha-y-llamadas 11.1: el nombre es un enlace a la ficha nueva; nunca para el abogado.
+describe('ContactsPage — el nombre lleva a la ficha', () => {
+  it('con enlace: el nombre abre /contacts/<id>', async () => {
+    render(<ContactsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
+    await waitFor(() => expect(contactsCalls.length).toBe(1))
+    contactsCalls[0].d.resolve({ data: [contacto('c-7', 'Juan Perez')] })
+    const enlaces = await screen.findAllByRole('link', { name: 'Juan Perez' })
+    for (const a of enlaces) expect(a).toHaveAttribute('href', '/contacts/c-7')
+  })
+
+  it('sin enlace para el abogado', async () => {
+    render(<ContactsPage />)
+    authDeferred.resolve({ id: 'u1', role: 'abogado' })
+    await waitFor(() => expect(contactsCalls.length).toBe(1))
+    contactsCalls[0].d.resolve({ data: [contacto('c-7', 'Juan Perez')] })
+    await screen.findAllByText('Juan Perez')
+    expect(screen.queryByRole('link', { name: 'Juan Perez' })).toBeNull()
+  })
+})

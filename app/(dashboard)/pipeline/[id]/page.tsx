@@ -27,6 +27,7 @@ import { modoDeVisita } from '@/lib/pipeline/visita-datos'
 import { faltantesDelProceso, camposFaltantes, exigeDatosParaMover, esRespuestaDatosDelCliente } from '@/lib/deals/proceso-manual'
 import { CompletarDatosCliente } from '@/components/deals/CompletarDatosCliente'
 import { AsesorDelProceso } from '@/components/deals/AsesorDelProceso'
+import { EnlaceContacto } from '@/components/crm/EnlaceContacto'
 
 const VisitDataForm = dynamic(
   () => import('@/components/pipeline/VisitDataForm').then(m => ({ default: m.VisitDataForm })),
@@ -64,6 +65,8 @@ export default function DealDetailPage() {
   const [advancing, setAdvancing] = useState(false)
   const [notes, setNotes] = useState('')
   const [contactEditorOpen, setContactEditorOpen] = useState(false)
+  // Solo para no dibujarle al abogado el enlace a la ficha (11.1); el permiso real lo mira el servidor.
+  const [rol, setRol] = useState<string | null>(null)
 
   // Followup modal
   const [showFollowupModal, setShowFollowupModal] = useState(false)
@@ -118,6 +121,12 @@ export default function DealDetailPage() {
   }, [pedidoDeVisita, deal])
 
   useEffect(() => { fetchDeal() }, [id])
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(r => (r.ok ? r.json() : null))
+      .then((me: { role?: string } | null) => setRol(typeof me?.role === 'string' ? me.role : null))
+      .catch(err => console.error('[pipeline] no se pudo leer el rol', err))
+  }, [])
 
   // Auto-abre el editor cuando llegamos con ?editContact=1 (desde tasks).
   useEffect(() => {
@@ -460,7 +469,7 @@ export default function DealDetailPage() {
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <div className="grid grid-cols-2 gap-2">
-            <span className="text-muted-foreground">Nombre:</span><span className="font-medium">{contact.full_name}</span>
+            <span className="text-muted-foreground">Nombre:</span><EnlaceContacto contactoId={deal.contact_id} rol={rol} className="font-medium">{contact.full_name}</EnlaceContacto>
             {contact.phone && <><span className="text-muted-foreground flex items-center gap-1"><Phone className="h-3.5 w-3.5" />Teléfono:</span><span>{contact.phone}</span></>}
             {contact.email && <><span className="text-muted-foreground flex items-center gap-1"><Mail className="h-3.5 w-3.5" />Email:</span><span>{contact.email}</span></>}
             {deal.origin && <><span className="text-muted-foreground flex items-center gap-1"><Tag className="h-3.5 w-3.5" />Origen:</span><span>{ORIGIN_LABELS[deal.origin] || deal.origin}</span></>}
