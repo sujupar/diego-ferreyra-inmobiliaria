@@ -34,19 +34,43 @@ vi.mock('@/lib/supabase/tasks', () => ({ createTask: vi.fn(), createTaskForRole:
 vi.mock('@/lib/email/notifications/deal-created', () => ({ notifyDealCreated: vi.fn() }))
 vi.mock('@/lib/email/notify-with-escalation', () => ({ notifyWithEscalation: vi.fn() }))
 
-// El GET resuelve los nombres de los asesores con el cliente admin.
+// El GET resuelve los nombres de los asesores con el cliente admin. El POST (test del
+// escenario de la tarea 5.6) busca el contacto por email y después por teléfono.
+const { base } = vi.hoisted(() => ({
+  base: {
+    contactoPorTelefono: null as null | { id: string },
+    contactosInsertados: [] as Record<string, unknown>[],
+  },
+}))
 vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({
     from: () => {
+      let porTelefono = false
       const q: Record<string, unknown> = {}
       q.select = () => q
-      q.in = () => Promise.resolve({ data: [], error: null })
+      q.eq = (col: string) => { porTelefono = col === 'phone_norm' || col === 'phone'; return q }
+      q.order = () => q
+      q.limit = () => q
+      q.maybeSingle = async () => ({ data: porTelefono ? base.contactoPorTelefono : null, error: null })
+      q.in = () => {
+        const r: Record<string, unknown> = { ...q }
+        r.then = (ok: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(ok)
+        return r
+      }
+      q.insert = (fila: Record<string, unknown>) => {
+        base.contactosInsertados.push(fila)
+        return { select: () => ({ single: async () => ({ data: { id: 'contacto-nuevo' }, error: null }) }) }
+      }
       return q
     },
   }),
 }))
 
-import { GET } from './route'
+import { GET, POST } from './route'
+import { createDeal } from '@/lib/supabase/deals'
+import { requirePermission } from '@/lib/auth/require-role'
+import { puedeVerContacto } from '@/lib/auth/contact-access'
+import { NextRequest } from 'next/server'
 
 const AJENO = 'otro-asesor-9'
 
@@ -151,5 +175,43 @@ describe('GET /api/deals — alcance forzado en el servidor', () => {
       contact_email: 'a@b.c',
       assigned_to_name: '',
     })
+  })
+})
+
+// Escenario "Asesor coordina una tasación con el teléfono de una persona ya cargada"
+// (spec crm-ficha-contacto, tarea 5.6). Es un test de lo que YA hace la ruta: si falla,
+// no se "arregla" la ruta sin avisar.
+describe('POST /api/deals — asesor coordina con el teléfono de una persona ya cargada', () => {
+  const asesor = { id: 'asesor-1', email: 'a@ejemplo.com', profile: { id: 'asesor-1', role: 'asesor' } }
+  const cuerpo = {
+    contact_name: 'Marta Gómez', contact_phone: '11 5555-4444', contact_email: 'marta.nueva@example.com',
+    property_address: 'Av. Belgrano 1500', scheduled_date: '2026-12-01', origin: 'referido',
+    property_type: 'departamento', neighborhood: 'Monserrat', rooms: 2,
+  }
+  beforeEach(() => {
+    base.contactoPorTelefono = { id: 'contacto-de-otro' }
+    base.contactosInsertados = []
+    vi.mocked(requirePermission).mockResolvedValue(asesor as never)
+    vi.mocked(createDeal).mockReset()
+    vi.mocked(createDeal).mockResolvedValue('deal-nuevo')
+  })
+
+  it('responde 200 como hoy, no inserta un contacto nuevo y el proceso queda con ese contacto y a su nombre', async () => {
+    const res = await POST(new NextRequest('http://local/api/deals', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(cuerpo),
+    }))
+    expect(res.status).toBe(200)
+    expect(await res.json()).toEqual({ success: true, id: 'deal-nuevo', contact_id: 'contacto-de-otro' })
+    expect(base.contactosInsertados).toEqual([])
+    expect(vi.mocked(createDeal).mock.calls[0][0]).toMatchObject({ contact_id: 'contacto-de-otro', assigned_to: 'asesor-1' })
+  })
+
+  it('con ese proceso a su nombre, el contacto ya se le abre (puedeVerContacto)', () => {
+    expect(
+      puedeVerContacto(
+        { id: 'asesor-1', role: 'asesor' },
+        { assigned_to: 'otro-asesor', created_by: 'otro-asesor', asesoresDeProcesos: ['asesor-1'], asesoresDeTasaciones: [] },
+      ),
+    ).toBe(true)
   })
 })

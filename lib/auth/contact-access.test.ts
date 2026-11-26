@@ -68,6 +68,11 @@ describe('puedeVerContacto', () => {
   it('el asesor no ve un contacto con un proceso de otro asesor', () => {
     expect(puedeVerContacto(asesor, { ...sinVinculos, assigned_to: 'otro', asesoresDeProcesos: ['otro'] })).toBe(false)
   })
+  it('asesor coordina una tasación con el teléfono de una persona ya cargada: con ese proceso, el contacto se le abre (tarea 5.6)', () => {
+    expect(
+      puedeVerContacto(asesor, { assigned_to: 'otro', created_by: 'otro', asesoresDeProcesos: ['otro', 'ase-1'], asesoresDeTasaciones: [] }),
+    ).toBe(true)
+  })
   it('un proceso sin asesor no le da acceso a un asesor sin id', () => {
     expect(puedeVerContacto({ id: '', role: 'asesor' }, { ...sinVinculos, asesoresDeProcesos: [null] })).toBe(false)
   })
