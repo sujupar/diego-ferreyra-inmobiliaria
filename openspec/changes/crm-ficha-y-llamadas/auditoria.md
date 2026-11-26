@@ -336,3 +336,37 @@ Menores (8):
 
 `npx -y @fission-ai/openspec@2.2.0 validate crm-ficha-y-llamadas --strict` pasa después de
 estas correcciones. Falta que un auditor nuevo las confirme.
+
+## Revisión del código, 12.1 (2026-11-26)
+
+Revisión adversarial del diff y revisión de seguridad (tarea 12.1). Se pidió mirar en
+especial: actividad de otro contacto, `client_token` ajeno, conversión de una solicitud
+ajena y RLS de solo lectura. Esas cuatro ya estaban cubiertas (lectura de la actividad por
+id + contacto, 409 sin datos ajenos, `motivoNoConvertir`, policy única de SELECT). Cada
+hallazgo de abajo se verificó leyendo el código antes de corregirlo, con un test que se vio
+fallar primero; todos resultaron reales. Un commit por hallazgo en `feat/crm-ficha-y-llamadas`.
+
+| # | Hallazgo | Peso | Qué se hizo | Commit |
+|---|---|---|---|---|
+| S1 | `tasks.source_activity_id` / `closed_by_activity_id` escribibles con sesión propia (policies viejas de `tasks`) | seguridad, baja | Migración `20261126000001` con trigger BEFORE `trg_tasks_columnas_cadencia_solo_servidor`: 42501 si una sesión que no es `service_role` las manda al insertar o las cambia al editar; deja pasar el `SET NULL` de sus FK (`pg_trigger_depth() > 1`) y la conexión directa sin JWT. Aplicada dos veces con `scripts/apply-tasks-cadencia-solo-servidor-pg.ts` (antes, `--solo-verificar` falló: el insert de `authenticated` pasaba) | `cac46b2f` |
+| 1 | `client_token` repetido con otros datos devolvía la fila vieja en silencio | media | `esElMismoGuardado` (tipo, resultado, `callback_at` como instante, texto NFC): distinto → 409 "Esa llamada ya se había guardado con otros datos…" (nota: "…con otro texto…"). `FormLlamada`/`FormNota` renuevan el token si cambia un dato después de un error (`tokenParaEnviar`) | `314f96c2` |
+| 2 | `PUT /api/tasks/[id]` completaba/descartaba cualquier tarea solo con sesión | media | Tarea de quien pide o `pipeline.view_all` (= policy de la base); 404 si no existe o el id no es uuid. **Desvío deliberado del pedido:** no hay 403 de rol para el abogado, porque recibe tareas propias (`review_property` de `legal-submit`) y cerrarle la ruta le impediría terminarlas; recibe 403 solo para tareas ajenas. Consumidores revisados: `/tasks` (solo propias) y `LateralTareas` (la coordinación cierra las de cualquiera; un asesor que toca el tilde de una tarea ajena ve "Esta tarea es de otra persona…") | `2b1cc4f7` |
+| 3 | `POST /api/deals` no validaba el `assigned_to` elegido por la coordinación | media-baja | `esAsesorAsignable` antes de convertir y antes del alta: 400 "Ese usuario no puede tener procesos asignados (tiene que ser un asesor activo)." sin escribir nada | `fa335877` |
+| 4 | `reintentarCadencia` sin `catch` | baja | `console.error` + toast de error; el botón se puede volver a tocar | `cc86c3a6` |
+| 5 | "Hoy" en UTC en `getMyTasks` y `/tasks` | baja | `enArgentina(new Date()).fecha` en los tres lugares; pruebas a las 21:30 de Argentina. Docs (design Risks, tasks 12.3 y 13.5) dicen que quedó corregido | `bc3a476a` |
+| 6 | `ContactEditor` ignoraba `!r.ok` al cargar | baja | `leerJson`; ante error muestra el mensaje real con Cerrar/Reintentar y NO el formulario vacío (guardarlo pisaba datos con vacíos) | `113458c3` |
+| 7 | Anular con fallo al deshacer tareas: 500 genérico y la ficha la seguía mostrando | baja | `{ code: 'ANULADA_SIN_TAREAS' }`; la ficha la saca de la lista, muestra el mensaje y "Reintentar" repite solo las tareas | `84b6598a` |
+| 8 | Ids no uuid → 500 en `app/api/contacts/[id]/**` | baja | `esUuid` (`lib/crm/id-valido.ts`) en las 8 rutas (contacto y registro) y en `existeContacto` → 404. Las pruebas de esas rutas pasaron a ids con forma de uuid | `04fd0791` |
+| 9 | `EnlaceContacto` enlazaba para `agent`/`viewer`/roles desconocidos | baja | Decide `alcanceContactos(rol) === 'ninguno'` | `fa91617b` |
+
+Pruebas al cerrar: `npx vitest run --config vitest.crm.config.ts` → 88 archivos, 1429
+pruebas, todas pasan; `npx tsc --noEmit -p tsconfig.crm.json` → sin errores; `npx eslint`
+sobre lo tocado → 0 errores (1 aviso previo en `app/(dashboard)/tasks/page.movil.test.tsx`,
+que no se tocó). Configs: `vitest.crm.config.ts` suma `app/*/tasks/**/*.test.tsx` y
+`lib/supabase/actividades*.test.ts`; `tsconfig.crm.json` suma el script de la migración.
+
+**Queda para 14.2 (QA en la vista previa):** hallazgos 1, 2, 4, 6 y 7 tocan pantalla y se
+repiten en la vista previa a 390 y 1280 px: corregir una llamada después de un error,
+tocar el tilde de una tarea ajena como asesor, cortar la red al reintentar, abrir el
+editor de un contacto sin acceso, y anular con la parte de tareas caída.
+
