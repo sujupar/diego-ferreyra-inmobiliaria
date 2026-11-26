@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { ultimos10Digitos } from '@/lib/phone/ultimos-digitos'
+import { textoNotaDeVinculo } from '@/lib/crm/actividades'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -55,4 +56,31 @@ export async function encontrarOCrearContacto(datos: DatosContacto): Promise<str
     .single()
   if (error) throw error
   return nuevo.id as string
+}
+
+/**
+ * Deja en la ficha del contacto el rastro de que un asesor lo vinculó a su proceso al
+ * completar los datos del cliente, cuando antes no podía ver a esa persona
+ * (`PUT /api/deals/[id]/cliente`, crm-ficha-y-llamadas D4). Es la única nota que no
+ * escribe una persona: va con `automatic = true`, y por eso el asesor que figura como
+ * autor no la puede editar ni borrar. Sin `occurred_at` (lo pone la base) ni
+ * `client_token`. LANZA si la base devuelve error: supabase-js no lanza solo.
+ */
+export async function registrarNotaDeVinculo(datos: {
+  contactId: string
+  dealId: string
+  autorId: string
+  direccion: string | null
+}): Promise<void> {
+  const { error } = await getAdmin()
+    .from('contact_activities')
+    .insert({
+      contact_id: datos.contactId,
+      deal_id: datos.dealId,
+      created_by: datos.autorId,
+      kind: 'note',
+      automatic: true,
+      body: textoNotaDeVinculo(datos.direccion),
+    })
+  if (error) throw new Error(`registrarNotaDeVinculo: ${error.message}`)
 }

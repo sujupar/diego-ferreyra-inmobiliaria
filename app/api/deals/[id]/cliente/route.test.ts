@@ -16,17 +16,29 @@ const { estado } = vi.hoisted(() => ({
     encontrado: null as null | Contacto,
     escrituras: [] as { tabla: string; id: string; valores: Record<string, unknown> }[],
     faltanDespues: [] as string[],
+    // crm-ficha-y-llamadas, tarea 5.5
+    veiaElContacto: true,
+    notaFalla: false,
+    updateDealsError: null as null | { message: string },
+    orden: [] as string[],
   },
 }))
 
 vi.mock('@/lib/auth/require-role', () => ({ requireAuth: vi.fn(async () => estado.usuario) }))
-vi.mock('@/lib/auth/entity-access', () => ({ canAccessDeal: vi.fn(async () => estado.acceso) }))
+vi.mock('@/lib/auth/entity-access', () => ({
+  canAccessDeal: vi.fn(async () => estado.acceso),
+  canAccessContact: vi.fn(async () => { estado.orden.push('canAccessContact'); return estado.veiaElContacto }),
+}))
 vi.mock('@/lib/deals/asesor-asignable', () => ({ esAsesorAsignable: vi.fn(async () => estado.asignable) }))
 vi.mock('@/lib/supabase/contactos', () => ({
   encontrarOCrearContacto: vi.fn(async () => {
     const c = estado.encontrado!
     estado.contactos[c.id] = c
     return c.id
+  }),
+  registrarNotaDeVinculo: vi.fn(async () => {
+    estado.orden.push('nota')
+    if (estado.notaFalla) throw new Error('insert falló')
   }),
 }))
 vi.mock('@/lib/deals/datos-cliente', () => ({
@@ -44,7 +56,12 @@ vi.mock('@supabase/supabase-js', () => ({
         error: null,
       })
       q.update = (valores: Record<string, unknown>) => ({
-        eq: async (_c: string, id: string) => { estado.escrituras.push({ tabla, id, valores }); return { error: null } },
+        eq: async (_c: string, id: string) => {
+          estado.orden.push(`update:${tabla}`)
+          if (tabla === 'deals' && estado.updateDealsError) return { error: estado.updateDealsError }
+          estado.escrituras.push({ tabla, id, valores })
+          return { error: null }
+        },
       })
       return q
     },
@@ -70,6 +87,11 @@ beforeEach(() => {
   estado.encontrado = null
   estado.escrituras = []
   estado.faltanDespues = []
+  estado.veiaElContacto = true
+  estado.notaFalla = false
+  estado.updateDealsError = null
+  estado.orden = []
+  vi.clearAllMocks()
 })
 
 describe('PUT /api/deals/[id]/cliente', () => {
@@ -153,5 +175,72 @@ describe('PUT /api/deals/[id]/cliente', () => {
   it('proceso inexistente: 404', async () => {
     estado.deal = null
     expect((await PUT(pedido(datos), { params })).status).toBe(404)
+  })
+})
+
+describe('PUT /api/deals/[id]/cliente — rastro al enganchar un contacto ajeno (tarea 5.5)', () => {
+  const asesor = () => { estado.usuario = { id: 'asesor-1', profile: { id: 'asesor-1', role: 'asesor' } } }
+  const sinContacto = (encontrado: Contacto = { id: 'c-real', full_name: 'Marta G.', phone: '1155554444', email: 'otra@example.com' }) => {
+    estado.deal!.contact_id = null
+    estado.encontrado = encontrado
+  }
+  const notaPedida = async () => (await import('@/lib/supabase/contactos')).registrarNotaDeVinculo as unknown as ReturnType<typeof vi.fn>
+  const accesoContacto = async () => (await import('@/lib/auth/entity-access')).canAccessContact as unknown as ReturnType<typeof vi.fn>
+
+  it('asesor, proceso sin contacto, contacto que ya existía y no podía ver → 200, vinculado y nota pedida', async () => {
+    asesor(); sinContacto(); estado.veiaElContacto = false
+    const res = await PUT(pedido(datos), { params })
+    expect(res.status).toBe(200)
+    expect(escriturasDe('deals')[0].valores).toMatchObject({ contact_id: 'c-real' })
+    expect(await notaPedida()).toHaveBeenCalledWith({ contactId: 'c-real', dealId: 'deal-1', autorId: 'asesor-1', direccion: 'Formosa 5176, CABA' })
+  })
+  it('contacto recién creado → sin nota', async () => {
+    asesor(); sinContacto({ id: 'c-nuevo', full_name: 'Marta Gómez', phone: '1155554444', email: 'marta@example.com' }); estado.veiaElContacto = true
+    expect((await PUT(pedido(datos), { params })).status).toBe(200)
+    expect(await notaPedida()).not.toHaveBeenCalled()
+  })
+  it('contacto que ya podía ver → sin nota', async () => {
+    asesor(); sinContacto(); estado.veiaElContacto = true
+    await PUT(pedido(datos), { params })
+    expect(await notaPedida()).not.toHaveBeenCalled()
+  })
+  it('coordinadora → sin nota y no se consulta canAccessContact', async () => {
+    estado.usuario = { id: 'coord-1', profile: { id: 'coord-1', role: 'coordinador' } }
+    sinContacto(); estado.veiaElContacto = false
+    expect((await PUT(pedido(datos), { params })).status).toBe(200)
+    expect(await notaPedida()).not.toHaveBeenCalled()
+    expect(await accesoContacto()).not.toHaveBeenCalled()
+  })
+  it('proceso que ya tenía contacto → sin nota y sin consultar', async () => {
+    asesor(); estado.veiaElContacto = false
+    expect((await PUT(pedido(datos), { params })).status).toBe(200)
+    expect(await notaPedida()).not.toHaveBeenCalled()
+    expect(await accesoContacto()).not.toHaveBeenCalled()
+  })
+  it('canAccessContact se consulta ANTES del update de deals, y la nota va después', async () => {
+    asesor(); sinContacto(); estado.veiaElContacto = false
+    await PUT(pedido(datos), { params })
+    const i = (x: string) => estado.orden.indexOf(x)
+    expect(i('canAccessContact')).toBeGreaterThanOrEqual(0)
+    expect(i('canAccessContact')).toBeLessThan(i('update:deals'))
+    expect(i('update:deals')).toBeLessThan(i('nota'))
+  })
+  it('la nota falla → 200, el vínculo queda y console.error una vez, sin datos de la persona', async () => {
+    asesor(); sinContacto(); estado.veiaElContacto = false; estado.notaFalla = true
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await PUT(pedido(datos), { params })
+    expect(res.status).toBe(200)
+    expect(escriturasDe('deals')[0].valores).toMatchObject({ contact_id: 'c-real' })
+    expect(err).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(err.mock.calls[0])).not.toContain('Marta')
+    expect(JSON.stringify(err.mock.calls[0])).not.toContain('5555')
+    err.mockRestore()
+  })
+  it('el update del proceso falla → 500 y no se pide la nota', async () => {
+    asesor(); sinContacto(); estado.veiaElContacto = false; estado.updateDealsError = { message: 'caída' }
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect((await PUT(pedido(datos), { params })).status).toBe(500)
+    expect(await notaPedida()).not.toHaveBeenCalled()
+    err.mockRestore()
   })
 })
