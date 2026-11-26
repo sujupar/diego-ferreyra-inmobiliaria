@@ -30,14 +30,44 @@ diseño).
 
 ### Estado
 
-**Abierto.** Falta una cosa antes de construir (la 2):
+**Abierto.** La verificación final hizo cuatro rondas y no terminó limpia: la última
+(ronda 4) todavía encontró 2 hallazgos de peso.
 
 1. **Respuestas del dueño: recibidas el 2026-11-25.** Contestó "Ok a todo": quedó
    confirmada la opción más prudente de cada pregunta que cambia lo que se construye
-   (`design.md`, "Open Questions", grupo A). El grupo B sigue abierto y no frena.
-2. **Verificación final.** Las correcciones de la ronda 3 las verificó quien las hizo
-   (validación estricta incluida), no un auditor nuevo. Con las respuestas del dueño
-   aplicadas, pasa una última ronda de dos auditores y recién ahí se cierra esta sección.
+   (`design.md`, "Open Questions", grupo A). El grupo B sigue con su opción por defecto y
+   no frena.
+2. **Verificación final: hecha, sin cierre limpio.** Los 64 hallazgos que quedaron en pie
+   en las cuatro rondas (9 de peso) se corrigieron, y la validación estricta pasa. Pero la
+   regla para cerrar era una ronda sin hallazgos de peso, y esa ronda no ocurrió.
+
+Lo que falta para cerrar:
+
+- Que un auditor nuevo revise las correcciones de la ronda 4. Hasta ahora las verificó
+  solo quien las hizo; no hay una ronda 5 en el registro. Las dos de peso son el permiso
+  que un asesor se podía dar solo al vincular un contacto ajeno (D4, tarea 5.4) y la
+  situación de prueba `solicitud-para-asesor` del QA de permisos (2.5, 12.5, 14.5).
+- Que esa ronda no encuentre nada de peso.
+
+Mientras tanto, lo que se construya parte de artefactos corregidos pero con esa última
+tanda sin segunda mirada. La auditoría del código (grupo 14 de `tasks.md`) tiene que
+mirar con atención especial esos dos puntos.
+
+### Verificación final (2026-11-25)
+
+Una fila por ronda. "Primer equipo" es lo que encontró el primer nivel de auditores; "en
+pie" es lo que quedó después del segundo nivel y de comprobar cada hallazgo contra el
+código o los documentos. El detalle de cada ronda está más abajo.
+
+| Ronda | Hallazgos del primer equipo | De peso, primer equipo | Hallazgos en pie | De peso en pie | Qué se hizo |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 20 | 4 | 17 | 3 | Corregidos los 17 |
+| 2 | 19 | 3 | 18 | 3 | Corregidos los 18 |
+| 3 | 16 | 0 | 16 | 1 | Corregidos los 16. El de peso lo sumó el segundo nivel |
+| 4 | 14 | 2 | 13 | 2 | Corregidos los 13. Sin ronda posterior que lo confirme |
+
+Resultado: **no terminó limpia**. Los hallazgos de peso bajaron de 3 a 1 y volvieron a 2
+en la última ronda, así que no se puede decir que los artefactos ya no tienen nada de peso.
 
 ### Verificación final, ronda 1 (2026-11-25)
 
