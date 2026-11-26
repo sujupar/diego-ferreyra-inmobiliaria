@@ -143,6 +143,13 @@ export function FichaContacto({
           body: JSON.stringify({ accion: 'anular' }),
         }),
       )
+      if (!r.ok && r.data?.code === 'ANULADA_SIN_TAREAS') {
+        // El registro YA quedó anulado; lo que falló es deshacer sus tareas (revisión 12.1).
+        // Sale de la lista igual, y "Reintentar" repite solo la parte de las tareas (D8).
+        sacarAnulada(a)
+        mostrarToast(r.error, { action: { label: 'Reintentar', onClick: () => void anular(a, desdeToast) } }, true)
+        return true
+      }
       if (!r.ok) {
         // Anular se puede repetir (D8): se ofrece reintentar.
         mostrarToast(r.error, { action: { label: 'Reintentar', onClick: () => void anular(a, desdeToast) } }, true)
@@ -153,6 +160,13 @@ export function FichaContacto({
       mostrarToast('No se pudo deshacer. Probá de nuevo.', { action: { label: 'Reintentar', onClick: () => void anular(a, desdeToast) } }, true)
       return false
     }
+    sacarAnulada(a)
+    mostrarToast(desdeToast ? 'Listo, se deshizo.' : a.kind === 'note' ? 'Nota borrada.' : 'Registro anulado.')
+    return true
+  }
+
+  /** Saca de la pantalla un registro ya anulado y vuelve a pedir lo que pudo cambiar. */
+  function sacarAnulada(a: ActividadDeFicha) {
     f.cambiarActividad((items) => items.filter((x) => x.id !== a.id))
     setAviso((v) => (v?.actividadId === a.id ? null : v))
     void f.recargarActividad()
@@ -160,8 +174,6 @@ export function FichaContacto({
       void f.recargarTareas()
       void f.recargarFicha()
     }
-    mostrarToast(desdeToast ? 'Listo, se deshizo.' : a.kind === 'note' ? 'Nota borrada.' : 'Registro anulado.')
-    return true
   }
 
   const alGuardarNota = (origen: Origen) => (r: RespuestaGuardado) => {

@@ -81,8 +81,10 @@ export async function PATCH(
     } catch (error) {
       // El registro ya quedó anulado; volver a pedir "anular" repite solo esta parte.
       console.error('PATCH …/activities/[activityId]: anulado, pero no se deshicieron sus tareas', { activityId, error })
+      // `code` distinguible (revisión 12.1): la pantalla tiene que sacar el registro de la
+      // lista (ya está anulado) y ofrecer reintentar solo la parte de las tareas.
       return NextResponse.json(
-        { error: 'Se anuló, pero no se pudieron deshacer sus tareas. Probá de nuevo.' },
+        { code: 'ANULADA_SIN_TAREAS', error: 'Se anuló, pero no se pudieron deshacer sus tareas. Probá de nuevo.' },
         { status: 500 },
       )
     }
