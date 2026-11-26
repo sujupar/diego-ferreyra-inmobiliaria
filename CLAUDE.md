@@ -486,6 +486,15 @@ POST   /api/properties/[id]/meta-launch-v2/[jobId]/cancel
 - **Decisión vigente:** se mantiene la personalización por ubicación (E2.5) → 1 texto por anuncio, y la variedad de copy se logra con **un texto DISTINTO por anuncio** (6 anuncios = 6 textos). Constante `MAX_TEXTS_WITH_CUSTOMIZATION = 1` en `meta-campaign-builder.ts`; `pickWindow()` reparte el pool de 10 textos sin que dos anuncios compartan el mismo.
 - **Si alguna vez se quiere rotación de 5 textos dentro de un anuncio:** hay que RENUNCIAR a `asset_customization_rules` (una sola imagen para todos los placements).
 
+### Lista de exclusión "DF · EXCLUIR Pidieron tasación" — se reemplaza sola (2026-11-26, PR #93)
+
+- **Qué es:** público de lista de clientes `120248925449950656`, excluido en Validados, Pruebas y Remarketing de tasación. Job pg_cron `meta-exclusion-sync` (06:30 UTC) → `/api/cron/meta-exclusion-sync` → `POST /{público}/usersreplace` con todos los que pidieron tasación por el embudo o tuvieron una coordinada (cualquier origen), sin pruebas. Reglas y formato en `lib/marketing/exclusion-pidieron-tasacion.ts`.
+- **El formato NO se toca:** email en minúsculas y `549` + `phone_norm`, SHA-256. Es el de la carga manual del 25/11; si cambia, Meta deja de reconocer a los que ya estaban y el reemplazo los SACA.
+- **Freno:** con 0 personas o una caída de más del 20 % contra la última corrida buena no reemplaza y anota el motivo. Para una baja legítima: `?forzar=1` con el secreto. `?simular=1` calcula sin llamar a Meta.
+- **Trampa — `code 2650 / subcode 1870145` "Failed to update the custom audience":** Meta todavía está procesando un reemplazo anterior (`operation_status.code = 300` "Actualizando", puede durar más de una hora). No acepta otro mientras tanto. No es un error del código: esperar a `operation_status.code = 200` y reintentar. Una corrida por día no choca consigo misma; choca si alguien reemplaza a mano el mismo día.
+- **Editar el targeting de un conjunto por API vuelve a revisar sus anuncios:** el 25/11, sumar esta exclusión dejó a `ADNEW · VID03` y `ADNEW · VID06` "Actualización necesaria" con `4017029 "You do not have access to the WhatsApp Business Phone Number"` (el token de la plataforma no tiene ese número). Se arreglan publicándolos a mano desde el Administrador. Antes de tocar un conjunto por API, avisar que esos anuncios se van a caer.
+- **Detection:** `SELECT run_at, added, num_received, error FROM funnel_meta_sync_log WHERE stage='excluir_pidieron_tasacion' ORDER BY run_at DESC LIMIT 5;` — la última fila sin error tiene que ser de hoy.
+
 ### Meta: un anuncio que falla NO debe matar al lote (campaña de 3 de 6) — fix 2026-07-27
 
 - **Symptom:** campaña publicada con **3 anuncios en vez de 6** (aparecían "Ad 6", "Ad 5", "Ad 1"), y al reintentar `400 subcode 3858798 "El contenido de anuncio ya existe"`.
