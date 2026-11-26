@@ -111,11 +111,11 @@ comparando instantes y no textos), `UltimoContacto { texto, dias, alerta }` y
 contacto una llamada, un WhatsApp marcado y una visita (`deals.visited_at`). **Este change
 extiende ese módulo, no crea otro:** le suma lo que la fila necesita y la cabecera no (qué fue
 el contacto, la fecha de inicio del registro) con nombres que no chocan (D5), y usa la misma
-fuente de la visita (`deals.visited_at`, D2). Su spec `crm-ficha-contacto` todavía dice "Última
-llamada" (escenarios de la cabecera): este change **no** cambia la ficha por su cuenta (no trae
-delta de esa spec), así que si al empezar la ficha sigue diciendo "Última llamada", se para y se
-corrige primero en `crm-ficha-y-llamadas` (tarea 1.1). El texto relativo de la lista ("hace
-2 h") va en `lib/crm/formato-fecha.ts`, el mismo módulo de fechas de la ficha (D5): no
+fuente de la visita (`deals.visited_at`, D2). Su spec `crm-ficha-contacto` ya dice "Último
+contacto" en los escenarios de la cabecera, y la cabecera de `FichaContacto` también (verificado
+el 2026-11-26): este change **no** cambia la ficha por su cuenta (no trae delta de esa spec). El
+texto relativo de la lista ("hace 2 h") va en `lib/crm/formato-fecha.ts`, el mismo módulo de
+fechas de la ficha (D5, ya en la rama desde la tarea 9.1 de ese change, commit `30acc591`): no
 quedan dos formatos de "hace cuánto".
 
 ### D2. Base de datos: una función de lectura y un índice
@@ -246,15 +246,23 @@ Coordinador"). Cuando una completa la suya, la otra queda pendiente. En la vista
 Contactos del equipo, las copias de una misma tarea de coordinación cuentan como **una**,
 con "· coordinación" en lugar de un nombre; y si alguna copia se completó o descartó, ninguna
 cuenta. **Copias son solo las de `createTaskForRole`:** asignadas a coordinadores, sin
-`source_activity_id`, con el mismo `deal_id`, `type` y `title` y creadas en el mismo minuto.
+`source_activity_id`, con el mismo `deal_id`, `type` y `title` y creadas con **60 segundos o
+menos** de diferencia entre sí. Es una diferencia entre instantes, no "el mismo minuto" del
+reloj: `createTaskForRole` (`lib/supabase/tasks.ts:99-118`) inserta las copias una tras otra en
+un bucle, y dos hermanas creadas a las 12:00:59,9 y a las 12:01:00,1 caerían en minutos
+distintos si se truncara (hay un test con ese par).
 No alcanza con mismo título: la cadencia crea "Llamar a {nombre}" y "Enviar WhatsApp a
 {nombre}" una y otra vez en el mismo proceso (`lib/crm/cadencia.ts:150` y `:185`), y una
-completada la semana pasada no puede esconder la pendiente de hoy. Para eso la tanda 1 lee
-también las tareas de coordinación completadas o descartadas **creadas desde la más vieja
-de las copias pendientes** (no "los últimos 90 días": una copia de la cuenta de prueba que
-nadie completa puede tener meses, y su hermana completada quedaría afuera de una ventana fija),
-con `deal_id, type, title, assigned_to, status, created_at, source_activity_id`. En la vista de una coordinadora cuenta solo su
-copia, como pide la spec.
+completada la semana pasada no puede esconder la pendiente de hoy. Para eso se leen también
+las tareas de coordinación completadas o descartadas **creadas desde la copia pendiente más
+vieja menos 60 segundos** (lectura (d) de D4, en la tanda 2 porque necesita las pendientes de
+la tanda 1). No "los últimos 90 días": una copia de la cuenta de prueba que nadie completa
+puede tener meses, y su hermana completada quedaría afuera de una ventana fija. Y sin los 60
+segundos de margen quedaría afuera la hermana que nació milisegundos antes que la pendiente en
+el mismo bucle. Columnas: `deal_id, type, title, assigned_to, status, created_at,
+source_activity_id`; respeta el tope y avisa `truncado` como el resto. Contactos del equipo
+(`cargarContactos`, D6) hace la misma lectura con el mismo corte. En la vista de una
+coordinadora cuenta solo su copia, como pide la spec.
 
 **Primera llamada sin fecha.** La tarea de entrada de cada lead es `update_contact` **sin
 fecha** (`lib/funnel/side-effect-handlers.ts:45`, 516 de las 635 pendientes, y la ficha no la
@@ -304,16 +312,20 @@ plataforma cuesta su piso (sesión + red), así que la pantalla pide lo menos po
      (`id, type, title, assigned_to, deal_id, contact_id, due_date, due_time, all_day,
      channel, created_at, source_activity_id`), filtradas por `assigned_to` cuando la vista
      es de una persona;
-     (c) perfiles (`id, full_name, role, is_active`); (d) las tareas de coordinación
-     completadas o descartadas creadas desde la copia pendiente más vieja (`deal_id, type, title, assigned_to,
-     status, created_at, source_activity_id`, para no mostrar como pendiente una copia de una
-     tarea ya hecha, D3).
-   - Tanda 2: `rpc('crm_ultimos_contactos', { p_contactos })` con los contactos de (a).
+     (c) perfiles (`id, full_name, role, is_active`).
+   - Tanda 2 (en paralelo, porque las dos dependen de la tanda 1):
+     `rpc('crm_ultimos_contactos', { p_contactos })` con los contactos de (a); y (d) las tareas
+     de coordinación completadas o descartadas con `created_at` mayor o igual al `created_at`
+     de la copia pendiente más vieja de (b) **menos 60 segundos** (`deal_id, type, title,
+     assigned_to, status, created_at, source_activity_id`, para no mostrar como pendiente una
+     copia de una tarea ya hecha, D3). Si (b) no trajo ninguna copia pendiente de coordinación,
+     (d) no se lee; si (b) falló, tampoco (las tareas ya van con `'error'`).
    - Cada lectura pagina de a 1000 con `.range()` y orden fijo — procesos y contactos por
      `created_at desc, id` (así, pasado el tope, lo que queda son los más recientes, como dice
      el aviso), tareas por `id` (la API corta en 1000 sin
      avisar), con un tope de 3000 filas por fuente (`TOPE_FILAS`): pasado el tope devuelve
-     `truncado: true` y la pantalla lo avisa (spec "Listas largas"). Para la RPC se usa
+     `truncado: true` y la pantalla lo avisa (spec "Listas largas"); (d) también, con el mismo
+     tope y el mismo aviso. Para la RPC se usa
      `rpcPaginado` (`lib/supabase/rpc-paginado.ts`) con orden `contacto_id`. Contactos también
      pagina (868 hoy, cerca de la página de 1000).
    - **Un solo plazo de 15 s para todo el servicio** (una `AbortSignal.timeout(15000)`
@@ -325,9 +337,11 @@ plataforma cuesta su piso (sesión + red), así que la pantalla pide lo menos po
    - Tipos: `contact_activities` y la función no están en `types/database.types.ts`; se usa
      el mismo patrón que Consultas (`lib/consultas/datos.ts:21`, cliente sin tipar y tipos
      propios del resultado) en lugar de regenerar los tipos.
-   - Si falla (a), falla todo: 500 en la ruta, estado de error en la página. Si falla (b) o
-     la RPC, se arman las filas igual con `proximo: 'error'` o `ultimoContacto: 'error'` y
-     `fuentes` lo dice (spec "Estados…"). Nunca se rellena un dato que falló con un vacío.
+   - Si falla (a), falla todo: 500 en la ruta, estado de error en la página. Si falla (b), (d)
+     o la RPC, se arman las filas igual con `proximo: 'error'` o `ultimoContacto: 'error'` y
+     `fuentes` lo dice (spec "Estados…"). Sin (d) una copia ya completada se mostraría como
+     pendiente, así que su falla cuenta como falla de las tareas. Nunca se rellena un dato que
+     falló con un vacío.
 3. **El servidor arma las filas** con `armarFilasCartera` (puro, D5): una `FilaCartera` por
    proceso, con el próximo paso ya elegido para la persona de la vista y el último contacto
    ya resuelto. Se mandan **los dos segmentos** (abiertos y cerrados): así "Cerrados N" y
@@ -393,8 +407,8 @@ mismas tres fuentes: la cabecera dice "Último contacto: hace 4 días" y la fila
 Visita de tasación" para la misma persona.
 
 ```ts
-// lib/crm/formato-fecha.ts — YA EXISTE (lo está escribiendo crm-ficha-y-llamadas, sin commitear
-// al 2026-11-26): horaCorta, diaCorto, fechaExacta, fechaRelativa(instante, ahora),
+// lib/crm/formato-fecha.ts — YA EXISTE (de crm-ficha-y-llamadas, en la rama desde el commit
+// 30acc591): horaCorta, diaCorto, fechaExacta, fechaRelativa(instante, ahora),
 // cuandoEs(fecha, hora, ahora), EstadoVencimiento ('vencida'|'hoy'|'proxima'|'sinfecha') y
 // textoVencimiento(...). La cartera los USA tal cual y solo suma, con su test:
 export function haceCuanto(at: string, ahora: Date): string   // como fechaRelativa, pero desde 7 días siempre 'hace N días' (regla de la fila)
@@ -587,6 +601,10 @@ pueda ensanchar el alcance: el único es `ver_como`, validado.
   `.or('assigned_to.eq.<id>,user_id.eq.<id>')` y `.not('contact_id','is',null)`; nunca
   `select('*')`, CLAUDE.md "tumbó la base"); `contactoVisible` decide y **solo los visibles** se arman y se mandan, con las
   tareas del asesor.
+- Contactos (todas las vistas): `cargarContactos` hace la misma lectura (d) de D4, con el
+  mismo corte (copia pendiente de coordinación más vieja menos 60 segundos), el mismo tope y
+  el mismo `truncado`, en una segunda tanda después de las tareas pendientes. Sin eso, en
+  Contactos del equipo una copia cuya hermana ya se completó aparecería como pendiente.
 
 **Páginas.** `app/(dashboard)/crm/page.tsx` y `app/(dashboard)/contacts/page.tsx` pasan a ser
 componentes de servidor: `getUser()`; sin sesión, el middleware ya redirige; abogado →
@@ -653,7 +671,14 @@ por `lib/crm/cartera.ts`. `FilaProceso` es un `<Link>` con `aria-label="Abrir la
 
 Grep del 2026-11-26 (`grep -rn` sobre `app components lib`):
 
-- `app/(dashboard)/crm/_components/*` lo importan solo `crm/page.tsx` y `crm/page.test.tsx`.
+- `app/(dashboard)/crm/_components/*` lo importan `crm/page.tsx`, `crm/page.test.tsx`, los
+  propios `DealsList.tsx` y `StagePipeline.tsx` (que se borran) y **`lib/crm/ficha.ts:9`**, que
+  importa `CRM_STAGES` y `deriveCRMStage` de `crm-stages.ts` para `etapaDelCRM` (línea ~132,
+  usada en la cabecera y en la lista de procesos de la ficha). Sus etiquetas tampoco son las de
+  la spec: `crm-stages.ts` dice "No Realizada" y "Clase Gratuita", y `NOMBRE_ETAPA` dice "No
+  realizada" y "Clase gratuita". Por eso, **antes de borrar**, `etapaDelCRM` pasa a usar
+  `etapaCRM` + `NOMBRE_ETAPA` (test primero, que incluye que la ficha y la lista escriben igual
+  cada una de las diez etapas); recién después se borra `crm-stages.ts`.
   `deriveCRMStage`/`getCRMStageInfo`/`CRM_STAGES` aparecen además en **comentarios** de
   `lib/leads/tags.ts:52`, `lib/crm/deal-activo.ts` y `app/globals.css:367` (este último nombra
   a `DealsList` como "molde" de una clase). Se borran `DealsList.tsx`, `StagePipeline.tsx`,
@@ -779,8 +804,8 @@ decide. Se le nombran al dueño al abrir el PR (tarea 1.4).
    dirección" o solo la dirección.
 5. **Los grupos urgentes también paginan de a 25**, con su número en la cabecera. La maqueta
    los mostraba enteros porque eran dos o tres; con los datos reales podrían ser decenas.
-6. **"Sin contacto registrado"** (texto nuevo) para los procesos anteriores a la ficha, si el
-   dueño acepta la Open Question 1.
+6. **"Sin contacto registrado"** (texto nuevo) para los procesos anteriores a la ficha (el dueño
+   aceptó la opción por defecto de la Open Question 1 el 2026-11-26).
 7. **Cerrados de la coordinación = descartados sin asesor** (lo que hacía la maqueta), sin
    los de la clase gratuita (respuesta 3 del dueño). Nunca se le preguntó: se le nombra como
    supuesto.
@@ -792,7 +817,8 @@ decide. Se le nombran al dueño al abrir el PR (tarea 1.4).
    distintas ("¿está abierto?" y "¿a qué proceso le registro la llamada?").
 9. **Las tablas se arman por el ancho de la lista, no de la ventana** (D10): a 1024 px con el
    menú abierto se ve tabla.
-10. **La barra inferior** queda como hoy hasta la respuesta de la Open Question 2.
+10. **La barra inferior** queda como hoy (Open Question 2: el dueño eligió no tocarla el
+    2026-11-26).
 11. **El asesor ve también una Solicitud o una Clase gratuita a su nombre**, y su barra suma
     esa etapa solo si tiene alguna. La maqueta no las dibujaba (no había ejemplos) y el código
     de hoy se las esconde; esconderlas dejaría procesos suyos sin aparecer en ningún lado.
@@ -835,6 +861,10 @@ decide. Se le nombran al dueño al abrir el PR (tarea 1.4).
 - **[`INICIO_REGISTRO_CONTACTOS` mal puesto]** → si quedara antes del deploy real, vuelven
   los falsos "sin primer contacto"; si quedara muy después, se esconden solicitudes reales.
   La tarea 1.2 lo fija con la fecha del merge de la ficha y la 8.2 lo verifica con datos.
+- **[En Contactos, la visita de otro asesor]** el último contacto es de la persona, no del
+  proceso → un asesor puede ver "hace N días · Visita de tasación" de una visita hecha en un
+  proceso de otro asesor. Solo viaja el instante y el texto "Visita de tasación" (ni el proceso,
+  ni la dirección, ni el asesor), y coincide con lo que dice la cabecera de la ficha. Aceptado.
 - **[Las visitas de los históricos]** `visited_at` de los importados es la fecha que vino de
   la importación → "Último contacto: hace 6 meses · Visita de tasación" es lo que dicen los
   datos. Aceptado.
@@ -861,6 +891,11 @@ decide. Se le nombran al dueño al abrir el PR (tarea 1.4).
    DROP INDEX public.idx_deals_contact_id;`.
 
 ## Open Questions
+
+**Resueltas por el dueño el 2026-11-26 ("Ok a las 4, seguí"): se construye la opción por
+defecto de las cuatro** — contar desde la salida de la ficha, no tocar la barra de abajo del
+celular, fin del horario laboral a las 18:00, y los procesos sin asesor del sistema anterior
+cuentan como trabados. Se le avisó del efecto de los 14 días sobre los 100 seguimientos.
 
 Solo lo que tiene que decidir el dueño; todo lo técnico quedó decidido arriba. Cada pregunta
 tiene una opción por defecto, que es la que se construye si no contesta antes de la tarea que
