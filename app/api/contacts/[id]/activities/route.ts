@@ -21,6 +21,8 @@ import {
 } from '@/lib/supabase/actividades'
 import type { UserWithProfile } from '@/types/auth.types'
 import { esUuid } from '@/lib/crm/id-valido'
+import { CLASES_EVENTO, unirYCortar, type CursorLinea, type ItemLinea } from '@/lib/crm/linea-de-tiempo'
+import { leerEventosDelSistema } from '@/lib/supabase/linea-de-tiempo'
 
 // Todo corre con service role: esta ruta es la ÚNICA barrera (design.md D4). Un contacto
 // ajeno y uno inexistente reciben la MISMA respuesta, para no confirmar que existe.
@@ -102,6 +104,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (Number.isNaN(instante)) return NextResponse.json({ error: 'La fecha de la página no es válida.' }, { status: 400 })
       antes = new Date(instante).toISOString()
     }
+    // El cursor completo (crm-linea-de-tiempo D4) es fecha + clave del último ítem: así un
+    // empate en el corte no se pierde. Sin `antes_id`, el comportamiento de siempre.
+    const antesId = sp.get('antes_id')
+    if (antesId !== null && (!antes || antesId.length === 0 || antesId.length > 200)) {
+      return NextResponse.json({ error: 'La página pedida no es válida.' }, { status: 400 })
+    }
+    const cursor: CursorLinea | null = antes && antesId ? { fecha: antes, id: antesId } : null
 
     if (alcance === 'propios' && !(await canAccessContact(user, id))) {
       return NextResponse.json(NO_ENCONTRADO, { status: 404 })
@@ -110,29 +119,46 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json(NO_ENCONTRADO, { status: 404 })
     }
 
-    // Una fila de más dice si hay otra página, sin contar todo.
-    const [filas, llamadas] = await Promise.all([
-      listarActividades(id, filtro, antes, TAMANO_PAGINA + 1),
+    // Una fila de más por fuente dice si hay otra página, sin contar todo.
+    const conSistema = filtro === 'todo' || filtro === 'actividad'
+    const [filas, llamadas, sistema] = await Promise.all([
+      listarActividades(id, filtro, antes, TAMANO_PAGINA + 1, { inclusivo: cursor !== null }),
       llamadasNoAnuladasDelContacto(id),
+      conSistema
+        ? leerEventosDelSistema(id, cursor, TAMANO_PAGINA).catch((e: unknown) => {
+            // Una falla general (los nombres, el plazo) es una falla de TODAS las fuentes
+            // del sistema; las notas y llamadas se muestran igual.
+            console.error('GET /api/contacts/[id]/activities eventos del sistema:', e)
+            return { eventos: [], fuentesConError: [...CLASES_EVENTO] }
+          })
+        : Promise.resolve({ eventos: [], fuentesConError: [] }),
     ])
-    const pagina = filas.slice(0, TAMANO_PAGINA)
-    const autores = [...new Set(pagina.map((f) => f.created_by).filter((x): x is string => !!x))]
+    const deActividades: ItemLinea<FilaActividad>[] = filas.map((actividad) => ({ tipo: 'actividad', actividad }))
+    const deSistema: ItemLinea<FilaActividad>[] = sistema.eventos.map((evento) => ({ tipo: 'evento', evento }))
+    const pagina = unirYCortar([deActividades, deSistema], cursor ?? (antes ? { fecha: antes, id: '' } : null), TAMANO_PAGINA)
+    const filasPagina = pagina.items.flatMap((i) => (i.tipo === 'actividad' ? [i.actividad] : []))
+    const autores = [...new Set(filasPagina.map((f) => f.created_by).filter((x): x is string => !!x))]
     const [nombres, tareas] = await Promise.all([
       nombresDePerfiles(autores),
-      tareasCreadasPor(pagina.map((f) => f.id)),
+      tareasCreadasPor(filasPagina.map((f) => f.id)),
     ])
     // La actividad se ve completa para quien abre la ficha (D4): es la historia de la persona.
     const numeros = numerarLlamadas(llamadas)
     const usuario = { id: user.id, role: user.profile.role }
-    const actividades = pagina.map((f) =>
-      armarActividadDeFicha(f, {
-        intento: f.kind === 'call' ? (numeros.get(f.id) ?? null) : null,
-        autorNombre: f.created_by ? (nombres.get(f.created_by) ?? null) : null,
-        tareaCreada: tareas.get(f.id) ?? null,
-        usuario,
-      }),
-    )
-    return NextResponse.json({ actividades, hay_mas: filas.length > TAMANO_PAGINA })
+    const items: ItemLinea[] = pagina.items.map((i) => {
+      if (i.tipo === 'evento') return i
+      const f = i.actividad
+      return {
+        tipo: 'actividad',
+        actividad: armarActividadDeFicha(f, {
+          intento: f.kind === 'call' ? (numeros.get(f.id) ?? null) : null,
+          autorNombre: f.created_by ? (nombres.get(f.created_by) ?? null) : null,
+          tareaCreada: tareas.get(f.id) ?? null,
+          usuario,
+        }),
+      }
+    })
+    return NextResponse.json({ items, hay_mas: pagina.hayMas, fuentes_con_error: sistema.fuentesConError })
   } catch (error) {
     console.error('GET /api/contacts/[id]/activities error:', error)
     return NextResponse.json({ error: 'No se pudo cargar la actividad. Probá de nuevo.' }, { status: 500 })
