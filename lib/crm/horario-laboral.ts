@@ -5,8 +5,10 @@
 
 export const ZONA_AR = 'America/Argentina/Buenos_Aires'
 
-// Sin hora de fin a propósito: ninguna regla la usa y nadie la confirmó (Open Questions B).
-export const HORARIO_LABORAL = { dias: [1, 2, 3, 4, 5], inicio: '09:00' } as const
+// `fin` lo confirmó el dueño el 2026-11-26 (crm-cartera-por-rol, Open Question 3: 18:00).
+// Solo lo usa `minutosHabilesEntre` ("Lo que está trabado"); la cadencia sigue leyendo
+// únicamente `inicio`, así que agregarlo no mueve ninguna tarea.
+export const HORARIO_LABORAL = { dias: [1, 2, 3, 4, 5], inicio: '09:00', fin: '18:00' } as const
 
 export interface FechaHoraAR {
   fecha: string // YYYY-MM-DD
@@ -104,4 +106,26 @@ function diaNumerico(fecha: string): number {
 /** Días de calendario de Argentina de `desde` a `hasta` (negativo si `hasta` es anterior). */
 export function diasDeCalendarioEntre(desde: Date, hasta: Date): number {
   return diaNumerico(enArgentina(hasta).fecha) - diaNumerico(enArgentina(desde).fecha)
+}
+
+/**
+ * Minutos de horario laboral (días hábiles, de `inicio` a `fin`, en hora de Argentina) entre
+ * dos instantes. Es la espera "hábil" de una solicitud en "Lo que está trabado": una que
+ * entró el viernes a las 17:00 y nadie llamó hasta el lunes a las 9:30 esperó 1 h 30 min
+ * hábiles, no 64 h. Se recorre día por día (no se aproxima con semanas) para que un feriado
+ * futuro se pueda sumar acá sin cambiar la cuenta. Instantes inválidos o al revés → 0.
+ */
+export function minutosHabilesEntre(desde: Date, hasta: Date): number {
+  const d = desde.getTime()
+  const h = hasta.getTime()
+  if (Number.isNaN(d) || Number.isNaN(h) || h <= d) return 0
+  let total = 0
+  const ultimo = enArgentina(hasta).fecha
+  for (let fecha = enArgentina(desde).fecha; fecha <= ultimo; fecha = sumarDias(fecha, 1)) {
+    if (!esDiaHabil(fecha)) continue
+    const abre = Math.max(d, instanteDesdeAR(fecha, HORARIO_LABORAL.inicio).getTime())
+    const cierra = Math.min(h, instanteDesdeAR(fecha, HORARIO_LABORAL.fin).getTime())
+    if (cierra > abre) total += cierra - abre
+  }
+  return Math.floor(total / 60_000)
 }
