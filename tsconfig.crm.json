@@ -28,6 +28,7 @@
     "lib/supabase/cadencia.ts",
     "lib/supabase/actividades.ts",
     "lib/supabase/linea-de-tiempo*.ts",
+    "scripts/apply-crm-linea-de-tiempo-pg.ts",
     "app/api/contacts/**/*.ts",
     "app/api/appraisals/[id]/contact/route.ts",
     "app/api/tasks/**/*.ts",
