@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { seccionDeOrigen } from '@/lib/nav/seccion-de-origen'
 import { ChevronRight } from 'lucide-react'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
@@ -173,6 +174,10 @@ function CollapsibleNavEntry({ entry, pathname }: { entry: NavCollapsible; pathn
 
 export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: string }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  // La ficha abierta desde una fila del CRM es parte del CRM: el menú marca "CRM" (D11).
+  // Solo para marcar la sección; cerrar el panel del celular sigue mirando el camino real.
+  const rutaDelMenu = seccionDeOrigen(pathname, searchParams.get('volver'))
   const { setOpenMobile } = useSidebar()
   const tieneInbox = navHrefs(groups).includes('/inbox')
   // Al montar y cada 60 s, con try/catch silencioso: si el contador falla, el
@@ -233,7 +238,7 @@ export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: s
             // el activo" — nunca se evalúan de forma independiente (ese era el
             // bug: /properties y /properties/new "matcheaban" los dos a la vez).
             const itemsSueltos = g.entries.filter((e): e is NavItem => !isCollapsible(e))
-            const hrefActivo = activeHrefAmong(itemsSueltos.map(e => e.href), pathname)
+            const hrefActivo = activeHrefAmong(itemsSueltos.map(e => e.href), rutaDelMenu)
 
             return (
               <SidebarGroup key={g.label ?? `sin-titulo-${i}`}>
@@ -260,7 +265,7 @@ export function AppSidebar({ groups, logoUrl }: { groups: NavGroup[]; logoUrl: s
                         )
                       }
                       return (
-                        <CollapsibleNavEntry key={entry.label} entry={entry} pathname={pathname} />
+                        <CollapsibleNavEntry key={entry.label} entry={entry} pathname={rutaDelMenu} />
                       )
                     })}
                   </SidebarMenu>

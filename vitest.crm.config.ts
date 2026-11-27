@@ -41,6 +41,9 @@ export default defineConfig({
       'lib/nav/**/*.test.ts',
       'lib/supabase/cartera*.test.ts',
       'lib/supabase/rpc-paginado*.test.ts',
+      // 6.6: el menú, la barra superior y la de abajo marcan la sección de origen de la ficha.
+      'components/nav/**/*.test.tsx',
+      'components/dashboard/Topbar.test.tsx',
     ],
     exclude: ['**/node_modules/**', '.next', '.netlify', '**/.claude/worktrees/**'],
   },

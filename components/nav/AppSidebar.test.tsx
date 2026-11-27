@@ -7,7 +7,12 @@ import { AppSidebar } from './AppSidebar'
 import { getNavSections } from '@/lib/nav/sections'
 
 let rutaActual = '/properties'
-vi.mock('next/navigation', () => ({ usePathname: () => rutaActual }))
+// La búsqueda también: el menú marca la sección de origen de una ficha (`?volver=`, D11).
+let busquedaActual = ''
+vi.mock('next/navigation', () => ({
+  usePathname: () => rutaActual,
+  useSearchParams: () => new URLSearchParams(busquedaActual),
+}))
 
 beforeAll(() => {
   window.matchMedia = ((query: string) => ({
@@ -53,6 +58,7 @@ const abrirPanelMovil = () =>
 
 beforeEach(() => {
   rutaActual = '/properties'
+  busquedaActual = ''
   setInnerWidth(1280)
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ new: 7 }) }))
 })
@@ -73,6 +79,22 @@ describe('AppSidebar', () => {
     rutaActual = '/crm'
     montar('admin')
     expect(screen.getByRole('link', { name: /CRM/ })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('una ficha abierta desde el CRM (?volver=/crm) marca "CRM", no "Contactos"', () => {
+    rutaActual = '/contacts/7a636d2f-be56-4492-80ed-3bf23ba90e39'
+    busquedaActual = `volver=${encodeURIComponent('/crm?etapa=seguimiento')}`
+    montar('admin')
+    expect(screen.getByRole('link', { name: /CRM/ })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: /^Contactos/ })).not.toHaveAttribute('aria-current')
+  })
+
+  it('una ficha sin "volver" (o con uno inválido) sigue marcando "Contactos"', () => {
+    rutaActual = '/contacts/7a636d2f-be56-4492-80ed-3bf23ba90e39'
+    busquedaActual = 'volver=https%3A%2F%2Fotro.com'
+    montar('admin')
+    expect(screen.getByRole('link', { name: /^Contactos/ })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: /CRM/ })).not.toHaveAttribute('aria-current')
   })
 
   it('el ítem activo lleva las clases de marca (fondo/texto/barra), no el token de hover — guarda contra revertir a bg-sidebar-accent', () => {

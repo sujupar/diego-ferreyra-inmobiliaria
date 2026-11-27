@@ -1,6 +1,7 @@
 'use client'
 
-import { CircleCheck, Clock, Mail, Phone, TriangleAlert } from 'lucide-react'
+import Link from 'next/link'
+import { ChevronLeft, CircleCheck, Clock, Mail, Phone, TriangleAlert } from 'lucide-react'
 import type { FichaContacto } from '@/lib/crm/ficha'
 import { enlaceTel, telefonoParaMostrar } from '@/lib/crm/telefono-ficha'
 import { cn } from '@/lib/utils'
@@ -36,16 +37,32 @@ export function FichaCabecera({
   ficha,
   onReintentar,
   pestanas,
+  volver = null,
 }: {
   estado: 'cargando' | 'ok' | 'error'
   ficha: FichaContacto | null
   onReintentar: () => void
   pestanas: React.ReactNode
+  /** "‹ Volver al CRM" / "‹ Volver a Contactos" (crm-cartera-por-rol, D11): ya validado en el servidor. */
+  volver?: { href: string; texto: string } | null
 }) {
   const persona = ficha?.persona
   const telefono = telefonoParaMostrar(persona?.phone)
   return (
     <header className="ficha-cab" aria-label="Persona">
+      {/* Arriba de la cabecera fija: así queda a mano también al desplazarse en el celular.
+          Vuelve a la dirección guardada (con sus filtros), no con `router.back()`: si la
+          ficha se abrió en otra pestaña no habría a dónde volver. */}
+      {volver && (
+        <Link
+          href={volver.href}
+          className="-ml-1 inline-flex min-h-11 items-center gap-1 self-start rounded-md px-1 text-sm font-medium text-brand hover:underline raton:min-h-8"
+          data-volver
+        >
+          <ChevronLeft aria-hidden className="size-4" />
+          {volver.texto}
+        </Link>
+      )}
       {estado === 'error' && !ficha ? (
         <EstadoError onReintentar={onReintentar} className="py-3" />
       ) : !persona ? (

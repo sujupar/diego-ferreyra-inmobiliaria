@@ -7,7 +7,11 @@ import { Topbar } from './Topbar'
 import { getNavSections } from '@/lib/nav/sections'
 
 let rutaActual = '/crm'
-vi.mock('next/navigation', () => ({ usePathname: () => rutaActual }))
+let busquedaActual = ''
+vi.mock('next/navigation', () => ({
+  usePathname: () => rutaActual,
+  useSearchParams: () => new URLSearchParams(busquedaActual),
+}))
 
 beforeAll(() => {
   window.matchMedia = ((query: string) => ({
@@ -29,6 +33,17 @@ describe('Topbar', () => {
     rutaActual = '/crm'
     montar()
     expect(screen.getByText('CRM')).toBeInTheDocument()
+  })
+
+  it('una ficha abierta desde el CRM dice "CRM"; sin "volver", "Contactos"', () => {
+    rutaActual = '/contacts/7a636d2f-be56-4492-80ed-3bf23ba90e39'
+    busquedaActual = 'volver=%2Fcrm'
+    const { unmount } = montar()
+    expect(screen.getByText('CRM')).toBeInTheDocument()
+    unmount()
+    busquedaActual = ''
+    montar()
+    expect(screen.getByText('Contactos')).toBeInTheDocument()
   })
 
   it('muestra la sección arriba del título cuando el ítem cuelga de un desplegable', () => {

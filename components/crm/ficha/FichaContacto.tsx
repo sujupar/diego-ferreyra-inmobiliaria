@@ -47,12 +47,15 @@ export function FichaContacto({
   rol,
   usuarioId,
   abrirEditor,
+  volver = null,
   reloj = () => new Date(),
 }: {
   contactoId: string
   rol: string
   usuarioId: string
   abrirEditor: boolean
+  /** El "‹ Volver" a la lista de origen, ya validado por `enlaceVolver` en la página (dato plano). */
+  volver?: { href: string; texto: string } | null
   /** Solo para las pruebas; `page.tsx` no lo pasa (una función no cruza del servidor). */
   reloj?: () => Date
 }) {
@@ -345,6 +348,7 @@ export function FichaContacto({
         <FichaCabecera
           estado={ficha.estado}
           ficha={datos}
+          volver={volver}
           onReintentar={() => void f.recargarFicha()}
           pestanas={
             <FichaPestanas
