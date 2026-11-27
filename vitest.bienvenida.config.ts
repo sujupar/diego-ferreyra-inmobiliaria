@@ -12,6 +12,7 @@ export default defineConfig({
       'lib/video-bienvenida/**/*.test.ts',
       'components/funnel/FunnelClickToPlayVideo*.test.tsx',
       'components/video-bienvenida/**/*.test.tsx',
+      'components/crm/ficha/EnlaceVideoBienvenida*.test.tsx',
       'lib/funnel/side-effect-handlers*.test.ts',
       'lib/funnel/video-keys*.test.ts',
       'lib/ai/tasacion-agent*.test.ts',

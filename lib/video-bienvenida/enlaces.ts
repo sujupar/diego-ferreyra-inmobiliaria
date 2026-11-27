@@ -156,3 +156,24 @@ export async function leerTramosPrevios(codigo: string): Promise<{ watchedBucket
     return null
   }
 }
+
+/**
+ * Lo que hace falta para crear el enlace a mano desde la ficha (D8): el proceso del embudo más
+ * reciente del contacto y su nombre de pila. `null` si el contacto no tiene un proceso con
+ * `origin='embudo'` (spec: el servidor lo verifica, 400). Lanza si la base no responde: la ruta
+ * lo convierte en un error visible, no en "no tiene proceso".
+ */
+export async function datosParaCrearEnlace(contactId: string): Promise<{ dealId: string; nombre: string | null } | null> {
+  const sb = admin()
+  const [proc, cont] = await Promise.all([
+    sb.from('deals').select('id').eq('contact_id', contactId).eq('origin', 'embudo')
+      .order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    sb.from('contacts').select('full_name').eq('id', contactId).maybeSingle(),
+  ])
+  if (proc.error) throw new Error(`proceso del embudo: ${proc.error.message}`)
+  if (cont.error) throw new Error(`contacto: ${cont.error.message}`)
+  if (!proc.data) return null
+  const completo = (cont.data as { full_name?: string | null } | null)?.full_name?.trim() ?? ''
+  const nombre = completo.split(/\s+/)[0] || null
+  return { dealId: (proc.data as { id: string }).id, nombre }
+}
