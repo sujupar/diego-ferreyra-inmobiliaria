@@ -155,11 +155,21 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
     app reintenta con otro hasta 3 veces.
 - **RPC `video_bienvenida_registrar_apertura(p_codigo text) returns boolean`:** `UPDATE`
   atómico (`aperturas + 1`, `coalesce(primera_apertura, now())`, `ultima_apertura = now()`).
-- **RPC `video_bienvenida_marcar_enviado(p_codigo text, p_wamid text)`:**
-  `enviado_at = coalesce(enviado_at, now())`, `wamid = p_wamid`.
-- **RPC `video_bienvenida_tomar_respaldo(p_wamid text) returns table(contact_id uuid, nombre text)`:**
-  `UPDATE … SET envio_fallido_at = now(), respaldo_at = now() WHERE wamid = p_wamid AND
-  respaldo_at IS NULL RETURNING …`. Es atómico: un aviso repetido de Meta no devuelve nada.
+- **RPC `video_bienvenida_marcar_enviado(p_codigo text, p_wamid text, p_deal uuid)`:**
+  - `enviado_at = coalesce(enviado_at, now())`;
+  - `wamid = coalesce(p_wamid, wamid)`;
+  - `deal_envio = coalesce(p_deal, deal_envio)`;
+  - si el `wamid` cambia (la persona se volvió a registrar), pone `respaldo_at` y
+    `envio_fallido_at` en NULL, así un segundo freno también tiene respaldo.
+  - Columna nueva `deal_envio`: el proceso del último envío con video.
+- **RPC `video_bienvenida_tomar_respaldo(p_wamid text, p_phone text) returns table(contact_id,
+  nombre, encolado)`:**
+  - marca `envio_fallido_at` y `respaldo_at` solo si `respaldo_at` es NULL, de forma atómica:
+    un aviso repetido de Meta no devuelve nada;
+  - en la misma transacción vuelve a poner en `pending` el trabajo `whatsapp` de
+    `deal_envio`, con el payload rearmado y `sinVideo: true` (el worker vacía el payload al
+    terminar);
+  - `encolado = false` si no hay proceso o si el trabajo está corriendo.
 - `obtener_o_crear` verifica, después de unir, que `anon_identity.contact_id = p_contact`
   y deja `RAISE WARNING` si no coincide.
 - **Permisos de las tres RPC:** `REVOKE ALL … FROM PUBLIC, anon, authenticated` y
@@ -210,9 +220,13 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
     plantillaDelMensaje })` → mandar solo si `estado='failed'`, el código es 131049 o 131050
     y la plantilla está en `PLANTILLAS_CON_VIDEO`.
   - En `app/api/webhooks/whatsapp/route.ts`, junto al respaldo de la encuesta:
-    `tomar_respaldo(wamid)`. Si devuelve el contacto, manda `tasacion_llamada_v1` con
-    `[nombre]`.
-  - Como mucho UNA llamada a Meta, con techo de 8 s, igual que la encuesta.
+    - solo con 131049 o 131050 se lee la base;
+    - `tomar_respaldo(wamid, teléfono)` vuelve a encolar el trabajo sin video. El mensaje
+      sale con los reintentos de la cola y el webhook no llama a Meta;
+    - si no pudo encolar, manda `tasacion_llamada_v1` en el momento (una llamada, techo de
+      8 s).
+  - El manejador, con `sinVideo`, manda directo `tasacion_llamada_v1`. Sin nombre saluda
+    "Hola qué tal".
 - El panel cuenta "recibió el enlace" solo con `enviado_at` y sin `envio_fallido_at`. La
   marca de la cartera no dice "No abrió el video" si el envío falló.
 
@@ -296,8 +310,12 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
 ### D6. Marca en la cartera
 
 - RPC `cartera_video_bienvenida(p_contactos uuid[])`, con los ids en el cuerpo. Devuelve por
-  contacto: `enviado_at`, `aperturas`, `playback_started` y `max_percent`. Es
-  `SECURITY DEFINER` y solo la ejecuta `service_role`.
+  contacto:
+  - `enviado_at`, `envio_fallido_at` y `aperturas`;
+  - `playback_started` y `watched_buckets`.
+
+  Es `SECURITY INVOKER` (la llama el servidor con service role) y solo la ejecuta
+  `service_role`.
 - Se llama una vez por carga, con los contactos de las filas en Solicitud que el usuario ya
   ve. Es una fuente opcional: si falla, no hay marcas.
 - `marcaVideo(enlace, vista)` (puro) devuelve `{ texto }` o `null`. Va en gris, debajo del
@@ -318,7 +336,9 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
   - "Vio el video": `playback_started`;
   - "Abrió sin mirar": aperturas sin play;
   - "No abrió".
-- **Antes/después:** respecto de `CAMBIO_DESDE` (constante con la fecha de activación).
+- **Antes/después:** respecto de la fecha del primer envío con video aceptado
+  (`fechaDelCambio`, en hora de Argentina). `CAMBIO_DESDE` queda solo para corregirla a
+  mano.
   Aviso de que las llamadas existen desde el 26/11/2026.
 - **Exclusiones:** Julian Parra, `contacto.julianparra@gmail.com` y `[TEST`. Una persona por
   contacto.
@@ -346,7 +366,16 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
   visto.
 - **Peso del video:** ~110 MB, que se baja por partes con `faststart` y pedidos por rango.
 - **Base chica durante semanas:** se muestra con su aviso, no se esconde.
-- **El código en la URL:** quien lo tenga ve solo el nombre de pila.
+- **El código en la URL:** quien lo tenga ve solo el nombre de pila. También puede sumar
+  aperturas o minutos (la ruta y `/api/track/video` no limitan pedidos). Se acepta: hay que
+  tener el código, que no se puede adivinar (57^10).
+- **`wamid` sin escribir:** si `marcar_enviado` falla (es best-effort), el aviso tardío no
+  encuentra el enlace y no hay respaldo. Es muy improbable y se acepta.
+- **Fecha del evento de video en la ficha:** usa `first_at`, la primera medición (al tocar
+  play), igual que los videos de las landings.
+- **Vuelta atrás 132xxx seguida de una falla pasajera:** el reintento vuelve a probar el
+  video, Meta lo rechaza y sale la de siempre. Deja filas de más en `whatsapp_messages`,
+  nunca un mensaje doble.
 - **QA del envío:** la cola corre con el código de producción, así que el envío con video
   se prueba llamando al manejador por script contra el teléfono de Julián. La prueba real va
   después del merge, con la variable cambiada.

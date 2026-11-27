@@ -58,3 +58,30 @@
 | 9 | Baja | Límite del bucket y subida de 110 MB | Bucket sin límite propio (leído), subida resumible TUS |
 | 10 | Baja | "Un solo renglón" no era verificable; `.vcf` en las apps | El escenario pasa a "se ve completo y se puede tocar"; QA del `.vcf` en iOS y Android (7.4) |
 | 11 | Baja | `video-keys.test.ts` no recorre `app/t` | Se amplía el recorrido (4.7) |
+
+## Ronda 2: código (auditor 1, 2026-11-27, sobre d7d2a360)
+
+Sin hallazgos altos. Pruebas: 385 ✓ y `tsc` ✓. Arreglos en ba33ac7c.
+
+| # | Sev. | Hallazgo | Resolución |
+|---|---|---|---|
+| 1 | Media | Después de un primer freno, un segundo envío frenado no tenía respaldo | `marcar_enviado` reinicia `respaldo_at` y `envio_fallido_at` cuando cambia el `wamid`; verificado en la base |
+| 2 | Media | Si el respaldo en línea fallaba, no había reintento | `tomar_respaldo` reencola el trabajo `whatsapp` con `sinVideo` (reintentos de la cola); en línea solo como último recurso |
+| 3 | Baja | Sin `wamid` escrito no hay respaldo | Aceptado y documentado (Risks) |
+| 4 | Baja | Cualquier `failed` leía la base | Se filtra por 131049/131050 antes de leer (test) |
+| 5 | Baja | La página se redibujaba ~4 veces por segundo durante todo el video | Un aviso por segundo entero, y nada después de los 30 s |
+| 6 | Baja | El margen de 5 min de "coordinó" se restaba dos veces | Un solo margen |
+| 7 | Baja | Diferencias entre design y código | design.md actualizado |
+| 8 | Baja | El antes/después necesitaba un commit | Fecha automática desde el primer envío (`fechaDelCambio`, test) |
+| 9 | Baja | La fecha del evento de video es la primera medición | Aceptado: igual que las landings (Risks) |
+| 10 | Baja | `.vcf` como adjunto en iPhone | `inline`; QA en iOS y Android (4.10) |
+| 11 | Baja | Quien tenga el código puede inflar la medición | Aceptado y documentado (Risks) |
+| 12 | Baja | Filas de más en `whatsapp_messages` tras 132xxx + falla pasajera | Aceptado y documentado (Risks) |
+
+**QA en la vista previa (PR #103), con datos `[TEST]`:**
+- página a 390 y a 1280 px;
+- el bloque a los 30 s y desde el inicio al volver;
+- aperturas por pestaña y ninguna para el equipo;
+- tarjeta de Paula; código inexistente → 404; privacidad de la vista previa;
+- línea de tiempo, tarjeta de la ficha y marca en la cartera;
+- panel de Métricas vacío, como corresponde.
