@@ -7,6 +7,7 @@ import { useSidebar } from '@/components/ui/sidebar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useContadorDeLeads } from '@/components/nav/use-contador-leads'
 import { itemsBarraInferior, destinoActivo } from '@/lib/nav/bottom-bar'
+import { seccionDeOrigen } from '@/lib/nav/seccion-de-origen'
 import type { NavGroup } from '@/lib/nav/sections'
 
 /**
@@ -40,7 +41,8 @@ export function BottomNav({ groups }: { groups: NavGroup[] }) {
   const esMovil = useIsMobile()
 
   const items = itemsBarraInferior(groups)
-  const activo = destinoActivo(items, pathname)
+  // La ficha abierta desde el CRM marca "CRM" también acá (D11).
+  const activo = destinoActivo(items, seccionDeOrigen(pathname, searchParams.get('volver')))
 
   // El contador solo se pide si esta barra se está viendo de verdad. En
   // escritorio está oculta por CSS pero igual montada, y sin este freno sumaría

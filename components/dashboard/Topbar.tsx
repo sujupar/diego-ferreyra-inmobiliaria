@@ -1,12 +1,15 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
+import { seccionDeOrigen } from '@/lib/nav/seccion-de-origen'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { titleForPath, type NavGroup } from '@/lib/nav/sections'
 
 export function Topbar({ groups, children }: { groups: NavGroup[]; children?: React.ReactNode }) {
   const pathname = usePathname()
-  const { section, title } = titleForPath(groups, pathname)
+  const searchParams = useSearchParams()
+  // Una ficha abierta desde el CRM dice "CRM" arriba, no "Contactos" (D11).
+  const { section, title } = titleForPath(groups, seccionDeOrigen(pathname, searchParams.get('volver')))
 
   return (
     <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4">

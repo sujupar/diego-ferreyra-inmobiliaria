@@ -11,7 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
 import { BottomNav } from './BottomNav'
-import { getNavSections } from '@/lib/nav/sections'
+import { getNavSections, isCollapsible, type NavGroup } from '@/lib/nav/sections'
 
 const rutaActual = { pathname: '/inicio', search: '' }
 const setOpenMobile = vi.fn()
@@ -36,6 +36,19 @@ beforeEach(() => {
 
 function montar(role: Parameters<typeof getNavSections>[0] = 'asesor') {
   return render(<BottomNav groups={getNavSections(role)} />)
+}
+
+/**
+ * Hoy ningún rol tiene CRM en la barra (desde Consultas: Inicio, Pendientes, Inbox,
+ * Consultas). Para probar que la barra marca la sección de origen de una ficha se le saca
+ * Inbox y Consultas al menú del asesor, así CRM entra en los cuatro lugares.
+ */
+function menuConCRMEnLaBarra(): NavGroup[] {
+  const sacar = ['/inbox', '/consultas']
+  return getNavSections('asesor').map((g) => ({
+    ...g,
+    entries: g.entries.filter((e) => isCollapsible(e) || !sacar.includes(e.href)),
+  }))
 }
 
 describe('BottomNav — de 768px para arriba no existe', () => {
@@ -63,7 +76,8 @@ describe('BottomNav — qué ofrece', () => {
   it('el asesor ve sus cuatro accesos y el menú', () => {
     const { container } = montar('asesor')
     const etiquetas = Array.from(container.querySelectorAll('a')).map(a => a.textContent?.trim())
-    expect(etiquetas).toEqual(['Inicio', 'Pendientes', 'Inbox', 'CRM'])
+    // Desde Consultas (PR #62) el cuarto lugar es Consultas; CRM salió por el tope de 4.
+    expect(etiquetas).toEqual(['Inicio', 'Pendientes', 'Inbox', 'Consultas'])
     expect(container.querySelector('button')?.textContent).toContain('Menú')
   })
 
@@ -101,16 +115,23 @@ describe('BottomNav — qué ofrece', () => {
 
 describe('BottomNav — dónde estoy', () => {
   it('marca el destino actual, y uno solo', () => {
-    rutaActual.pathname = '/crm'
+    rutaActual.pathname = '/consultas'
     const { container } = montar()
     const marcados = container.querySelectorAll('[aria-current="page"]')
     expect(marcados).toHaveLength(1)
-    expect(marcados[0].getAttribute('href')).toBe('/crm')
+    expect(marcados[0].getAttribute('href')).toBe('/consultas')
   })
 
   it('una pantalla de adentro marca su sección', () => {
     rutaActual.pathname = '/crm/algun-deal'
-    const { container } = montar()
+    const { container } = render(<BottomNav groups={menuConCRMEnLaBarra()} />)
+    expect(container.querySelector('[aria-current="page"]')?.getAttribute('href')).toBe('/crm')
+  })
+
+  it('una ficha abierta desde el CRM (?volver=/crm) marca "CRM" (crm-cartera-por-rol, D11)', () => {
+    rutaActual.pathname = '/contacts/7a636d2f-be56-4492-80ed-3bf23ba90e39'
+    rutaActual.search = 'volver=%2Fcrm'
+    const { container } = render(<BottomNav groups={menuConCRMEnLaBarra()} />)
     expect(container.querySelector('[aria-current="page"]')?.getAttribute('href')).toBe('/crm')
   })
 
