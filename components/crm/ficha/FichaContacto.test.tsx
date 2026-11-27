@@ -139,3 +139,17 @@ describe('SinAcceso', () => {
     expect(document.body.textContent).not.toContain('@')
   })
 })
+
+describe('FichaContacto: "Registrar" del Inicio (crm-inicio)', () => {
+  it('con abrirLlamada arranca con "Registrar llamada" abierto y el foco en "No atendió"', async () => {
+    redNormal()
+    render(<FichaContacto contactoId={CONTACTO} rol="coordinador" usuarioId="u-1" abrirEditor={false} abrirLlamada reloj={reloj} />)
+    await waitFor(() => expect(document.activeElement?.textContent ?? '').toContain('No atendió'))
+  })
+  it('sin abrirLlamada no se abre nada', async () => {
+    redNormal()
+    render(<FichaContacto contactoId={CONTACTO} rol="coordinador" usuarioId="u-1" abrirEditor={false} reloj={reloj} />)
+    await screen.findByText('Línea de tiempo')
+    expect(document.activeElement?.textContent ?? '').not.toContain('No atendió')
+  })
+})

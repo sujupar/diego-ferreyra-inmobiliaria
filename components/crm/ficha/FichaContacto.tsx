@@ -48,6 +48,7 @@ export function FichaContacto({
   rol,
   usuarioId,
   abrirEditor,
+  abrirLlamada = false,
   volver = null,
   reloj = () => new Date(),
 }: {
@@ -55,6 +56,8 @@ export function FichaContacto({
   rol: string
   usuarioId: string
   abrirEditor: boolean
+  /** El "Registrar" del Inicio (crm-inicio, D4): la ficha arranca con "Registrar llamada" abierto. */
+  abrirLlamada?: boolean
   /** El "‹ Volver" a la lista de origen, ya validado por `enlaceVolver` en la página (dato plano). */
   volver?: { href: string; texto: string } | null
   /** Solo para las pruebas; `page.tsx` no lo pasa (una función no cruza del servidor). */
@@ -343,6 +346,16 @@ export function FichaContacto({
       ;(cual === 'nota' ? refNotaComposer.current : refNoAtendioComposer.current)?.focus({ preventScroll: true })
     })
   }
+
+  // Una sola vez, cuando la ficha ya está dibujada (abrirFormulario mide el DOM para elegir
+  // entre el cuadro de la compu y la hoja del celular).
+  const llamadaAbierta = useRef(false)
+  useEffect(() => {
+    if (!abrirLlamada || llamadaAbierta.current || ficha.estado !== 'ok') return
+    llamadaAbierta.current = true
+    abrirFormulario('llamada')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al llegar, una vez
+  }, [abrirLlamada, ficha.estado])
 
   if (ficha.noEncontrado) return <ContactoNoEncontrado />
 
