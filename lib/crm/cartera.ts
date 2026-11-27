@@ -4,15 +4,9 @@
 // (más adelante) el Inicio dicen lo mismo de la misma persona.
 import { procesoEnVista, type Vista } from './cartera-vista'
 import { estaAbierto, etapaCRM, type EtapaCRM } from './etapas'
-import {
-  HORARIO_LABORAL,
-  diasDeCalendarioEntre,
-  enArgentina,
-  esDiaHabil,
-  instanteDesdeAR,
-  siguienteDiaHabil,
-} from './horario-laboral'
+import { diasDeCalendarioEntre, enArgentina, instanteDesdeAR } from './horario-laboral'
 import { tareasVisiblesEnFicha, vencimientoDeTarea } from './tareas-ficha'
+import { vencimientoDeEntrada } from '@/lib/tareas/agenda'
 import { INICIO_REGISTRO_CONTACTOS, anteriorAlRegistro, type ContactoRegistrado } from './ultimo-contacto'
 
 /**
@@ -201,13 +195,11 @@ function cierreDe(p: ProcesoLeido, etapa: EtapaCRM): string | null {
 function venceDePrimeraLlamada(registradoEn: string): { due_date: string; due_time: string; espera: boolean } | null {
   const r = new Date(registradoEn)
   if (Number.isNaN(r.getTime())) return null
+  // Una sola regla para la entrada (crm-tareas-y-campanita): la misma con la que la tarea
+  // nace con fecha desde ese change. Espera = vence en el mismo momento del registro.
+  const v = vencimientoDeEntrada(r)
   const ar = enArgentina(r)
-  if (esDiaHabil(ar.fecha)) {
-    if (ar.hora >= HORARIO_LABORAL.inicio && ar.hora < HORARIO_LABORAL.fin) return { due_date: ar.fecha, due_time: ar.hora, espera: true }
-    if (ar.hora < HORARIO_LABORAL.inicio) return { due_date: ar.fecha, due_time: HORARIO_LABORAL.inicio, espera: false }
-  }
-  const s = siguienteDiaHabil(r)
-  return { due_date: s.fecha, due_time: s.hora, espera: false }
+  return { due_date: v.fecha, due_time: v.hora, espera: v.fecha === ar.fecha && v.hora === ar.hora.slice(0, 5) }
 }
 
 // ── Copias de la coordinación ────────────────────────────────────────────────────────────
@@ -301,11 +293,15 @@ export function proximoPaso(e: {
     const llamada = esLlamada(t)
     let vence = { due_date: t.due_date, due_time: horaHHMM(t.due_time), all_day: t.all_day === true }
     let espera: ProximoPaso['espera'] = null
-    if (!t.due_date && llamada && primeraLlamada && !anteriorAlRegistro(e.registradoEn)) {
+    if (llamada && primeraLlamada && !anteriorAlRegistro(e.registradoEn)) {
       const calculado = venceDePrimeraLlamada(e.registradoEn)
-      if (calculado) {
+      if (calculado && !t.due_date) {
         vence = { due_date: calculado.due_date, due_time: calculado.due_time, all_day: false }
         if (calculado.espera) espera = { registradoEn: e.registradoEn }
+      } else if (calculado?.espera && t.due_date === calculado.due_date && horaHHMM(t.due_time) === calculado.due_time) {
+        // Desde crm-tareas-y-campanita la tarea de entrada ya nace con esa fecha: sigue
+        // siendo la que espera desde el registro.
+        espera = { registradoEn: e.registradoEn }
       }
     }
     candidatos.push({

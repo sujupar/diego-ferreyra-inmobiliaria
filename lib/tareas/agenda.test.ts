@@ -41,6 +41,8 @@ describe('tipoDeTarea', () => {
       expect(tipoDeTarea(t({ type: k }))).toBe('documentacion')
     }
     expect(tipoDeTarea(t({ type: 'follow_up' }))).toBe('otro')
+    expect(tipoDeTarea({ type: 'update_contact', channel: null, title: 'Actualizar contacto: Yatay 540' })).toBe('otro')
+    expect(tipoDeTarea({ type: 'update_contact', channel: null, title: 'Solicitud de tasación: Ana' })).toBe('llamada')
     expect(tipoDeTarea(t({ type: 'algo_nuevo' }))).toBe('otro')
   })
 })
@@ -116,6 +118,11 @@ describe('esperaDesde', () => {
   it('la tarea de entrada que vence al crearse espera desde ese momento', () => {
     const x = t({ type: 'update_contact', deal_id: 'd1', due_date: '2026-11-24', due_time: '15:10:00', all_day: false, created_at: ar('2026-11-24', '15:11').toISOString() })
     expect(esperaDesde(x)).toBe(ar('2026-11-24', '15:10').toISOString())
+  })
+  it('compara con el registro real del proceso, no con la creación de la tarea', () => {
+    const x = t({ type: 'update_contact', deal_id: 'd1', due_date: '2026-11-24', due_time: '15:10:00', all_day: false, created_at: ar('2026-11-24', '15:40').toISOString() })
+    expect(esperaDesde(x)).toBeNull() // el worker la creó 30 min tarde
+    expect(esperaDesde(x, ar('2026-11-24', '15:10').toISOString())).toBe(ar('2026-11-24', '15:10').toISOString())
   })
   it('si vence después (entró fuera de horario) no es espera', () => {
     const x = t({ type: 'update_contact', deal_id: 'd1', due_date: '2026-11-30', due_time: '09:00:00', all_day: false, created_at: ar('2026-11-27', '21:00').toISOString() })

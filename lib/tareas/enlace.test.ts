@@ -21,4 +21,8 @@ describe('enlaceDeTarea (la misma regla que tenía /tasks)', () => {
     expect(enlaceDeTarea({ ...base, contact_id: 'c1' })).toBe('/contacts/c1')
     expect(enlaceDeTarea(base)).toBe('#')
   })
+
+  it('la tarea de entrada (canal llamada) abre la ficha, donde se registra la llamada', () => {
+    expect(enlaceDeTarea({ ...base, type: 'update_contact', channel: 'call', deal_id: 'd1', contact_id: 'c1' })).toBe('/contacts/c1')
+  })
 })
