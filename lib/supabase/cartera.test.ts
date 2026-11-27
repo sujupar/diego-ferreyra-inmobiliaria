@@ -10,7 +10,7 @@ import { baseSimulada, type OpcionesBaseSimulada } from './cartera.simulada'
 const m = vi.hoisted(() => ({ cliente: null as unknown }))
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => m.cliente }))
 
-import { cargarCartera, PLAZO_LECTURA_MS, TOPE_FILAS } from './cartera'
+import { cargarCartera, leerOpcionesVerComo, PLAZO_LECTURA_MS, TOPE_FILAS } from './cartera'
 
 const AHORA = new Date('2026-11-27T15:00:00.000Z') // viernes 12:00 de Argentina
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
@@ -387,5 +387,21 @@ describe('cargarCartera — un solo plazo de 15 s', () => {
   it('el plazo es PLAZO_LECTURA_MS = 15 s', () => {
     expect(PLAZO_LECTURA_MS).toBe(15_000)
     expect(TOPE_FILAS).toBe(3000)
+  })
+})
+
+describe('leerOpcionesVerComo (6.3: la página abre ya mirando a otra persona)', () => {
+  it('para el dueño: las mismas opciones que trae su vista propia', async () => {
+    usar({})
+    const propia = await cargar({ id: DUENO, role: 'dueno' })
+    usar({})
+    expect(await leerOpcionesVerComo({ role: 'dueno' })).toEqual(propia.opcionesVerComo)
+    expect(de('profiles')).toHaveLength(1)
+  })
+  it('para cualquier otro rol: null sin leer nada', async () => {
+    usar({})
+    expect(await leerOpcionesVerComo({ role: 'asesor' })).toBeNull()
+    expect(await leerOpcionesVerComo({ role: 'coordinador' })).toBeNull()
+    expect(base.consultas).toHaveLength(0)
   })
 })
