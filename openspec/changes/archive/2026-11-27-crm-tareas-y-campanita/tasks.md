@@ -44,6 +44,6 @@ test primero y verlo fallar; `npx vitest run -c vitest.crm.config.ts`,
 ## 6. Cierre
 
 - [x] 6.1 Auditoría de cierre; corregir y anotar
-- [ ] 6.2 Fijar `INICIO_AVISOS`, merge con `--rebase`, deploy y humo en producción
-- [ ] 6.3 Limpieza (0 filas de prueba, cuenta de QA en admin, navegador cerrado)
-- [ ] 6.4 `CLAUDE.md`, archivar y avisar al dueño
+- [x] 6.2 Fijar `INICIO_AVISOS`, merge con `--rebase`, deploy y humo en producción
+- [x] 6.3 Limpieza (0 filas de prueba, cuenta de QA en admin, navegador cerrado)
+- [x] 6.4 `CLAUDE.md`, archivar y avisar al dueño
