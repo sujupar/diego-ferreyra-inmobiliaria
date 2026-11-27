@@ -24,6 +24,8 @@
     "app/(dashboard)/_components/FlowHistoryCard.tsx",
     "app/api/flow-history/route.ts",
     "lib/crm/**/*.ts",
+    "lib/tareas/**/*.ts",
+    "lib/tasks/**/*.ts",
     "lib/supabase/tasks.ts",
     "lib/supabase/cadencia.ts",
     "lib/supabase/actividades.ts",

@@ -22,6 +22,8 @@ export default defineConfig({
       'components/pipeline/**/*.test.tsx',
       // crm-ficha-y-llamadas (design.md D10)
       'lib/crm/**/*.test.ts',
+      'lib/tareas/**/*.test.ts',
+      'lib/tasks/**/*.test.ts',
       'lib/auth/**/*.test.ts',
       'lib/supabase/tasks*.test.ts',
       'lib/supabase/cadencia*.test.ts',
