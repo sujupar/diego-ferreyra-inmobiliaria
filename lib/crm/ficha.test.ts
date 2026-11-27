@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { armarFicha, perfilesANombrar, procesosParaLeerHistorial, type DatosFicha, type ProcesoDeFicha } from './ficha'
+import { armarFicha, etapaDelCRM, perfilesANombrar, procesosParaLeerHistorial, type DatosFicha, type ProcesoDeFicha } from './ficha'
+import { NOMBRE_ETAPA, etapaCRM } from './etapas'
 
 // 2026-11-25 15:00 UTC = miércoles 12:00 de Argentina.
 const AHORA = new Date('2026-11-25T15:00:00.000Z')
@@ -120,7 +121,7 @@ describe('armarFicha — persona, proceso activo y detalles', () => {
         proceso({ id: 'd-clase', stage: 'clase_gratuita', origin: 'clase_gratuita', created_at: '2026-11-24T10:00:00.000Z' }),
       ],
     }))
-    expect(f.procesoActivo).toMatchObject({ id: 'd-clase', etiquetaEtapa: 'Clase Gratuita', situacion: 'clase_gratuita' })
+    expect(f.procesoActivo).toMatchObject({ id: 'd-clase', etiquetaEtapa: 'Clase gratuita', situacion: 'clase_gratuita' })
     expect(f.procesos.find((p) => p.id === 'd-sol')?.puede_convertir).toBe(true)
     expect(f.procesos.find((p) => p.id === 'd-clase')?.puede_convertir).toBe(false)
   })
@@ -337,5 +338,34 @@ describe('perfilesANombrar', () => {
       procesos: [proceso({ id: 'a', assigned_to: 'asesor-2' }), proceso({ id: 'b', assigned_to: 'asesor-2' }), proceso({ id: 'c' })],
     }))
     expect(ids.sort()).toEqual(['asesor-1', 'asesor-2'])
+  })
+})
+
+describe('etapaDelCRM — la ficha y la lista escriben igual cada etapa (6.4)', () => {
+  const casos: [string, string | null, string, string][] = [
+    ['request', null, 'solicitud', 'Solicitud'],
+    ['scheduled', null, 'solicitud', 'Solicitud'],
+    ['scheduled', '2026-12-03', 'coordinada', 'Coordinada'],
+    ['not_visited', null, 'no_realizada', 'No realizada'],
+    ['visited', null, 'realizada', 'Realizada'],
+    ['appraisal_sent', null, 'entregada', 'Entregada'],
+    ['followup', null, 'seguimiento', 'Seguimiento'],
+    ['clase_gratuita', null, 'clase_gratuita', 'Clase gratuita'],
+    ['comprador', null, 'comprador', 'Comprador'],
+    ['captured', null, 'captada', 'Captada'],
+    ['lost', null, 'descartado', 'Descartado'],
+  ]
+  it.each(casos)('%s (día %s) → %s, "%s"', (stage, scheduled_date, clave, etiqueta) => {
+    expect(etapaDelCRM({ stage, scheduled_date })).toEqual({ clave, etiqueta })
+  })
+  it('es exactamente lo que dice la fila de la cartera (etapaCRM + NOMBRE_ETAPA)', () => {
+    for (const [stage, scheduled_date] of casos) {
+      const e = etapaCRM({ stage, scheduled_date })
+      expect(etapaDelCRM({ stage, scheduled_date })).toEqual({ clave: e, etiqueta: NOMBRE_ETAPA[e] })
+    }
+  })
+  it('nunca con mayúscula en la segunda palabra ("No Realizada", "Clase Gratuita")', () => {
+    expect(etapaDelCRM({ stage: 'not_visited', scheduled_date: null }).etiqueta).not.toBe('No Realizada')
+    expect(etapaDelCRM({ stage: 'clase_gratuita', scheduled_date: null }).etiqueta).not.toBe('Clase Gratuita')
   })
 })

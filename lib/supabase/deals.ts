@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { inicioDelDiaArgentina, finDelDiaArgentina } from '@/lib/filters/rango-fechas'
+import { etapaCRM } from '@/lib/crm/etapas'
 
 function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -168,6 +169,9 @@ export async function getDeals(filters?: {
   // otro criterio de "día", no cuadrarían con el listado que tienen al lado.
   if (filters?.from) cq = cq.gte('created_at', inicioDelDiaArgentina(filters.from))
   if (filters?.to) cq = cq.lte('created_at', finDelDiaArgentina(filters.to))
+  // OJO: sin `.range()` la API corta en 1000 filas sin avisar; pasando los 1000 procesos
+  // estos contadores quedan cortos. Ninguna pantalla los usa desde crm-cartera-por-rol (la
+  // lista del CRM lee `/api/crm/cartera`, que pagina): se dejan como estaban.
   const { data: stageRows, error: stageErr } = await cq
   if (stageErr) throw stageErr
 
@@ -175,21 +179,8 @@ export async function getDeals(filters?: {
   const crmStageCounts: Record<string, number> = {}
   for (const row of stageRows || []) {
     stageCounts[row.stage] = (stageCounts[row.stage] || 0) + 1
-    // Derive CRM stage for the per-stage UI count (handles scheduled split).
-    let crmKey: string
-    switch (row.stage) {
-      case 'clase_gratuita': crmKey = 'clase_gratuita'; break
-      case 'request': crmKey = 'solicitud'; break
-      case 'scheduled': crmKey = row.scheduled_date ? 'coordinada' : 'solicitud'; break
-      case 'not_visited': crmKey = 'no_realizada'; break
-      case 'visited': crmKey = 'realizada'; break
-      case 'appraisal_sent': crmKey = 'entregada'; break
-      case 'followup': crmKey = 'seguimiento'; break
-      case 'captured': crmKey = 'captada'; break
-      case 'lost': crmKey = 'descartado'; break
-      case 'comprador': crmKey = 'comprador'; break
-      default: crmKey = 'solicitud'
-    }
+    // La etapa del CRM sale de la MISMA regla que la cartera y la ficha (lib/crm/etapas.ts).
+    const crmKey = etapaCRM(row)
     crmStageCounts[crmKey] = (crmStageCounts[crmKey] || 0) + 1
   }
 

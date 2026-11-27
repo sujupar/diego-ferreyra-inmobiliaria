@@ -48,9 +48,10 @@ export interface TagColorClasses {
 
 /**
  * Paleta de colores sembrada en `lead_tags.color` (migración
- * `20260801000001`, sección 6 — 12 etiquetas). Mismo criterio visual que
- * `app/(dashboard)/crm/_components/crm-stages.ts` (`badgeBg`/`badgeText` con
- * variante dark — se partió de `crm/page.tsx` en la Task 11).
+ * `20260801000001`, sección 6 — 12 etiquetas). Nació con el mismo criterio visual
+ * que tenían las etapas de la pantalla vieja del CRM (`badgeBg`/`badgeText` con
+ * variante dark); esa pantalla se reemplazó en crm-cartera-por-rol y hoy las etapas
+ * se dibujan con `components/crm/ui/ChipEtapa.tsx`.
  *
  * Clases escritas LITERALES (no `bg-${color}-100` interpolado) porque
  * Tailwind v4 arma su CSS escaneando el código en busca de nombres de clase

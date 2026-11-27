@@ -6,7 +6,6 @@
 // Archivos solo lo que está a su nombre; del proceso del que salen los Detalles, si no es
 // suyo, viaja solo la etapa y solo si está abierto. Lo que no viaja no se puede ver en la
 // respuesta de red, aunque la pantalla no lo dibuje.
-import { CRM_STAGES, deriveCRMStage } from '@/app/(dashboard)/crm/_components/crm-stages'
 import { alcanceContactos } from '@/lib/auth/contact-access'
 import { hasPermission } from '@/lib/auth/roles'
 import type { Role } from '@/types/auth.types'
@@ -20,6 +19,7 @@ import {
   type SituacionProceso,
 } from './deal-activo'
 import { MINUTOS_PARA_DESHACER, puedeDeshacerPerdido } from './deshacer-perdido'
+import { NOMBRE_ETAPA, etapaCRM } from './etapas'
 import { anteriorAlRegistro, masReciente, ultimoContacto, type UltimoContacto } from './ultimo-contacto'
 
 export interface ProcesoDeFicha {
@@ -128,10 +128,14 @@ export interface FichaContacto {
 
 const estaCerrado = (stage: string) => (ETAPAS_CERRADAS as readonly string[]).includes(stage)
 
-/** Las mismas claves y etiquetas que el CRM (`deriveCRMStage`, `CRM_STAGES`). */
+/**
+ * Las mismas claves y etiquetas que la fila de la cartera (`etapaCRM` + `NOMBRE_ETAPA`, una
+ * sola definición en lib/crm/etapas.ts): la ficha y la lista escriben igual cada etapa
+ * ("No realizada", no "No Realizada").
+ */
 export function etapaDelCRM(p: { stage: string; scheduled_date: string | null }): Etapa {
-  const clave = deriveCRMStage(p)
-  return { clave, etiqueta: CRM_STAGES.find((s) => s.key === clave)?.label ?? clave }
+  const clave = etapaCRM(p)
+  return { clave, etiqueta: NOMBRE_ETAPA[clave] }
 }
 
 /**

@@ -391,8 +391,9 @@ body[data-scroll-locked] #contenido {
   }
 }
 
-/* Fila de metadatos que NUNCA empuja (el molde es `crm/_components/DealsList`,
-   la única lista del sistema que hoy no desborda con datos reales). */
+/* Fila de metadatos que NUNCA empuja. El molde fue la lista vieja del CRM
+   (`DealsList`, reemplazada en crm-cartera-por-rol por `components/crm/cartera`),
+   la única lista que entonces no desbordaba con datos reales. */
 @utility row-meta {
   display: flex;
   flex-wrap: wrap;
