@@ -109,6 +109,13 @@ export function FilaProceso({
       <span className={cn(CELDA, 'flex flex-col gap-px')}>
         <span className="text-[15px] font-semibold leading-tight">{fila.nombre}</span>
         {sub && <span className="text-xs leading-snug text-texto-suave">{sub}</span>}
+        {/* Video de bienvenida (tasacion-video-bienvenida, D6): gris neutro; el rojo y el ámbar
+            quedan para lo vencido y lo de hoy. El detalle (minutos, aperturas) está en la ficha. */}
+        {fila.video && (
+          <span className="text-xs leading-snug text-texto-suave" data-video-bienvenida={fila.video.estado}>
+            {fila.video.texto}
+          </span>
+        )}
         {tas && (
           <span className="flex items-start gap-1 text-xs font-medium leading-snug text-brand" data-tasacion-cercana>
             <CalendarCheck aria-hidden className="mt-0.5 size-3.5 shrink-0" />

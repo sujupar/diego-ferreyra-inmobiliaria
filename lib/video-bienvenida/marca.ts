@@ -19,8 +19,12 @@ export interface VistaParaMarca {
 }
 
 export type EstadoMarca = 'vio' | 'abrio' | 'no_abrio'
+export interface MarcaVideo {
+  texto: string
+  estado: EstadoMarca
+}
 
-export function marcaVideo(enlace: EnlaceParaMarca | null, vista: VistaParaMarca | null): { texto: string; estado: EstadoMarca } | null {
+export function marcaVideo(enlace: EnlaceParaMarca | null, vista: VistaParaMarca | null): MarcaVideo | null {
   if (!enlace) return null
   if (vista?.playbackStarted) return { texto: `▶ Vio ${porcentajeVisto(vista.watchedBuckets)} %`, estado: 'vio' }
   if (enlace.aperturas > 0) return { texto: 'Abrió el video', estado: 'abrio' }

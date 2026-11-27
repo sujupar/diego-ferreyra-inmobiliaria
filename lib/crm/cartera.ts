@@ -2,6 +2,7 @@
 // sin base y sin reloj propio (`ahora` llega por parámetro). El servidor arma las filas con
 // esto y el navegador solo filtra, agrupa y ordena (D4): así la ficha, el CRM, Contactos y
 // (más adelante) el Inicio dicen lo mismo de la misma persona.
+import type { MarcaVideo } from '@/lib/video-bienvenida/marca'
 import { procesoEnVista, type Vista } from './cartera-vista'
 import { estaAbierto, etapaCRM, type EtapaCRM } from './etapas'
 import { diasDeCalendarioEntre, enArgentina, instanteDesdeAR } from './horario-laboral'
@@ -108,6 +109,8 @@ export interface FilaCartera {
   ultimoContacto: ContactoRegistrado | null | 'error'
   proximo: ProximoPaso | null | 'error'
   tasacion: TasacionDeFila | null
+  /** Video de bienvenida (tasacion-video-bienvenida, D6): solo en solicitudes; ausente = sin marca. */
+  video?: MarcaVideo | null
 }
 
 /**

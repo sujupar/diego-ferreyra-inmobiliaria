@@ -61,7 +61,7 @@
 ## 5. CRM y panel
 
 - [x] 5.1 Línea de tiempo: evento de apertura y detalle `mm:ss de mm:ss` (tests en `linea-de-tiempo.test.ts`)
-- [ ] 5.2 Cartera: `marcaVideo` (puro, con tests) y la RPC por lote como fuente opcional; la marca en la fila
+- [x] 5.2 Cartera: `marcaVideo` (puro, con tests) y la RPC por lote como fuente opcional; la marca en la fila
 - [ ] 5.3 Ficha: "Enlace del video" con Copiar y Crear; `POST /api/contacts/[id]/video-bienvenida` con permisos (403 al abogado)
 - [ ] 5.4 `lib/metrics/panel/video-bienvenida.ts` (puro, con tests: grupos, atendió, coordinó, exclusiones, `n`) y `VideoBienvenida.tsx`
 

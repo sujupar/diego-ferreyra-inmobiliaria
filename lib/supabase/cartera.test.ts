@@ -55,7 +55,7 @@ function tarea(t: Record<string, unknown> & { deal_id: string | null; assigned_t
 
 type Tablas = Record<string, Record<string, unknown>[]>
 let base: ReturnType<typeof baseSimulada>
-function usar(tablas: Tablas, opciones: OpcionesBaseSimulada & { ultimos?: Record<string, unknown>[] } = {}) {
+function usar(tablas: Tablas, opciones: OpcionesBaseSimulada & { ultimos?: Record<string, unknown>[]; videos?: Record<string, unknown>[] } = {}) {
   base = baseSimulada(
     { profiles: perfiles, contacts: [], deals: [], tasks: [], ...tablas },
     {
@@ -64,6 +64,10 @@ function usar(tablas: Tablas, opciones: OpcionesBaseSimulada & { ultimos?: Recor
         crm_ultimos_contactos: (args) => {
           const ids = Array.isArray(args.p_contactos) ? args.p_contactos : []
           return (opciones.ultimos ?? []).filter((u) => ids.includes(u.contacto_id))
+        },
+        cartera_video_bienvenida: (args) => {
+          const ids = Array.isArray(args.p_contactos) ? args.p_contactos : []
+          return (opciones.videos ?? []).filter((u) => ids.includes(u.contacto_id))
         },
       },
     },
@@ -85,6 +89,47 @@ beforeEach(() => {
   n = 100
 })
 afterEach(() => vi.useRealTimers())
+
+// tasacion-video-bienvenida (D6): la marca del video en las solicitudes abiertas.
+describe('cargarCartera — marca del video de bienvenida', () => {
+  const vio = (contacto_id: string) => ({
+    contacto_id, enviado_at: '2026-11-27T10:00:00Z', envio_fallido_at: null, aperturas: 2,
+    playback_started: true, watched_buckets: '1'.repeat(63) + '0'.repeat(37),
+  })
+
+  it('una solicitud abierta con el video visto lleva "▶ Vio 63 %"', async () => {
+    const c = contacto('Ana')
+    usar({ contacts: [c], deals: [proceso({ contact_id: c.id })] }, { videos: [vio(c.id)] })
+    const d = await cargar({ id: DUENO, role: 'dueno' })
+    expect(d.filas[0].video).toEqual({ texto: '▶ Vio 63 %', estado: 'vio' })
+  })
+
+  it('los ids viajan en el cuerpo, en UN pedido, solo de las solicitudes', async () => {
+    const a = contacto('Ana')
+    const b = contacto('Beto')
+    usar({ contacts: [a, b], deals: [proceso({ contact_id: a.id }), proceso({ contact_id: b.id, stage: 'scheduled', scheduled_date: '2026-11-30' })] }, { videos: [vio(a.id), vio(b.id)] })
+    const d = await cargar({ id: DUENO, role: 'dueno' })
+    expect(de('rpc:cartera_video_bienvenida')).toHaveLength(1)
+    expect(de('rpc:cartera_video_bienvenida')[0].args).toEqual({ p_contactos: [a.id] })
+    expect(d.filas.find((f) => f.nombre === 'Beto')?.video ?? null).toBeNull()
+  })
+
+  it('si la lectura del video falla, la cartera sale igual y sin marcas', async () => {
+    const c = contacto('Ana')
+    usar({ contacts: [c], deals: [proceso({ contact_id: c.id })] }, { videos: [vio(c.id)], fallar: ['rpc:cartera_video_bienvenida'] })
+    const d = await cargar({ id: DUENO, role: 'dueno' })
+    expect(d.filas).toHaveLength(1)
+    expect(d.filas[0].video ?? null).toBeNull()
+    expect(d.fuentes).toEqual({ ultimoContacto: 'ok', tareas: 'ok' })
+  })
+
+  it('sin enlace, la fila no lleva marca', async () => {
+    const c = contacto('Ana')
+    usar({ contacts: [c], deals: [proceso({ contact_id: c.id })] })
+    const d = await cargar({ id: DUENO, role: 'dueno' })
+    expect(d.filas[0].video ?? null).toBeNull()
+  })
+})
 
 describe('cargarCartera — qué lee y con qué columnas', () => {
   it('columnas explícitas: nunca *, y las tareas piden source_activity_id y created_at', async () => {
