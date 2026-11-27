@@ -380,7 +380,7 @@ export function armarFilasCartera(e: {
   if (e.tareas !== 'error') {
     for (const t of e.tareas) {
       if (!t.deal_id || t.status !== 'pending') continue
-      if (!(TIPOS_TAREA_DE_PROCESO as readonly string[]).includes(t.type)) continue
+      if (!TIPOS_TAREA_DE_PROCESO.some((tipo) => tipo === t.type)) continue
       if (personaDeLaVista && t.assigned_to !== personaDeLaVista) continue
       porProceso.set(t.deal_id, [...(porProceso.get(t.deal_id) ?? []), t])
     }
