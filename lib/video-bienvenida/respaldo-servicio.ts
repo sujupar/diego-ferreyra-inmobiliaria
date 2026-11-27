@@ -10,11 +10,11 @@ import 'server-only'
  * UNA llamada a Meta con techo de 8 s. "Una sola vez" lo garantiza la RPC `tomar_respaldo`.
  */
 import { createClient } from '@supabase/supabase-js'
-import { decidirRespaldoBienvenida } from './respaldo'
+import { CODIGOS_FRENO_MARKETING, decidirRespaldoBienvenida } from './respaldo'
 import { tomarRespaldo } from './enlaces'
 import { PLANTILLA_SIN_VIDEO } from './plantillas'
 
-export type ResultadoRespaldoBienvenida = 'no_corresponde' | 'ya_mandado' | 'mandado' | 'fallido' | 'error'
+export type ResultadoRespaldoBienvenida = 'no_corresponde' | 'ya_mandado' | 'encolado' | 'mandado' | 'fallido' | 'error'
 
 /** `tasacion_llamada_v1` empieza "Hola {{1}}, ¡recibimos…": sin nombre queda "Hola qué tal, ¡recibimos…". */
 const SALUDO_SIN_NOMBRE = 'qué tal'
@@ -24,8 +24,9 @@ export async function mandarRespaldoBienvenidaSiCorresponde(s: {
   estado: string
   codigoError: string | null
 }): Promise<ResultadoRespaldoBienvenida> {
-  // Por el webhook pasan cientos de "enviado/entregado/leído": esos no tocan la base.
-  if (s.estado !== 'failed' || !s.codigoError) return 'no_corresponde'
+  // Por el webhook pasan cientos de estados: solo un freno de marketing toca la base (auditoría
+  // de código, hallazgo 4: cualquier otro `failed` no tiene nada que ver con este respaldo).
+  if (s.estado !== 'failed' || !s.codigoError || !CODIGOS_FRENO_MARKETING.includes(s.codigoError)) return 'no_corresponde'
   try {
     const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
     const { data, error } = await sb
@@ -46,8 +47,15 @@ export async function mandarRespaldoBienvenidaSiCorresponde(s: {
     const telefono = typeof fila?.phone_e164 === 'string' ? fila.phone_e164 : null
     if (!telefono) return 'no_corresponde'
 
-    const tomado = await tomarRespaldo(s.waMessageId)
+    const tomado = await tomarRespaldo(s.waMessageId, telefono)
     if (!tomado) return 'ya_mandado'
+    // Lo normal: la RPC volvió a encolar el trabajo de WhatsApp sin video, que sale con los
+    // reintentos de la cola (auditoría de código, hallazgo 2). El webhook no llama a Meta.
+    if (tomado.encolado) {
+      console.log(`[video-bienvenida] Meta frenó ${plantilla} (${s.codigoError}); se encoló ${PLANTILLA_SIN_VIDEO} (contacto ${tomado.contactId})`)
+      return 'encolado'
+    }
+    // Sin trabajo que reencolar: se manda en el momento, como último recurso.
 
     const { sendWhatsappTemplate } = await import('@/lib/integrations/whatsapp/core')
     const r = await sendWhatsappTemplate({

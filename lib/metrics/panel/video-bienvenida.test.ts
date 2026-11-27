@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { armarPanelVideoBienvenida, type EntradaPanelVideo } from './video-bienvenida'
+import { armarPanelVideoBienvenida, fechaDelCambio, type EntradaPanelVideo } from './video-bienvenida'
 
 const tramos = (n: number) => '1'.repeat(n) + '0'.repeat(100 - n)
 const AHORA = new Date('2026-12-10T15:00:00Z')
@@ -96,5 +96,16 @@ describe('panel del video de bienvenida', () => {
     e.procesos.push({ contact_id: 'ana', origin: 'embudo', stage: 'request', created_at: '2026-12-05T10:00:00Z', scheduled_at: null })
     const p = armarPanelVideoBienvenida(e, AHORA)
     expect(p.personas.filter((x) => x.nombre === 'Ana Pérez')).toHaveLength(1)
+  })
+})
+
+describe('fecha del cambio', () => {
+  it('es el día en Argentina del primer mensaje con video aceptado', () => {
+    // 01:30 del 2 de diciembre en UTC = 22:30 del 1 de diciembre en Argentina
+    expect(fechaDelCambio([null, '2026-12-03T10:00:00Z', '2026-12-02T01:30:00Z'])).toBe('2026-12-01')
+  })
+  it('sin envíos todavía, no hay fecha', () => {
+    expect(fechaDelCambio([null, null])).toBeNull()
+    expect(fechaDelCambio([])).toBeNull()
   })
 })

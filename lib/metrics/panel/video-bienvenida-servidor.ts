@@ -4,7 +4,7 @@
  */
 import 'server-only'
 import { db, todas } from './servidor'
-import { armarPanelVideoBienvenida, CAMBIO_DESDE, DIAS_ANTES, type EntradaPanelVideo, type PanelVideoBienvenida } from './video-bienvenida'
+import { armarPanelVideoBienvenida, CAMBIO_DESDE, DIAS_ANTES, fechaDelCambio, type EntradaPanelVideo, type PanelVideoBienvenida } from './video-bienvenida'
 import type { ContactoRow } from './personas'
 
 export async function cargarPanelVideoBienvenida(ahora: Date): Promise<PanelVideoBienvenida> {
@@ -13,8 +13,9 @@ export async function cargarPanelVideoBienvenida(ahora: Date): Promise<PanelVide
   // primer enlace, si el cambio todavía no tiene fecha).
   const enlaces = await todas<EntradaPanelVideo['enlaces'][number] & { created_at: string }>((a, b) =>
     sb.from('video_bienvenida_enlaces').select('contact_id, enviado_at, envio_fallido_at, aperturas, created_at').order('codigo').range(a, b))
+  const cambio = CAMBIO_DESDE ?? fechaDelCambio(enlaces.map((x) => x.enviado_at))
   const primeros = [
-    ...(CAMBIO_DESDE ? [Date.parse(`${CAMBIO_DESDE}T03:00:00.000Z`) - DIAS_ANTES * 86_400_000] : []),
+    ...(cambio ? [Date.parse(`${cambio}T03:00:00.000Z`) - DIAS_ANTES * 86_400_000] : []),
     ...enlaces.map((x) => Date.parse(x.created_at) - 86_400_000),
   ]
   const desde = new Date(primeros.length ? Math.min(...primeros) : ahora.getTime()).toISOString()
@@ -39,7 +40,7 @@ export async function cargarPanelVideoBienvenida(ahora: Date): Promise<PanelVide
     if (!previa || Date.parse(v.updated_at) > Date.parse(previa.updated_at)) vistas.set(v.contact_id, { ...v, contact_id: v.contact_id })
   }
   return armarPanelVideoBienvenida(
-    { contactos, enlaces, vistas: [...vistas.values()], procesos, llamadas, cambioDesde: CAMBIO_DESDE },
+    { contactos, enlaces, vistas: [...vistas.values()], procesos, llamadas, cambioDesde: cambio },
     ahora,
   )
 }

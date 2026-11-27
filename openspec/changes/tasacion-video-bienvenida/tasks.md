@@ -30,7 +30,7 @@
 - [x] 1.4 Auditoría de los artefactos (auditor 1): 22 hallazgos, todos incorporados (`auditoria.md`)
 - [x] 1.5 Auditor 2: 11 hallazgos (1 alto), todos incorporados (`auditoria.md`)
 - [x] 1.6 Pre-flight de choques (`preflight.md`): PROCEDER-CON-MITIGACIONES
-- [ ] 1.7 Abrir el PR en borrador
+- [x] 1.7 Abrir el PR en borrador
 
 ## 2. Base de datos
 
@@ -73,7 +73,7 @@
 
 ## 7. QA
 
-- [ ] 7.1 Vista previa de Netlify, a 390 y a 1280 px, con el navegador de Claude:
+- [x] 7.1 Vista previa de Netlify, a 390 y a 1280 px, con el navegador de Claude:
   - la página con un enlace `[TEST]`;
   - la ficha (copiar y crear);
   - la marca en la cartera;
@@ -93,6 +93,6 @@
 
 ## 9. Auditoría doble
 
-- [ ] 9.1 Auditor 1 revisa el código contra los escenarios de `specs/`
+- [x] 9.1 Auditor 1 revisa el código contra los escenarios de `specs/`
 - [ ] 9.2 Auditor 2 revisa el código y la auditoría del 1
 - [ ] 9.3 Se repite hasta cero hallazgos de peso; todo queda en `auditoria.md`

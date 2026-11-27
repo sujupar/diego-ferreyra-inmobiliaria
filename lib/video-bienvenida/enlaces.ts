@@ -63,26 +63,30 @@ export async function obtenerOCrearEnlace(input: {
 }
 
 /** Best-effort: el WhatsApp ya salió. Si esto lanzara, la cola reintentaría y lo mandaría dos veces. */
-export async function marcarEnviado(codigo: string, wamid: string | null): Promise<void> {
+export async function marcarEnviado(codigo: string, wamid: string | null, dealId: string | null): Promise<void> {
   try {
-    const { error } = await admin().rpc('video_bienvenida_marcar_enviado', { p_codigo: codigo, p_wamid: wamid })
+    const { error } = await admin().rpc('video_bienvenida_marcar_enviado', { p_codigo: codigo, p_wamid: wamid, p_deal: dealId })
     if (error) console.warn('[video-bienvenida] no se pudo marcar el enlace como enviado:', error.message)
   } catch (e) {
     console.warn('[video-bienvenida] excepción marcando el enlace como enviado:', e)
   }
 }
 
-/** El contacto del mensaje fallido, solo la PRIMERA vez (la RPC marca `respaldo_at` atómica). */
-export async function tomarRespaldo(wamid: string): Promise<{ contactId: string; nombre: string | null } | null> {
+/**
+ * El contacto del mensaje fallido, solo la PRIMERA vez (la RPC marca `respaldo_at` atómica). En la
+ * misma transacción vuelve a encolar el trabajo de WhatsApp de ese proceso, sin video:
+ * `encolado = false` quiere decir que no pudo (sin proceso, o el trabajo está corriendo).
+ */
+export async function tomarRespaldo(wamid: string, telefono: string): Promise<{ contactId: string; nombre: string | null; encolado: boolean } | null> {
   try {
-    const { data, error } = await admin().rpc('video_bienvenida_tomar_respaldo', { p_wamid: wamid })
+    const { data, error } = await admin().rpc('video_bienvenida_tomar_respaldo', { p_wamid: wamid, p_phone: telefono })
     if (error) {
       console.warn('[video-bienvenida] no se pudo tomar el respaldo:', error.message)
       return null
     }
-    const fila = Array.isArray(data) ? (data[0] as { contact_id?: unknown; nombre?: unknown } | undefined) : undefined
+    const fila = Array.isArray(data) ? (data[0] as { contact_id?: unknown; nombre?: unknown; encolado?: unknown } | undefined) : undefined
     if (!fila || typeof fila.contact_id !== 'string') return null
-    return { contactId: fila.contact_id, nombre: typeof fila.nombre === 'string' ? fila.nombre : null }
+    return { contactId: fila.contact_id, nombre: typeof fila.nombre === 'string' ? fila.nombre : null, encolado: fila.encolado === true }
   } catch (e) {
     console.warn('[video-bienvenida] excepción tomando el respaldo:', e)
     return null

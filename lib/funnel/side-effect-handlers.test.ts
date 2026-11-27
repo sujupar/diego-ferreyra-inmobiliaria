@@ -32,7 +32,7 @@ const espias = vi.hoisted(() => ({
   /** Video de bienvenida: lo que devuelve crear el enlace y las marcas de enviado. */
   enlace: { codigo: 'k7Hq2mXb9T', url: 'https://inmodf.com.ar/t/k7Hq2mXb9T' } as { codigo: string; url: string } | null,
   enlacesPedidos: [] as Array<Record<string, unknown>>,
-  enviados: [] as Array<{ codigo: string; wamid: string | null }>,
+  enviados: [] as Array<{ codigo: string; wamid: string | null; dealId: string | null }>,
   marcarEnviadoLanza: false,
   /** Escrituras `from(tabla).update(patch).eq('id', id)` — la marca del trato. */
   marcas: [] as Array<{ tabla: string; patch: Record<string, unknown>; id: string }>,
@@ -86,9 +86,9 @@ vi.mock('@/lib/video-bienvenida/enlaces', () => ({
     espias.enlacesPedidos.push(input)
     return espias.enlace
   },
-  marcarEnviado: async (codigo: string, wamid: string | null) => {
+  marcarEnviado: async (codigo: string, wamid: string | null, dealId: string | null) => {
     if (espias.marcarEnviadoLanza) throw new Error('la base no responde')
-    espias.enviados.push({ codigo, wamid })
+    espias.enviados.push({ codigo, wamid, dealId })
   },
 }))
 vi.mock('@supabase/supabase-js', () => ({
@@ -285,7 +285,22 @@ describe('primer WhatsApp con video de bienvenida', () => {
       bodyParams: ['Ana', 'https://inmodf.com.ar/t/k7Hq2mXb9T'],
       urlButtonParam: 'k7Hq2mXb9T',
     })
-    expect(espias.enviados).toEqual([{ codigo: 'k7Hq2mXb9T', wamid: 'wamid.1' }])
+    expect(espias.enviados).toEqual([{ codigo: 'k7Hq2mXb9T', wamid: 'wamid.1', dealId: 'deal-1' }])
+  })
+
+  // Respaldo tardío (D3b): la base reencoló este trabajo con `sinVideo` porque Meta frenó el video.
+  it('un trabajo reencolado sin video manda tasacion_llamada_v1 y no crea ni marca enlaces', async () => {
+    const r = await ejecutarTrabajo('whatsapp', { ...WA, sinVideo: true })
+    expect(r).toBe('done')
+    expect(espias.enlacesPedidos).toEqual([])
+    expect(espias.whatsapp).toHaveLength(1)
+    expect(espias.whatsapp[0]).toMatchObject({ templateName: 'tasacion_llamada_v1', bodyParams: ['Ana'] })
+    expect(espias.enviados).toEqual([])
+  })
+
+  it('reencolado sin nombre: saluda "Hola qué tal" en vez de fallar', async () => {
+    await ejecutarTrabajo('whatsapp', { ...WA, nombre: '', sinVideo: true })
+    expect(espias.whatsapp[0].bodyParams).toEqual(['qué tal'])
   })
 
   it('si el enlace no se puede crear, sale tasacion_llamada_v1 y no se marca nada', async () => {

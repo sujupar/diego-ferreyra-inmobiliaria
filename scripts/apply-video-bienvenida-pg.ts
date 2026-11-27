@@ -73,11 +73,32 @@ async function main() {
     ok(ap1.ok === true && ap0.ok === false, 'la apertura devuelve true con un código real y false con uno inexistente')
     ok(e1.aperturas === 2 && e1.p, 'dos aperturas suman 2 y guardan la primera')
 
-    await c.query(`SELECT public.video_bienvenida_marcar_enviado('ooooHq2mXb', 'wamid.TEST1')`)
-    const { rows: r1 } = await c.query(`SELECT * FROM public.video_bienvenida_tomar_respaldo('wamid.TEST1')`)
-    const { rows: r2 } = await c.query(`SELECT * FROM public.video_bienvenida_tomar_respaldo('wamid.TEST1')`)
-    ok(r1.length === 1 && r1[0].contact_id === contacto.id && r1[0].nombre === 'Ana', 'el respaldo devuelve el contacto la primera vez')
+    // Un proceso con su registro y su trabajo de WhatsApp ya hecho (payload vacío, como lo deja el worker).
+    const { rows: [deal] } = await c.query(`INSERT INTO deals (contact_id, stage, origin, property_address) VALUES ($1, 'request', NULL, '[TEST] QA') RETURNING id`, [contacto.id])
+    const { rows: [sub] } = await c.query(`INSERT INTO funnel_lead_submissions (funnel, deal_id, contact_id) VALUES ('tasacion', $1, $2) RETURNING id`, [deal.id, contacto.id])
+    const { rows: [job] } = await c.query(`INSERT INTO funnel_lead_jobs (submission_id, kind, payload, status, attempts) VALUES ($1, 'whatsapp', '{}'::jsonb, 'done', 1) RETURNING id`, [sub.id])
+
+    await c.query(`SELECT public.video_bienvenida_marcar_enviado('ooooHq2mXb', 'wamid.TEST1', $1)`, [deal.id])
+    const { rows: r1 } = await c.query(`SELECT * FROM public.video_bienvenida_tomar_respaldo('wamid.TEST1', '5491155550000')`)
+    const { rows: r2 } = await c.query(`SELECT * FROM public.video_bienvenida_tomar_respaldo('wamid.TEST1', '5491155550000')`)
+    ok(r1.length === 1 && r1[0].contact_id === contacto.id && r1[0].nombre === 'Ana' && r1[0].encolado === true, 'el respaldo devuelve el contacto la primera vez y encola el trabajo')
     ok(r2.length === 0, 'un aviso repetido no devuelve nada (una sola vez)')
+    const { rows: [j] } = await c.query(`SELECT status, attempts, payload FROM funnel_lead_jobs WHERE id = $1`, [job.id])
+    ok(j.status === 'pending' && j.attempts === 0 && j.payload.sinVideo === true && j.payload.phone === '5491155550000' && j.payload.dealId === deal.id && j.payload.nombre === 'Ana',
+      'el trabajo de WhatsApp vuelve a la cola, sin video y con el payload rearmado')
+
+    // La persona se vuelve a registrar: un mensaje con video NUEVO reinicia el respaldo.
+    await c.query(`SELECT public.video_bienvenida_marcar_enviado('ooooHq2mXb', 'wamid.TEST2', $1)`, [deal.id])
+    const { rows: [e2] } = await c.query(`SELECT respaldo_at, envio_fallido_at FROM video_bienvenida_enlaces WHERE codigo='ooooHq2mXb'`)
+    ok(e2.respaldo_at === null && e2.envio_fallido_at === null, 'un mensaje nuevo reinicia el respaldo y el fallo')
+    await c.query(`UPDATE funnel_lead_jobs SET status='done' WHERE id=$1`, [job.id])
+    const { rows: r3 } = await c.query(`SELECT * FROM public.video_bienvenida_tomar_respaldo('wamid.TEST2', '5491155550000')`)
+    ok(r3.length === 1 && r3[0].encolado === true, 'si Meta frena también el segundo, vuelve a salir el respaldo')
+    // Sin trabajo para reencolar (corriendo): devuelve el contacto con encolado=false.
+    await c.query(`SELECT public.video_bienvenida_marcar_enviado('ooooHq2mXb', 'wamid.TEST3', $1)`, [deal.id])
+    await c.query(`UPDATE funnel_lead_jobs SET status='running' WHERE id=$1`, [job.id])
+    const { rows: r4 } = await c.query(`SELECT * FROM public.video_bienvenida_tomar_respaldo('wamid.TEST3', '5491155550000')`)
+    ok(r4.length === 1 && r4[0].encolado === false, 'con el trabajo corriendo no encola (el servidor manda en el momento)')
 
     await c.query(`INSERT INTO video_view_state (anon_id, video_key, watched_buckets, playback_started, watch_seconds, max_percent)
                    VALUES ('bv:ooooHq2mXb', 'bienvenida-tasacion-v1', B'1111', true, 4, 4)`)
@@ -99,7 +120,7 @@ async function main() {
     ok(leidas[0].n === 0, 'anon lee 0 filas')
     for (const f of [
       `SELECT public.video_bienvenida_registrar_apertura('ooooHq2mXb')`,
-      `SELECT * FROM public.video_bienvenida_tomar_respaldo('x')`,
+      `SELECT * FROM public.video_bienvenida_tomar_respaldo('x', 'y')`,
       `SELECT * FROM public.cartera_video_bienvenida(ARRAY[]::uuid[])`,
     ]) ok(await falla(c, f), `anon no puede ejecutar: ${f.slice(7, 60)}`)
     await c.query('ROLLBACK TO SAVEPOINT anon')

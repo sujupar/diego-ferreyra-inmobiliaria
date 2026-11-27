@@ -353,8 +353,10 @@ export function FunnelClickToPlayVideo({
       if (antes !== null && !v.paused) {
         const suma = segundosDelAvance(antes, v.currentTime)
         if (suma > 0) {
+          const previo = Math.floor(segundosRef.current)
           segundosRef.current += suma
-          onSegundosReproducidos(segundosRef.current)
+          // Un aviso por segundo entero, no por cada `timeupdate` (~4 por segundo).
+          if (Math.floor(segundosRef.current) > previo) onSegundosReproducidos(segundosRef.current)
         }
       }
     }

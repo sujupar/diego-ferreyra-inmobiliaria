@@ -14,7 +14,7 @@ import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { FunnelClickToPlayVideo } from '@/components/funnel/FunnelClickToPlayVideo'
 import { CONTENIDO } from '@/lib/video-bienvenida/contenido'
-import { mostrarQuePasaAhora } from '@/lib/video-bienvenida/mostrar-bloque'
+import { mostrarQuePasaAhora, UMBRAL_SEGUNDOS } from '@/lib/video-bienvenida/mostrar-bloque'
 
 export interface PaginaVideoProps {
   codigo: string
@@ -68,7 +68,9 @@ export function PaginaVideo({ codigo, titular, medir, segundosPrevios }: PaginaV
             context="bienvenida"
             anonId={`bv:${codigo}`}
             trackKey={medir ? c.video.trackKey : undefined}
-            onSegundosReproducidos={setSegundos}
+            // Pasados los 30 s el bloque ya está: dejar de actualizar evita redibujar la página
+            // durante los 13 minutos de video (auditoría de código, hallazgo 5).
+            onSegundosReproducidos={(n) => setSegundos((p) => (p >= UMBRAL_SEGUNDOS ? p : n))}
             className="rounded-none! sm:rounded-[14px]!"
           />
         </div>

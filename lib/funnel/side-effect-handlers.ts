@@ -226,7 +226,12 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
   // veces: es un dato que no sirve. Se registra como 'skipped' y sigue.
   if (!destino) return 'skipped'
 
-  const primerNombre = requerido(p, 'nombre').trim().split(/\s+/)[0] ?? ''
+  // El respaldo tardío del video (sinVideo) rearma el payload y el nombre puede faltar: ahí se
+  // saluda sin nombre ("Hola qué tal, ¡recibimos…"). En el envío normal el nombre es obligatorio.
+  const sinVideo = p.sinVideo === true
+  const primerNombre = sinVideo
+    ? (texto(p, 'nombre')?.trim().split(/\s+/)[0] || 'qué tal')
+    : (requerido(p, 'nombre').trim().split(/\s+/)[0] ?? '')
 
   // El envío ya deja el mensaje en `whatsapp_messages` (ver `logOutbound` dentro
   // de `sendWhatsappTemplate`), así que acá no se registra nada a mano.
@@ -265,7 +270,10 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
   const v = await import('@/lib/video-bienvenida/plantillas')
   let enlace: { codigo: string; url: string } | null = null
   let r: Awaited<ReturnType<typeof sendWhatsappTemplate>>
-  if (v.esPlantillaConVideo(plantilla)) {
+  if (sinVideo) {
+    // Meta frenó por marketing el mensaje con video de esta persona (ver respaldo.ts): va el de siempre.
+    r = await mandar(v.PLANTILLA_SIN_VIDEO, [primerNombre])
+  } else if (v.esPlantillaConVideo(plantilla)) {
     const contactId = texto(p, 'contactId')
     const { obtenerOCrearEnlace } = await import('@/lib/video-bienvenida/enlaces')
     enlace = contactId
@@ -310,7 +318,7 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
   if (enlace) {
     try {
       const { marcarEnviado } = await import('@/lib/video-bienvenida/enlaces')
-      await marcarEnviado(enlace.codigo, r.messageId ?? null)
+      await marcarEnviado(enlace.codigo, r.messageId ?? null, texto(p, 'dealId'))
     } catch (e) {
       console.warn('[funnel-jobs] no se pudo marcar el enlace del video como enviado', e)
     }

@@ -11,8 +11,18 @@
 import { contactosDePrueba, type ContactoRow } from './personas'
 import { contarTramos, formatoMinutos, segundosVistos } from '@/lib/video-bienvenida/tramos'
 
-/** Día en que la plantilla con video empezó a salir (hora de Argentina). Se carga al activarla. */
+/**
+ * Día en que la plantilla con video empezó a salir (hora de Argentina). `null` = se toma solo del
+ * primer mensaje con video que Meta aceptó (`fechaDelCambio`). Se fija a mano solo para corregirlo.
+ */
 export const CAMBIO_DESDE: string | null = null
+
+/** El día (Argentina, UTC−3) del primer envío con video aceptado, o null si todavía no salió ninguno. */
+export function fechaDelCambio(enviados: (string | null)[]): string | null {
+  const t = enviados.filter((x): x is string => !!x).map((x) => Date.parse(x)).filter((n) => !Number.isNaN(n))
+  if (t.length === 0) return null
+  return new Date(Math.min(...t) - 3 * 3_600_000).toISOString().slice(0, 10)
+}
 export const DIAS_ANTES = 14
 export const BASE_CHICA = 20
 
@@ -66,7 +76,7 @@ export function armarPanelVideoBienvenida(e: EntradaPanelVideo, ahora: Date): Pa
   const atendioDesde = (contacto: string, desde: number) =>
     (llamadasDe.get(contacto) ?? []).some((l) => ms(l.occurred_at) >= desde && l.call_outcome !== null && ATENDIO.has(l.call_outcome))
   const coordinoDesde = (contacto: string, desde: number) =>
-    delEmbudo.some((p) => p.contact_id === contacto && ms(p.created_at) >= desde - 5 * 60_000 && coordinado(p))
+    delEmbudo.some((p) => p.contact_id === contacto && ms(p.created_at) >= desde && coordinado(p))
 
   // Recibieron: enlace que salió por WhatsApp y Meta no avisó que falló.
   const recibidos = e.enlaces.filter((x) => x.enviado_at && !x.envio_fallido_at && !prueba.has(x.contact_id))
