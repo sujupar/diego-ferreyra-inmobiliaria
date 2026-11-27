@@ -61,6 +61,9 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       if (deshacer) {
         const desdeFecha = typeof cuerpo.desde_fecha === 'string' ? cuerpo.desde_fecha : null
         const desdeHora = typeof cuerpo.desde_hora === 'string' ? cuerpo.desde_hora.slice(0, 5) : null
+        if ((desdeFecha !== null && !/^\d{4}-\d{2}-\d{2}$/.test(desdeFecha)) || (desdeHora !== null && !/^([01]\d|2[0-3]):[0-5]\d$/.test(desdeHora))) {
+          return NextResponse.json({ error: 'Elegí un día y una hora válidos.' }, { status: 400 })
+        }
         siSigue = { fecha: desdeFecha, hora: desdeHora === null ? null : `${desdeHora}:00` }
       }
     }

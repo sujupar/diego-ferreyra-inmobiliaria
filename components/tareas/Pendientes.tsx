@@ -117,6 +117,9 @@ export function Pendientes() {
   const [posponiendo, setPosponiendo] = useState<TareaAPosponer | null>(null)
   const [nueva, setNueva] = useState(false)
   const version = useRef(0)
+  // Lo último que se pudo mostrar: si falla un filtro nuevo, los filtros vuelven ahí y la
+  // pantalla no queda con un chip que no coincide con la lista (auditoría de cierre, 7).
+  const aplicado = useRef<{ de: string | null; tipo: TipoTarea | null }>({ de: null, tipo: null })
 
   const pedir = useCallback(async (deP: string | null, tipoP: TipoTarea | null, desde = 0) => {
     const qs = new URLSearchParams()
@@ -136,10 +139,13 @@ export function Pendientes() {
         setSinFechaExtra([])
         setHechas(new Set())
         setEstado('ok')
+        aplicado.current = { de, tipo }
       } else {
         setEstado('error')
         // Con una lista ya a la vista, el error no se ve en su lugar: se avisa (revisión, 8).
         toast.error('No se pudieron traer las tareas. Probá de nuevo.')
+        setDe(aplicado.current.de)
+        setTipo(aplicado.current.tipo)
       }
     } catch (err) {
       console.error('[pendientes] no se pudieron traer las tareas', err)

@@ -10,6 +10,9 @@ import { leerAgenda, leerPersonas } from '@/lib/supabase/agenda-tareas'
 // "mías", una persona o "todos"; el resto ve SIEMPRE las suyas, pida lo que pida.
 export const dynamic = 'force-dynamic'
 
+/** Un id que no es de nadie: `in('assigned_to', [VACIO])` no trae nada (una lista vacía no es válida en PostgREST). */
+const VACIO = '00000000-0000-0000-0000-000000000000'
+
 export async function GET(request: NextRequest) {
   const user = await requireAuth()
   try {
@@ -33,10 +36,12 @@ export async function GET(request: NextRequest) {
     const desde = Number(sp.get('sin_fecha_desde') ?? '0')
     if (!Number.isInteger(desde) || desde < 0) return NextResponse.json({ error: 'La página pedida no es válida.' }, { status: 400 })
 
-    const [agenda, personas] = await Promise.all([
-      leerAgenda({ asignados, tipo: tipo as TipoTarea | null, sinFechaDesde: desde }, new Date()),
-      veTodo ? leerPersonas() : Promise.resolve(null),
-    ])
+    const personas = veTodo ? await leerPersonas() : null
+    // Una persona que no está activa no se ofrece en "De quién" (D3): su pedido da la lista vacía.
+    if (asignados !== 'todos' && asignados[0] !== propio && !personas?.some((x) => x.id === asignados[0])) {
+      asignados = [VACIO]
+    }
+    const agenda = await leerAgenda({ asignados, tipo: tipo as TipoTarea | null, sinFechaDesde: desde }, new Date())
     return NextResponse.json({
       ...agenda,
       de: asignados === 'todos' ? 'todos' : asignados[0] === propio ? 'mias' : asignados[0],

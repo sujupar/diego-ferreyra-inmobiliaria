@@ -453,6 +453,7 @@ export function FichaContacto({
             }}
             avisar={avisar}
             avisarCompletada={(deshacer) => mostrarToast('Tarea completada', { action: { label: 'Deshacer', onClick: deshacer } })}
+            altas={new Map((datos?.procesos ?? []).map((p) => [p.id, p.creado]))}
           />
           {datos && <BloqueLista ficha={datos} ahora={ahora} onDeshacerPerdido={deshacerPerdido} />}
         </div>

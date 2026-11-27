@@ -196,7 +196,7 @@ export function Campanita({ intervaloMs = INTERVALO_MS }: { intervaloMs?: number
       <button
         ref={refBoton}
         type="button"
-        aria-label={etiquetaCampanita(total)}
+        aria-label={avisos === null && fallo ? 'Avisos: no se pudieron leer' : etiquetaCampanita(total)}
         aria-haspopup="dialog"
         aria-expanded={abierto}
         onClick={() => setAbierto((a) => !a)}

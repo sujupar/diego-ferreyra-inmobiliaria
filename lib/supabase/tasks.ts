@@ -416,6 +416,13 @@ export async function reabrirTarea(id: string): Promise<'ok' | 'conflicto' | 'no
   // momento; el "Deshacer" la reabre (si no, la cartera esconde la reabierta: revisión, 1).
   const a = antes as { type: string; channel: string | null; deal_id: string | null; title: string; completed_at: string | null } | null
   if (a && a.type === 'update_contact' && a.channel === 'call' && a.deal_id && a.completed_at) {
+    // Si el proceso ya salió de Solicitud (alguien lo coordinó en el medio), la copia de la
+    // otra coordinadora queda cerrada: ese lead ya no espera (auditoría de cierre, 5).
+    const { data: proc, error: ep } = await db.from('deals').select('stage, scheduled_date').eq('id', a.deal_id).maybeSingle()
+    if (ep) throw new Error(`reabrirTarea (proceso): ${ep.message}`)
+    const pr = proc as { stage: string; scheduled_date: string | null } | null
+    const enSolicitud = !!pr && (pr.stage === 'request' || (pr.stage === 'scheduled' && !pr.scheduled_date))
+    if (!enSolicitud) return 'ok'
     const t = Date.parse(a.completed_at)
     const { data: copias, error: e2 } = await db
       .from('tasks').select('id')
