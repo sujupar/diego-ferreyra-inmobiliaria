@@ -100,7 +100,7 @@ export function armarFilasContactos(e: {
       : e.tareas.filter(
           (t) =>
             t.status === 'pending' &&
-            (TIPOS_TAREA_DE_PROCESO as readonly string[]).includes(t.type) &&
+            TIPOS_TAREA_DE_PROCESO.some((tipo) => tipo === t.type) &&
             (!soloSuyas || t.assigned_to === e.usuario.id),
         )
 
