@@ -81,4 +81,31 @@ describe('rpcPaginado', () => {
     expect(r.filas).toEqual([])
     expect(r.error).toMatch(/does not exist/)
   })
+
+  it('con `senal`, le pasa la señal a cada página (un plazo compartido corta TODAS las lecturas)', async () => {
+    const senales: AbortSignal[] = []
+    const client = {
+      rpc() {
+        const q = {
+          order() { return q },
+          abortSignal(s: AbortSignal) { senales.push(s); return q },
+          async range(desde: number) {
+            return { data: desde === 0 ? N(1000) : N(5), error: null }
+          },
+        }
+        return q
+      },
+    }
+    const ctrl = new AbortController()
+    const r = await rpcPaginado(client, 'x', {}, ['a'], { senal: ctrl.signal })
+    expect(r.filas).toHaveLength(1005)
+    expect(senales).toEqual([ctrl.signal, ctrl.signal])
+  })
+
+  it('sin `senal` no la pide (los llamadores de siempre no cambian)', async () => {
+    const { client, llamadas } = clienteFalso(N(3))
+    const r = await rpcPaginado(client, 'x', {}, ['a'])
+    expect(r.filas).toHaveLength(3)
+    expect(llamadas).toHaveLength(1)
+  })
 })
