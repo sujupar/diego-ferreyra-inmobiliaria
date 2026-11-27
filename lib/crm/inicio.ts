@@ -8,7 +8,6 @@ import { textoEspera } from './cartera-trabado'
 import { NOMBRE_ETAPA, type EtapaCRM } from './etapas'
 import { diaCorto, duracion, fechaRelativa, haceCuanto, textoVencimiento } from './formato-fecha'
 import { diasDeCalendarioEntre, enArgentina, instanteDesdeAR, minutosHabilesEntre } from './horario-laboral'
-import { vencimientoDeTarea } from './tareas-ficha'
 import { INICIO_REGISTRO_CONTACTOS } from './ultimo-contacto'
 import type { TareaDeAgenda } from '@/lib/supabase/agenda-tareas'
 
@@ -48,43 +47,56 @@ export interface ItemParaLlamar extends PersonaDelInicio {
   anterior: string | null
 }
 
-function vencido(p: Proximo, ahora: Date): boolean {
-  if (p.espera) return Date.parse(p.espera.registradoEn) <= ahora.getTime()
-  return vencimientoDeTarea(p.vence, ahora).vencida
-}
+/** Las etapas que lleva la coordinación (la cola no incluye clases, compradores ni cerrados). */
+const ETAPAS_COORDINACION: readonly string[] = ['solicitud', 'coordinada', 'no_realizada']
+const deCoordinacion = (f: FilaCartera) => f.abierto && !f.colega && ETAPAS_COORDINACION.includes(f.etapa)
 
 /**
- * La cola de la coordinación (spec "Para llamar ahora"): solicitudes desde el registro de
- * llamadas sin primer contacto, y personas con una llamada de la coordinación ya vencida.
- * Una vez por persona, de la más vieja a la más nueva.
+ * La cola única de la coordinación (spec "Para llamar ahora"; auditoría de artefactos 1, 4,
+ * 5): las solicitudes desde el registro sin primer contacto, y las personas con una tarea de
+ * llamada de CUALQUIER coordinadora ya vencida (también las de antes del registro y las de
+ * "Volver a llamar"). Una vez por persona, de la más vieja a la más nueva.
+ * `tareasCoordinacion`: las tareas pendientes de todas las coordinadoras (`leerAgenda`).
+ * `llamadas`: cuántas llamadas sin anular tiene cada proceso ("Llamada N" = N - 1 + 1).
  */
-export function colaParaLlamar(filas: readonly FilaCartera[], coordinacion: ReadonlySet<string>, ahora: Date): ItemParaLlamar[] {
-  const elegidas = filas
-    .filter((f) => {
-      if (!f.abierto || f.anteriorAlRegistro) return false
-      if (sinPrimerContacto(f)) return true
-      const p = proximoDe(f)
-      return !!p && p.clase === 'tarea' && ES_LLAMADA.test(p.titulo) && !!p.quien && coordinacion.has(p.quien.id) && vencido(p, ahora)
-    })
-    .sort((a, b) => Date.parse(a.creadoEn) - Date.parse(b.creadoEn) || a.id.localeCompare(b.id))
+export function colaParaLlamar(
+  filas: readonly FilaCartera[],
+  tareasCoordinacion: readonly TareaDeAgenda[],
+  llamadas: ReadonlyMap<string, number>,
+  ahora: Date,
+): ItemParaLlamar[] {
+  const porProceso = new Map(filas.map((f) => [f.id, f]))
+  const porContacto = new Map<string, FilaCartera>()
+  for (const f of filas) if (f.contactoId && deCoordinacion(f) && !porContacto.has(f.contactoId)) porContacto.set(f.contactoId, f)
+  const tareaDe = new Map<string, TareaDeAgenda>() // la llamada más vencida de cada proceso
+  const elegidas = new Map<string, FilaCartera>() // por proceso
+  for (const t of tareasCoordinacion) {
+    if (t.tipo !== 'llamada') continue
+    const f = (t.deal_id && porProceso.get(t.deal_id)) || (t.contacto && porContacto.get(t.contacto.id)) || null
+    if (!f || !deCoordinacion(f)) continue
+    const previa = tareaDe.get(f.id)
+    if (!previa || (t.due_date ?? '') < (previa.due_date ?? '')) tareaDe.set(f.id, t)
+    if (t.vencimiento.estado === 'vencida') elegidas.set(f.id, f)
+  }
+  for (const f of filas) if (deCoordinacion(f) && sinPrimerContacto(f)) elegidas.set(f.id, f)
+
   const vistos = new Set<string>()
   const r: ItemParaLlamar[] = []
-  for (const f of elegidas) {
+  for (const f of [...elegidas.values()].sort((a, b) => Date.parse(a.creadoEn) - Date.parse(b.creadoEn) || a.id.localeCompare(b.id))) {
     const clave = f.contactoId ?? f.id
     if (vistos.has(clave)) continue
     vistos.add(clave)
-    const p = proximoDe(f)
+    const t = tareaDe.get(f.id)
     const u = ultimoDe(f)
-    let estado: ItemParaLlamar['estado']
-    if (p) {
-      const v = textoVencimiento(p.vence, ahora, { todoElDia: p.vence.all_day, ...(p.espera ? { espera: p.espera } : {}) })
-      estado = { texto: v.texto, tipo: v.texto.startsWith('Espera') ? 'espera' : v.estado === 'vencida' ? 'vencida' : 'proxima' }
-    } else {
-      estado = { texto: textoEspera(f.creadoEn, ahora), tipo: 'espera' }
-    }
+    const estado: ItemParaLlamar['estado'] = t
+      ? {
+          texto: t.vencimiento.texto,
+          tipo: t.vencimiento.texto.startsWith('Espera') ? 'espera' : t.vencimiento.estado === 'vencida' ? 'vencida' : 'proxima',
+        }
+      : { texto: textoEspera(f.creadoEn, ahora), tipo: 'espera' }
     r.push({
       ...persona(f),
-      llamada: p && /^Llamada \d+$/.test(p.titulo) ? p.titulo : 'Llamada 1',
+      llamada: `Llamada ${(llamadas.get(f.id) ?? 0) + 1}`,
       registrado: `Se registró ${haceCuanto(f.creadoEn, ahora)}`,
       estado,
       anterior: u && u.que === 'llamada' && u.resultado ? `Anterior: ${RESULTADO_CORTO[u.resultado].toLowerCase()}, ${fechaRelativa(u.at, ahora)}` : null,
@@ -93,41 +105,47 @@ export function colaParaLlamar(filas: readonly FilaCartera[], coordinacion: Read
   return r
 }
 
-// ── Sin respuesta tras WhatsApp ─────────────────────────────────────
+// ── Sin respuesta tras WhatsApp y sin próximo paso ──────────────────
 
 export interface ItemSinRespuesta extends PersonaDelInicio {
   linea: string
   registrado: string
 }
 
+/** Las solicitudes desde el registro, ya contactadas, sin ninguna tarea pendiente (de nadie). */
+export function solicitudesSinTarea(filas: readonly FilaCartera[], conTarea: ReadonlySet<string>): FilaCartera[] {
+  return filas.filter(
+    (f) => f.abierto && !f.colega && !f.anteriorAlRegistro && f.etapa === 'solicitud' && !!ultimoDe(f)
+      && !conTarea.has(f.id) && !(f.contactoId && conTarea.has(f.contactoId)),
+  )
+}
+
 /**
- * Solicitudes desde el registro a las que ya se llamó y se les marcó un WhatsApp en la racha,
- * sin ninguna tarea pendiente (spec "Sin respuesta tras WhatsApp").
+ * Las solicitudes sin tarea se reparten en dos (auditoría de artefactos 3): con WhatsApp en
+ * la racha → "Sin respuesta tras WhatsApp"; sin WhatsApp → "Sin próximo paso" (la secuencia
+ * terminó, o la tarea no se pudo crear, o se dejó abierto tras "Número equivocado").
  */
 export function sinRespuesta(
-  filas: readonly FilaCartera[],
+  sinTarea: readonly FilaCartera[],
   intentos: ReadonlyMap<string, IntentoDeCadencia[]>,
   ahora: Date,
-): ItemSinRespuesta[] {
-  const r: (ItemSinRespuesta & { creado: number })[] = []
-  for (const f of filas) {
-    if (!f.abierto || f.anteriorAlRegistro || f.etapa !== 'solicitud' || !ultimoDe(f) || f.proximo !== null) continue
+): { conWhatsapp: ItemSinRespuesta[]; sinProximo: ItemSinRespuesta[] } {
+  const conWhatsapp: ItemSinRespuesta[] = []
+  const sinProximo: ItemSinRespuesta[] = []
+  for (const f of [...sinTarea].sort((a, b) => Date.parse(a.creadoEn) - Date.parse(b.creadoEn))) {
     const deEste = (intentos.get(f.id) ?? []).filter((i) => !i.voided_at)
-    if (!estadoCadencia(deEste).whatsappEnLaRacha) continue
-    const wa = deEste.filter((i) => i.kind === 'whatsapp_sent').sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at))[0]
     const llamadas = deEste.filter((i) => i.kind === 'call').length
-    r.push({
-      ...persona(f),
-      linea: `WhatsApp enviado ${haceCuanto(wa.occurred_at, ahora)} · ${llamadas} ${llamadas === 1 ? 'llamada' : 'llamadas'} sin atender`,
-      registrado: `Se registró ${diaYMes(f.creadoEn)}`,
-      creado: Date.parse(f.creadoEn),
-    })
+    const textoLlamadas = `${llamadas} ${llamadas === 1 ? 'llamada' : 'llamadas'}`
+    const registrado = `Se registró ${diaYMes(f.creadoEn)}`
+    if (estadoCadencia(deEste).whatsappEnLaRacha) {
+      const wa = deEste.filter((i) => i.kind === 'whatsapp_sent').sort((a, b) => Date.parse(b.occurred_at) - Date.parse(a.occurred_at))[0]
+      conWhatsapp.push({ ...persona(f), linea: `WhatsApp enviado ${haceCuanto(wa.occurred_at, ahora)} · ${textoLlamadas} sin atender`, registrado })
+    } else {
+      const u = ultimoDe(f)!
+      sinProximo.push({ ...persona(f), linea: `Sin tarea pendiente · último contacto ${haceCuanto(u.at, ahora)} · ${textoLlamadas}`, registrado })
+    }
   }
-  return r.sort((a, b) => a.creado - b.creado).map((x) => {
-    const { creado, ...resto } = x
-    void creado
-    return resto
-  })
+  return { conWhatsapp, sinProximo }
 }
 
 // ── Tasaciones, leads, procesos ─────────────────────────────────────
@@ -146,7 +164,7 @@ export function tasacionesHoyYManana(filas: readonly FilaCartera[], ahora: Date)
   const hoy = enArgentina(ahora).fecha
   const manana = enArgentina(new Date(instanteDesdeAR(hoy, '12:00').getTime() + 86_400_000)).fecha
   return filas
-    .filter((f) => f.abierto && f.tasacion && (f.tasacion.fecha === hoy || f.tasacion.fecha === manana))
+    .filter((f) => f.abierto && !f.colega && f.tasacion && (f.tasacion.fecha === hoy || f.tasacion.fecha === manana))
     .sort((a, b) => Date.parse(a.tasacion!.instante) - Date.parse(b.tasacion!.instante))
     .map((f) => ({
       procesoId: f.id,
@@ -166,7 +184,7 @@ export interface ItemLeadSinContacto extends PersonaDelInicio {
 
 export function leadsSinPrimerContacto(filas: readonly FilaCartera[], ahora: Date): ItemLeadSinContacto[] {
   return filas
-    .filter((f) => sinPrimerContacto(f))
+    .filter((f) => deCoordinacion(f) && sinPrimerContacto(f))
     .sort((a, b) => Date.parse(a.creadoEn) - Date.parse(b.creadoEn))
     .map((f) => ({
       ...persona(f),
@@ -245,9 +263,19 @@ export function tiempoMedio(leads: readonly { creadoEn: string; primeraLlamada: 
 
 // ── Tareas ──────────────────────────────────────────────────────────
 
-/** La coordinación no ve en "Tareas de hoy" las llamadas que ya están en la cola. */
-export function tareasSinLasDeLaCola(tareas: readonly TareaDeAgenda[], contactosEnCola: ReadonlySet<string>): TareaDeAgenda[] {
-  return tareas.filter((t) => !(t.tipo === 'llamada' && t.vencimiento.estado === 'vencida' && t.contacto && contactosEnCola.has(t.contacto.id)))
+/**
+ * La coordinación no ve en "Tareas de hoy" las llamadas vencidas que ya están en la cola
+ * (se cruza por proceso, o por contacto si la tarea no tiene proceso; un "Mensaje" de esa
+ * persona sí se ve: auditoría de artefactos 9).
+ */
+export function tareasSinLasDeLaCola(tareas: readonly TareaDeAgenda[], cola: readonly ItemParaLlamar[]): TareaDeAgenda[] {
+  const procesos = new Set(cola.map((x) => x.procesoId))
+  const contactos = new Set(cola.map((x) => x.contactoId).filter((x): x is string => !!x))
+  return tareas.filter((t) => {
+    if (t.tipo !== 'llamada' || t.vencimiento.estado !== 'vencida') return true
+    if (t.deal_id) return !procesos.has(t.deal_id)
+    return !(t.contacto && contactos.has(t.contacto.id))
+  })
 }
 
 export function paraManana(proximas: readonly TareaDeAgenda[], ahora: Date): TareaDeAgenda[] {

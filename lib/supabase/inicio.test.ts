@@ -6,10 +6,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { baseSimulada, type OpcionesBaseSimulada } from './cartera.simulada'
 import type { FilaCartera } from '@/lib/crm/cartera'
 
-const m = vi.hoisted(() => ({ cliente: null as unknown, filas: [] as unknown[], carteraFalla: false, agenda: vi.fn() }))
+const m = vi.hoisted(() => ({ cliente: null as unknown, filas: [] as unknown[], carteraFalla: false, fuenteFalla: false, agenda: vi.fn(), cartera: vi.fn() }))
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => m.cliente }))
 vi.mock('./cartera', () => ({
-  cargarCartera: async () => (m.carteraFalla ? { ok: false, motivo: 'error' } : { ok: true, datos: { filas: m.filas } }),
+  cargarCartera: async (...a: unknown[]) => {
+    m.cartera(...a)
+    if (m.carteraFalla) return { ok: false, motivo: 'error' }
+    return { ok: true, datos: { filas: m.filas, truncado: false, fuentes: { ultimoContacto: m.fuenteFalla ? 'error' : 'ok', tareas: 'ok' } } }
+  },
 }))
 vi.mock('./agenda-tareas', () => ({ leerAgenda: m.agenda }))
 
@@ -37,7 +41,7 @@ function usar(t: Record<string, Record<string, unknown>[]>, o: OpcionesBaseSimul
       { id: TOMAS, role: 'asesor', is_active: true },
       { id: BRUNO, role: 'asesor', is_active: true },
     ],
-    deals: [], contact_activities: [], property_visits: [], properties: [], ...t,
+    deals: [], contact_activities: [], property_visits: [], properties: [], tasks: [], ...t,
   }, o)
   m.cliente = base.cliente
 }
@@ -46,6 +50,8 @@ const agendaVacia = { grupos: { vencidas: [], hoy: [], proximas: [] }, sinFecha:
 beforeEach(() => {
   m.filas = []
   m.carteraFalla = false
+  m.fuenteFalla = false
+  m.cartera.mockReset()
   m.agenda.mockReset()
   m.agenda.mockResolvedValue(agendaVacia)
 })
@@ -60,9 +66,10 @@ describe('leerInicio', () => {
     m.filas = [fila({})]
     usar({
       deals: [
-        { id: 'n1', created_at: ar('2026-12-02', '09:00').toISOString(), stage: 'request' },
-        { id: 'n2', created_at: ar('2026-12-02', '09:30').toISOString(), stage: 'clase_gratuita' },
-        { id: 'n3', created_at: ar('2026-12-01', '09:00').toISOString(), stage: 'request' },
+        { id: 'n1', created_at: ar('2026-12-02', '09:00').toISOString(), stage: 'request', origin: 'embudo' },
+        { id: 'n2', created_at: ar('2026-12-02', '09:30').toISOString(), stage: 'clase_gratuita', origin: 'clase_gratuita' },
+        { id: 'n3', created_at: ar('2026-12-01', '09:00').toISOString(), stage: 'request', origin: 'embudo' },
+        { id: 'n4', created_at: ar('2026-12-02', '09:40').toISOString(), stage: 'request', origin: 'referido' },
       ],
       contact_activities: [
         { id: 'a1', kind: 'call', call_outcome: 'agendo', voided_at: null, occurred_at: ar('2026-12-02', '10:00').toISOString() },
@@ -73,24 +80,52 @@ describe('leerInicio', () => {
     })
     const r = (await leerInicio({ id: PAULA, role: 'coordinador', nombre: 'Paula Pandolfo' }, AHORA))!
     expect(r.saludo).toBe('Hola, Paula')
-    expect(Object.keys(r.bloques).sort()).toEqual(['numeros', 'paraLlamar', 'sinRespuesta', 'tareas', 'tasaciones'])
+    expect(Object.keys(r.bloques).sort()).toEqual(['numeros', 'paraLlamar', 'sinProximo', 'sinRespuesta', 'tareas', 'tasaciones'])
     expect(r.bloques.numeros).toEqual({ ok: true, datos: { solicitudes: 1, llamadas: 2, agendadas: 1, hasta: '10:40' } })
     expect((r.bloques.paraLlamar as { ok: true; datos: unknown[] }).datos).toHaveLength(1)
-    expect(m.agenda).toHaveBeenCalledWith({ asignados: [PAULA], tipo: null, sinFechaDesde: 0 }, AHORA)
+    // La cola es una sola: se leen las tareas de TODAS las coordinadoras; "Tareas de hoy", las propias.
+    expect(m.agenda.mock.calls.map((c) => [...c[0].asignados].sort())).toEqual(expect.arrayContaining([[PAULA, JULIA].sort(), [PAULA]]))
+    // La cartera se lee completa (vista del dueño): los datos no salen del servidor.
+    expect(m.cartera.mock.calls[0][0]).toMatchObject({ quien: { id: PAULA, role: 'dueno' } })
+  })
+
+  it('una solicitud contactada sin tareas cae en "sin próximo paso"; una tarea solo del contacto la saca', async () => {
+    const contactada = { at: ar('2026-11-30', '10:00').toISOString(), que: 'llamada' as const, resultado: 'no_atendio' as const }
+    m.filas = [
+      fila({ id: 'd1', contactoId: 'c1', nombre: 'Sin tarea', creadoEn: ar('2026-11-27', '10:00').toISOString(), ultimoContacto: contactada }),
+      fila({ id: 'd2', contactoId: 'c2', nombre: 'Con tarea de ficha', creadoEn: ar('2026-11-27', '10:00').toISOString(), ultimoContacto: contactada }),
+    ]
+    usar({
+      tasks: [{ id: 't1', deal_id: null, contact_id: 'c2', status: 'pending' }],
+      contact_activities: [{ id: 'a1', deal_id: 'd1', kind: 'call', call_outcome: 'no_atendio', voided_at: null, occurred_at: contactada.at, created_at: contactada.at }],
+    })
+    const r = (await leerInicio({ id: PAULA, role: 'coordinador', nombre: 'Paula' }, AHORA))!
+    expect((r.bloques.sinProximo as { ok: true; datos: { nombre: string }[] }).datos.map((x) => x.nombre)).toEqual(['Sin tarea'])
+    expect(r.bloques.sinRespuesta).toEqual({ ok: true, datos: [] })
+  })
+
+  it('una fuente de la cartera que falló no se muestra como vacía', async () => {
+    m.fuenteFalla = true
+    usar({})
+    const r = (await leerInicio({ id: PAULA, role: 'coordinador', nombre: 'Paula' }, AHORA))!
+    expect(r.bloques.paraLlamar).toEqual({ ok: false })
+    expect(r.bloques.sinProximo).toEqual({ ok: false })
+    expect(r.bloques.numeros.ok).toBe(true)
   })
 
   it('dueño: tareas de toda la coordinación, leads sin contacto y tiempo medio', async () => {
     m.filas = [fila({})]
     usar({
       deals: [
-        { id: 'l1', created_at: ar('2026-11-30', '09:00').toISOString(), stage: 'request' },
-        { id: 'l2', created_at: ar('2026-12-01', '09:00').toISOString(), stage: 'scheduled' },
+        { id: 'l1', created_at: ar('2026-11-30', '09:00').toISOString(), stage: 'request', origin: 'embudo' },
+        { id: 'l2', created_at: ar('2026-12-01', '09:00').toISOString(), stage: 'scheduled', origin: 'embudo' },
+        { id: 'l3', created_at: ar('2026-12-01', '09:00').toISOString(), stage: 'request', origin: 'referido' },
       ],
       contact_activities: [{ id: 'x', deal_id: 'l1', kind: 'call', voided_at: null, occurred_at: ar('2026-11-30', '10:00').toISOString() }],
     })
     const r = (await leerInicio({ id: 'u-d', role: 'dueno', nombre: 'Diego' }, AHORA))!
     expect(r.saludo).toBe('Inicio · vista del dueño')
-    expect(Object.keys(r.bloques).sort()).toEqual(['leadsSinContacto', 'numeros', 'paraLlamar', 'sinRespuesta', 'tareas', 'tasaciones', 'tiempoMedio'])
+    expect(Object.keys(r.bloques).sort()).toEqual(['leadsSinContacto', 'numeros', 'paraLlamar', 'sinProximo', 'sinRespuesta', 'tareas', 'tasaciones', 'tiempoMedio'])
     expect(r.bloques.tiempoMedio).toEqual({ ok: true, datos: { n: 1, sinLlamar: 1, reloj: '1 h', habiles: '1 h', pocos: true } })
     expect(m.agenda.mock.calls[0][0].asignados.sort()).toEqual([PAULA, JULIA].sort())
   })

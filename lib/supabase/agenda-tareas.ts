@@ -54,6 +54,8 @@ interface FilaTarea {
 /** Una tarea como la dibujan Pendientes y la campanita. */
 export interface TareaDeAgenda {
   id: string
+  /** El proceso de la tarea (el Inicio cruza la cola con las tareas por acá). */
+  deal_id: string | null
   title: string
   tipo: TipoTarea
   due_date: string | null
@@ -70,6 +72,7 @@ function armar(f: FilaTarea, ahora: Date, nombres: ReadonlyMap<string, string>):
   const espera = esperaDesde(f, f.proceso?.created_at ?? null)
   return {
     id: f.id,
+    deal_id: f.deal_id,
     title: f.title,
     tipo: tipoDeTarea(f),
     due_date: f.due_date,
