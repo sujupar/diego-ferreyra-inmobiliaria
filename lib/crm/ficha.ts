@@ -20,7 +20,7 @@ import {
   type SituacionProceso,
 } from './deal-activo'
 import { MINUTOS_PARA_DESHACER, puedeDeshacerPerdido } from './deshacer-perdido'
-import { masReciente, ultimoContacto, type UltimoContacto } from './ultimo-contacto'
+import { anteriorAlRegistro, masReciente, ultimoContacto, type UltimoContacto } from './ultimo-contacto'
 
 export interface ProcesoDeFicha {
   id: string
@@ -235,7 +235,14 @@ export function armarFicha(e: {
       ambientes: verDatos ? (deDetalles?.rooms ?? null) : null,
       superficie: verDatos ? (deDetalles?.covered_area ?? null) : null,
     },
-    ultimoContacto: { ...ultimoContacto(ultimoEn, ahora, etapaActiva?.clave ?? null), en: ultimoEn },
+    // Sin contacto y con el proceso activo anterior al registro de llamadas: no se sabe si se
+    // la llamó (antes no se anotaba). La lista de la cartera dice "Sin contacto registrado"
+    // en gris; la cabecera dice lo mismo en vez de "Sin contacto todavía" en rojo
+    // (crm-cartera-por-rol, Diferencia 16).
+    ultimoContacto:
+      !ultimoEn && activo && anteriorAlRegistro(activo.created_at)
+        ? { texto: 'Sin contacto registrado', dias: null, alerta: false, en: null }
+        : { ...ultimoContacto(ultimoEn, ahora, etapaActiva?.clave ?? null), en: ultimoEn },
     procesos: listables.map((p) => {
       const etapa = etapaDelCRM(p)
       return {
