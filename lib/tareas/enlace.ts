@@ -4,6 +4,7 @@ import { enlaceTareaCadencia } from '@/lib/crm/tareas-ficha'
 
 export interface TareaConEnlace {
   type: string
+  channel?: string | null
   source_activity_id?: string | null
   contact_id: string | null
   deal_id: string | null
@@ -15,6 +16,9 @@ export function enlaceDeTarea(task: TareaConEnlace): string {
   // Una tarea de la cadencia de llamadas abre la ficha del contacto, donde se registra la llamada.
   const ficha = enlaceTareaCadencia(task)
   if (ficha) return ficha
+  // La tarea de entrada de un lead es una llamada: abre la ficha, donde se registra la
+  // Llamada 1 (crm-tareas-y-campanita, auditoría hallazgo 12).
+  if (task.type === 'update_contact' && task.channel === 'call' && task.contact_id) return `/contacts/${task.contact_id}`
   // "Actualizar contacto": el editor en la superficie más útil (proceso > tasación > contacto).
   if (task.type === 'update_contact') {
     if (task.deal_id) return `/pipeline/${task.deal_id}?editContact=1`

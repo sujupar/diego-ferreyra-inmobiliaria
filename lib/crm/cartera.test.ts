@@ -553,6 +553,14 @@ describe('proximoPaso — la primera llamada sin fecha (D3)', () => {
     const r = entrada(ar('2026-12-02', '07:30'), AHORA)
     expect(r).toMatchObject({ vence: { due_date: '2026-12-02', due_time: '09:00' }, espera: null })
   })
+  it('la tarea de entrada que ya nace con fecha (crm-tareas-y-campanita) sigue esperando', () => {
+    const r = proximoPaso({
+      tareas: [{ ...tarea({ deal_id: 'd', type: 'update_contact', channel: 'call', title: 'Solicitud de tasación: X', due_date: '2026-12-02', due_time: '10:12:00' }), quien: null }],
+      tasacion: null, quienTasacion: null, etapa: 'solicitud', hayContactos: false,
+      registradoEn: ar('2026-12-02', '10:12'), nombrePersona: 'X', ahora: new Date('2026-12-02T13:40:00Z'),
+    })
+    expect(r).toMatchObject({ titulo: 'Primera llamada', espera: { registradoEn: ar('2026-12-02', '10:12') } })
+  })
   it('entró a las 18:00 en punto → ya es fuera de horario', () => {
     const r = entrada(ar('2026-12-01', '18:00'), AHORA)
     expect(r?.espera).toBeNull()

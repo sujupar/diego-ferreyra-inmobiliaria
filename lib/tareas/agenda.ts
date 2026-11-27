@@ -44,9 +44,17 @@ const TIPO_POR_CLASE: Record<string, TipoTarea> = {
   informe_quincenal: 'documentacion',
 }
 
-export function tipoDeTarea(t: { type: string; channel: string | null }): TipoTarea {
+export function tipoDeTarea(t: { type: string; channel: string | null; title?: string }): TipoTarea {
   if (t.channel) return TIPO_POR_CANAL[t.channel] ?? 'otro'
+  // "Actualizar contacto: {dirección}" (la que deja `advance` al avanzar) no es una llamada:
+  // es completar datos. Solo la de entrada de un lead lo es (auditoría, hallazgo 17).
+  if (t.type === 'update_contact' && t.title?.startsWith('Actualizar contacto')) return 'otro'
   return TIPO_POR_CLASE[t.type] ?? 'otro'
+}
+
+/** La tarea de entrada de un lead (desde crm-tareas-y-campanita nace con canal "call"). */
+export function esTareaDeEntrada(t: { type: string; channel: string | null; deal_id: string | null }): boolean {
+  return t.type === 'update_contact' && t.channel === 'call' && !!t.deal_id
 }
 
 export type GrupoTarea = 'vencidas' | 'hoy' | 'proximas' | 'sin_fecha'
@@ -113,8 +121,10 @@ export function validarMomento(fecha: string, hora: string, ahora: Date): string
 }
 
 /**
- * Cuándo vence la tarea de entrada de un lead: el registro si entró en horario hábil; antes
- * de las 9 de un día hábil, ese día a las 9; si no, el día hábil siguiente a las 9.
+ * Cuándo vence la tarea de entrada de un lead: el registro si entró en horario hábil
+ * (lunes a viernes de 9:00 a 17:59; sin feriados); antes de las 9 de un día hábil, ese día
+ * a las 9; si no (desde las 18:00 o en fin de semana), el día hábil siguiente a las 9.
+ * La misma regla que usa la cartera para las tareas de entrada viejas, sin fecha.
  */
 export function vencimientoDeEntrada(registro: Date): { fecha: string; hora: string } {
   const { fecha, hora } = partes(registro)
@@ -129,14 +139,21 @@ export function vencimientoDeEntrada(registro: Date): { fecha: string; hora: str
 const MARGEN_ESPERA_MS = 5 * 60_000
 
 /**
- * La tarea de entrada que venció al crearse (el lead entró en horario) espera desde ese
- * momento: devuelve el instante, para el texto "Espera hace N". Si no, `null`.
+ * La tarea de entrada que vence en el momento del registro (el lead entró en horario) espera
+ * desde ahí: devuelve el instante, para el texto "Espera hace N". Si no, `null`.
+ * `registradoEn` es el alta del proceso (el registro real); sin él, la creación de la tarea.
+ * Una tarea de entrada pendiente implica que nadie llamó todavía: la llamada de la
+ * coordinación la cierra (cadencia) y salir de "Solicitud" también.
  */
-export function esperaDesde(t: ConFecha & { type: string; deal_id: string | null; created_at: string }): string | null {
+export function esperaDesde(
+  t: ConFecha & { type: string; deal_id: string | null; created_at: string },
+  registradoEn?: string | null,
+): string | null {
   if (t.type !== 'update_contact' || !t.deal_id || !t.due_time) return null
   const momento = momentoDeAviso(t)
-  if (!momento) return null
-  return Math.abs(Date.parse(t.created_at) - momento.getTime()) <= MARGEN_ESPERA_MS ? momento.toISOString() : null
+  const base = Date.parse(registradoEn ?? t.created_at)
+  if (!momento || Number.isNaN(base)) return null
+  return Math.abs(base - momento.getTime()) <= MARGEN_ESPERA_MS ? momento.toISOString() : null
 }
 
 export function resumenDeGrupos(n: Record<GrupoTarea, number>): string {
@@ -150,6 +167,7 @@ export function resumenDeGrupos(n: Record<GrupoTarea, number>): string {
 
 /**
  * Desde cuándo suenan las tareas en la campanita (spec "Las vencidas antes de este cambio no
- * suenan"): el día en que se publicó crm-tareas-y-campanita. Se fija al mergear.
+ * suenan"): las 00:00 de Argentina del día en que se publica crm-tareas-y-campanita. Se
+ * revisa al mergear (si se publica otro día, se cambia a ese día).
  */
-export const INICIO_AVISOS = new Date('2026-11-28T00:00:00-03:00')
+export const INICIO_AVISOS = new Date('2026-11-27T00:00:00-03:00')
