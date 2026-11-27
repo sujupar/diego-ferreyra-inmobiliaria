@@ -24,6 +24,7 @@ export default defineConfig({
       'app/api/funnels/metrics/**/*.test.ts',
       'app/t/**/*.test.ts',
       'middleware*.test.ts',
+      'app/api/webhooks/whatsapp/route.test.ts',
       'lib/supabase/middleware*.test.ts',
     ],
     exclude: ['**/node_modules/**', '.next', '.netlify', '**/.claude/worktrees/**'],

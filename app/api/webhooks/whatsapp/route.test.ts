@@ -195,6 +195,8 @@ vi.mock('@/lib/ai/reset-prueba', async (importOriginal) => {
 
 const { respaldoMock } = vi.hoisted(() => ({ respaldoMock: vi.fn(async () => 'no_fallo') }))
 vi.mock('@/lib/visitas/encuesta/servicio', () => ({ mandarRespaldoSiCorresponde: respaldoMock }))
+const { respaldoBienvenidaMock } = vi.hoisted(() => ({ respaldoBienvenidaMock: vi.fn(async () => 'no_corresponde') }))
+vi.mock('@/lib/video-bienvenida/respaldo-servicio', () => ({ mandarRespaldoBienvenidaSiCorresponde: respaldoBienvenidaMock }))
 
 vi.mock('@/lib/integrations/whatsapp/core', () => ({
   sendWhatsappText: vi.fn(async (input: { to: string; text: string; propertyId?: string | null }) => {
@@ -552,6 +554,17 @@ describe('respaldo de la invitación a la encuesta (Meta frenó la de marketing)
     respaldoMock.mockClear()
     await POST(request(conEstado('delivered')))
     expect(respaldoMock).not.toHaveBeenCalled()
+  })
+  it('un "failed" también llama al respaldo del video de bienvenida (tasacion-video-bienvenida, D3b)', async () => {
+    respaldoBienvenidaMock.mockClear()
+    const res = await POST(request(conEstado('failed', { code: 131049, title: 'healthy ecosystem' })))
+    expect(res.status).toBe(200)
+    expect(respaldoBienvenidaMock).toHaveBeenCalledWith({ waMessageId: 'wamid.V4', estado: 'failed', codigoError: '131049' })
+  })
+  it('un "delivered" no llama al respaldo del video de bienvenida', async () => {
+    respaldoBienvenidaMock.mockClear()
+    await POST(request(conEstado('delivered')))
+    expect(respaldoBienvenidaMock).not.toHaveBeenCalled()
   })
 })
 

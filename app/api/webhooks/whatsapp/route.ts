@@ -16,6 +16,7 @@ import {
 } from '@/lib/ai/reset-prueba'
 import { sendWhatsappText } from '@/lib/integrations/whatsapp/core'
 import { mandarRespaldoSiCorresponde } from '@/lib/visitas/encuesta/servicio'
+import { mandarRespaldoBienvenidaSiCorresponde } from '@/lib/video-bienvenida/respaldo-servicio'
 
 export const dynamic = 'force-dynamic'
 
@@ -524,6 +525,10 @@ export async function POST(request: NextRequest) {
       // y como mucho UNA llamada a Meta con techo de 8 s. Ver lib/visitas/encuesta/respaldo.ts.
       if (s.status === 'failed') {
         await mandarRespaldoSiCorresponde({ waMessageId: s.waMessageId, estado: s.status, codigoError: s.errorCode }, new Date())
+        // Lo mismo para el primer WhatsApp con video de tasación (tasacion-video-bienvenida, D3b):
+        // si Meta lo frenó por marketing, sale tasacion_llamada_v1. Un wamid es de UN solo mensaje,
+        // así que de los dos respaldos como mucho uno llama a Meta. Nunca lanza.
+        await mandarRespaldoBienvenidaSiCorresponde({ waMessageId: s.waMessageId, estado: s.status, codigoError: s.errorCode })
       }
     }
 

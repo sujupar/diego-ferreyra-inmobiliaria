@@ -20,6 +20,7 @@
     "app/api/public/video/**/*.ts",
     "app/api/contacts/[id]/video-bienvenida/**/*.ts",
     "middleware.ts",
+    "app/api/webhooks/whatsapp/route.ts",
     "scripts/apply-video-bienvenida-pg.ts",
     "scripts/create-whatsapp-template-tasacion-video.ts",
     "scripts/probar-bienvenida-envio.ts"

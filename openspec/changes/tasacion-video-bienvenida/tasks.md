@@ -54,7 +54,7 @@
 - [x] 4.5 `app/t/paula.vcf/route.ts`
 - [x] 4.7 Filas con embudo nulo no entran en `/embudos` (verificado contra la base en `apply-video-bienvenida-pg.ts`: caen en "otro"); `video-keys.test.ts` recorre también `app/t/`
 - [x] 4.8 Medición apagada con sesión de la plataforma y aviso "Vista del equipo" (test)
-- [ ] 4.9 Respaldo tardío: `lib/video-bienvenida/respaldo.ts` (puro, con tests), RPC `tomar_respaldo` y el webhook de estados (test con aviso repetido)
+- [x] 4.9 Respaldo tardío: `lib/video-bienvenida/respaldo.ts` (puro, con tests), RPC `tomar_respaldo` y el webhook de estados (test con aviso repetido)
 - [ ] 4.6 Video a 720p con `faststart` y póster subidos (TUS) a `funnel-media/bienvenida/`; responde 206 a un pedido por rango
 - [ ] 4.10 QA del `.vcf` en iOS y en Android (navegador dentro de WhatsApp)
 
