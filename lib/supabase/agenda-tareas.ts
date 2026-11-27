@@ -28,7 +28,7 @@ export const LO_QUE_VIENE = 3
 
 const COLUMNAS =
   'id, type, title, status, assigned_to, contact_id, deal_id, appraisal_id, property_id, source_activity_id, ' +
-  'due_date, due_time, all_day, channel, created_at, contacto:contact_id(id, full_name)'
+  'due_date, due_time, all_day, channel, created_at, contacto:contact_id(id, full_name), proceso:deal_id(created_at)'
 
 interface FilaTarea {
   id: string
@@ -47,6 +47,8 @@ interface FilaTarea {
   channel: string | null
   created_at: string
   contacto: { id: string; full_name: string | null } | null
+  /** El alta del proceso: el registro real, para "Espera hace…" (auditoría, hallazgo 6). */
+  proceso: { created_at: string | null } | null
 }
 
 /** Una tarea como la dibujan Pendientes y la campanita. */
@@ -65,7 +67,7 @@ export interface TareaDeAgenda {
 
 function armar(f: FilaTarea, ahora: Date, nombres: ReadonlyMap<string, string>): TareaDeAgenda {
   const todoElDia = !f.due_time
-  const espera = esperaDesde(f)
+  const espera = esperaDesde(f, f.proceso?.created_at ?? null)
   return {
     id: f.id,
     title: f.title,
@@ -106,6 +108,15 @@ async function leerPendientes(asignados: string[] | 'todos', soloConFecha: boole
 
 const porVencimiento = (a: FilaTarea, b: FilaTarea) =>
   (momentoDeAviso(a)?.getTime() ?? 0) - (momentoDeAviso(b)?.getTime() ?? 0) || a.id.localeCompare(b.id)
+
+/** Personas para el filtro "De quién": las activas, incluido quien no puede recibir tareas nuevas. */
+export async function leerPersonas(): Promise<{ id: string; nombre: string }[]> {
+  const { data, error } = await getAdmin().from('profiles').select('id, full_name').eq('is_active', true)
+  if (error) throw new Error(`personas: ${error.message}`)
+  return ((data ?? []) as { id: string; full_name: string | null }[])
+    .map((p) => ({ id: p.id, nombre: p.full_name?.trim() || 'Sin nombre' }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+}
 
 export interface Agenda {
   grupos: Record<'vencidas' | 'hoy' | 'proximas', TareaDeAgenda[]>
