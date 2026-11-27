@@ -11,6 +11,7 @@ import { ContentScrollReset } from '@/components/dashboard/ContentScrollReset'
 import { getNotificationSettings } from '@/lib/email/settings'
 import { SidebarForRole, TopbarForRole, BottomNavForRole } from '@/components/nav/NavForRole'
 import { BotonNuevo } from '@/components/visitas/BotonNuevo'
+import { Campanita } from '@/components/tareas/Campanita'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Suspense } from 'react'
 
@@ -119,6 +120,8 @@ export default async function DashboardLayout({
                 )}
                 <TopbarForRole role={user.profile.role}>
                     <BotonNuevo role={user.profile.role} />
+                    {/* La campanita: las tareas propias que suenan (crm-tareas-y-campanita). */}
+                    <Campanita />
                     <UserMenu profile={user.profile} />
                 </TopbarForRole>
                 {/*
