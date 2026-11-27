@@ -11,7 +11,8 @@
 La zona de actividad SHALL listar las notas, las llamadas y las marcas de "WhatsApp enviado"
 no anuladas del contacto junto con los eventos del sistema que define `crm-linea-de-tiempo`,
 de la más nueva a la más vieja, de a 50 con "Ver más". Cada registro cumple la anatomía de
-evento de `crm-sistema-diseno`. Quien puede abrir la ficha ve la línea completa.
+evento de `crm-sistema-diseno`. Quien puede abrir la ficha ve la línea completa, salvo lo que
+`crm-linea-de-tiempo` reserva a quien lleva cada proceso.
 
 #### Scenario: Orden
 - **WHEN** un contacto tiene una nota de ayer y una llamada de hoy
@@ -37,9 +38,9 @@ evento de `crm-sistema-diseno`. Quien puede abrir la ficha ve la línea completa
 - **WHEN** el contacto tiene 60 registros entre notas, llamadas y eventos del sistema
 - **THEN** se ven los 50 más nuevos y un botón "Ver más" que trae los 10 restantes
 
-#### Scenario: El asesor ve la historia de su contacto
-- **WHEN** un asesor abre la ficha de un contacto suyo que recibió WhatsApp y pasó por etapas de otro asesor
-- **THEN** ve esos WhatsApp y esos cambios de etapa, igual que la coordinación
+#### Scenario: El asesor ve la historia de la persona, no la del proceso de otro
+- **WHEN** un asesor abre la ficha de un contacto suyo que recibió WhatsApp y que también tiene un proceso de otro asesor
+- **THEN** ve esos WhatsApp, y no los cambios de etapa, el registro ni las tareas de ese otro proceso (`crm-linea-de-tiempo`)
 
 #### Scenario: Quien no puede abrir la ficha
 - **WHEN** un asesor pide por la red la actividad de un contacto ajeno
