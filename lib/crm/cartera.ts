@@ -163,7 +163,7 @@ function esLlamada(t: { type: string; channel: string | null }): boolean {
   return t.type === 'update_contact' || (t.type === 'follow_up' && t.channel === 'call')
 }
 
-function textoPropiedad(p: ProcesoLeido): string {
+export function textoPropiedad(p: ProcesoLeido): string {
   const tipo =
     p.property_type === 'otro'
       ? p.property_type_other?.trim() || null
@@ -264,7 +264,7 @@ export function proximoPaso(e: {
   tareas: TareaConQuien[]
   tasacion: TasacionDeFila | null
   quienTasacion: { id: string; nombre: string } | null
-  etapa: EtapaCRM
+  etapa: EtapaCRM | null // null = la persona no tiene proceso (Contactos): nunca es "Primera llamada"
   hayContactos: boolean
   registradoEn: string
   nombrePersona: string
@@ -321,6 +321,40 @@ export function proximoPaso(e: {
 
 // ── Las filas ────────────────────────────────────────────────────────────────────────────
 
+/** La tasación agendada del proceso (Coordinada con día), o null. La usan el CRM y Contactos. */
+export function tasacionDe(p: ProcesoLeido, asesor: string | null): TasacionDeFila | null {
+  if (etapaCRM(p) !== 'coordinada' || !p.scheduled_date) return null
+  const hora = horaHHMM(p.scheduled_time)
+  const instante = instanteDeVencimiento({ due_date: p.scheduled_date, due_time: hora })
+  return instante ? { fecha: p.scheduled_date, hora, instante, asesor, direccion: p.property_address } : null
+}
+
+/**
+ * A quién se le rotula la tarea. Cuando cuentan las tareas de cualquiera (vista del dueño,
+ * Contactos del equipo) se juntan las copias de la coordinación ("· coordinación") y se
+ * nombra a quien la tiene, salvo que sea el asesor de la fila (ya está en su columna).
+ * Cuando cuentan solo las de quien mira, no se rotula nada.
+ */
+export function tareasConQuien(e: {
+  tareas: TareaLeida[]
+  deCualquiera: boolean
+  tareasCerradas: TareaLeida[]
+  perfiles: Map<string, PerfilCartera>
+  asesorDeLaFila: string | null
+}): TareaConQuien[] {
+  if (!e.deCualquiera) return e.tareas.map((t) => ({ ...t, quien: null }))
+  const esCoordinador = (id: string | null) => !!id && e.perfiles.get(id)?.role === 'coordinador'
+  return colapsarCopiasDeCoordinacion(e.tareas, e.tareasCerradas, esCoordinador).map(({ tarea, copias }) => ({
+    ...tarea,
+    quien:
+      copias > 1
+        ? { id: 'coordinacion', nombre: 'coordinación' }
+        : tarea.assigned_to && tarea.assigned_to !== e.asesorDeLaFila
+          ? { id: tarea.assigned_to, nombre: e.perfiles.get(tarea.assigned_to)?.nombre ?? 'Sin nombre' }
+          : null,
+  }))
+}
+
 /**
  * Una fila por proceso de la vista. `procesoEnVista` se aplica OTRA VEZ acá aunque la
  * consulta ya filtró: si la consulta se ensancha por error, igual no sale nada ajeno. Las
@@ -339,7 +373,6 @@ export function armarFilasCartera(e: {
   ahora: Date
 }): FilaCartera[] {
   const { vista, perfiles, ahora } = e
-  const esCoordinador = (id: string | null) => !!id && perfiles.get(id)?.role === 'coordinador'
   const nombreDe = (id: string) => perfiles.get(id)?.nombre ?? 'Sin nombre'
   const personaDeLaVista = vista.tipo === 'dueno' ? null : vista.personaId
 
@@ -365,14 +398,7 @@ export function armarFilasCartera(e: {
     const ultimoContacto: FilaCartera['ultimoContacto'] =
       e.ultimos === 'error' ? 'error' : contactoId ? (e.ultimos.get(contactoId) ?? null) : null
     const conTasacion = etapa === 'coordinada' && !!p.scheduled_date
-    let tasacion: TasacionDeFila | null = null
-    if (abierto && conTasacion && p.scheduled_date) {
-      const hora = horaHHMM(p.scheduled_time)
-      const instante = instanteDeVencimiento({ due_date: p.scheduled_date, due_time: hora })
-      if (instante) {
-        tasacion = { fecha: p.scheduled_date, hora, instante, asesor: asesor?.nombre ?? null, direccion: p.property_address }
-      }
-    }
+    const tasacion = tasacionDe(p, asesor?.nombre ?? null)
     const nombre = p.contacto?.full_name?.trim() || 'Sin nombre'
 
     let proximo: FilaCartera['proximo'] = null
@@ -386,20 +412,14 @@ export function armarFilasCartera(e: {
           usuarioId: '',
           soloPropiasSinProceso: false,
         })
-        const conQuien: TareaConQuien[] =
-          vista.tipo === 'dueno'
-            ? colapsarCopiasDeCoordinacion(visibles, e.tareasCerradas, esCoordinador).map(({ tarea, copias }) => ({
-                ...tarea,
-                quien:
-                  copias > 1
-                    ? { id: 'coordinacion', nombre: 'coordinación' }
-                    : tarea.assigned_to && tarea.assigned_to !== p.assigned_to
-                      ? { id: tarea.assigned_to, nombre: nombreDe(tarea.assigned_to) }
-                      : null,
-              }))
-            : visibles.map((t) => ({ ...t, quien: null }))
         proximo = proximoPaso({
-          tareas: conQuien,
+          tareas: tareasConQuien({
+            tareas: visibles,
+            deCualquiera: vista.tipo === 'dueno',
+            tareasCerradas: e.tareasCerradas,
+            perfiles,
+            asesorDeLaFila: p.assigned_to,
+          }),
           tasacion,
           // La tasación es del asesor: la coordinación ve de quién es; el asesor es él mismo y
           // el dueño ya lo lee en la columna Asesor (el nombre no se repite).
