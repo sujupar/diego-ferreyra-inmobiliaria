@@ -17,7 +17,7 @@ hace falta más horario de coordinación.
   - reparto de resultados de llamada;
   - solicitudes sin ningún intento registrado.
 - Cada número con su cantidad de casos y aviso cuando son menos de 20.
-- La medición arranca el día de salida de `crm-ficha-y-llamadas`; lo anterior no cuenta.
+- La medición arranca el día de salida de `crm-ficha-y-llamadas`; lo anterior no cuenta. **Inicio de la cohorte: 2026-11-26 a las 21:04 (hora de Argentina)** — primera respuesta del código nuevo en `https://inmodf.com.ar` (00:04:52 UTC del 27/11; a las 00:03:08 UTC todavía servía el anterior), main en `0a0096fe`.
 - **Queda afuera:** comparación entre personas, metas, alertas automáticas, duración de las llamadas.
 
 Roles: quienes ya ven Métricas (admin, dueño, coordinador).

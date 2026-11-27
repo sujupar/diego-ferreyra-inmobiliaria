@@ -541,3 +541,28 @@ Conforme: sí
 
 El menor 3 (fechas UTC de `POST /api/tasks` y `AddTaskDialog`) sigue anotado para
 `crm-tareas-y-campanita`. Suite crm 1.450/1.450, `tsc` y `eslint` limpios.
+
+### Pasada final contra producción (14.5, 2026-11-26)
+
+Corrida por una sesión distinta de la que armó el humo de 13.3, sobre `https://inmodf.com.ar`
+(main `0a0096fe`), con el navegador de Claude y la cuenta "Claude · pruebas". El primer `borrar`
+trabajó por el nombre exacto y los emails de prueba (sin archivo de ids) y se llevó los datos del
+humo; desde su `crear` usó su propio archivo de ids.
+
+| Escenario | Datos | Resultado |
+|---|---|---|
+| Tres toques a 390×844 táctil (+ → Registrar llamada → No atendió) | `solicitud` | ✓ foco en «No atendió», hoja cerrada, «Llamada 1 guardada», «Ver en Tareas» muestra la «Llamada 2», sin desborde |
+| Coordinador | `solicitud` | ✓ ficha, actividades, tareas y proceso 200; enlaces sin error |
+| Asesor con el contacto asignado | `vincular contacto` | ✓ ve la ficha; el proceso (sin asignar) 403 |
+| Asesor con el proceso asignado | `vincular proceso` | ✓ ve la ficha y el proceso; "Mis contactos" no lo lista (pendiente conocido) |
+| Asesor sin vínculo (1280 y 390) | `vincular nada` | ✓ 404 «No encontramos este contacto», sin desborde |
+| Abogado (1280 y 390) | `vincular nada` | ✓ 403 «No tenés permiso para ver contactos»; `GET /api/deals/<id>` 200 (anterior, en Risks) |
+| Asesor registra sobre un proceso que no es suyo | `solicitud-para-asesor` + `vincular creador` | ✓ «Quedó anotada. Este proceso lo lleva otra persona…», sin «Llamada 2», tarea de Julian `pending` |
+| «Volver a llamar» hoy 23:30 sobre ese proceso | ídem | ✓ tarea a su nombre, visible en `/tasks`, abre la ficha con datos |
+
+Ventana del cambio de rol: 00:12:03–00:17:40 UTC (21:12–21:17 de Argentina); la cuenta volvió a
+`admin` (`select`). Consola limpia salvo un 403 a `/api/consultas/avisos` en `/tasks` como
+asesor, del `UnidentifiedBanner`, que es anterior a este change. 0 emails y 0 WhatsApp.
+`borrar` + `verificar` en 0 (13.4).
+
+Conforme: sí
