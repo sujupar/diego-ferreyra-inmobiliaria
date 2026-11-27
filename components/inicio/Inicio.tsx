@@ -22,10 +22,16 @@ const BOTON =
   'inline-flex items-center justify-center gap-1.5 rounded-md text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60'
 const ALTO = 'h-11 raton:h-9'
 
-function iniciales(nombre: string): string {
-  return nombre.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('')
+/** Iniciales de las primeras dos palabras con letras ("[TEST] Inicio QA" → "TI", no "[I"). */
+export function iniciales(nombre: string): string {
+  return nombre.split(/\s+/).map((p) => p.match(/\p{L}/u)?.[0]).filter(Boolean).slice(0, 2).map((l) => l!.toUpperCase()).join('')
 }
-const telVisible = (t: string) => (t.length === 10 ? `${t.slice(0, 2)} ${t.slice(2, 6)}-${t.slice(6)}` : t)
+/** "11 6765-3458" también para los guardados con prefijo ("+5491167653458", "5491167653458"). */
+export function telVisible(t: string): string {
+  const d = t.replace(/\D/g, '')
+  const local = d.length > 10 && d.startsWith('54') ? d.slice(-10) : d
+  return local.length === 10 ? `${local.slice(0, 2)} ${local.slice(2, 6)}-${local.slice(6)}` : t
+}
 const telHref = (t: string) => `tel:+549${t.replace(/\D/g, '').slice(-10)}`
 
 function Tarjeta({
@@ -349,7 +355,11 @@ function LeadsSinContacto({ items }: { items: ItemLeadSinContacto[] }) {
 }
 
 function Tiempo({ t }: { t: TiempoMedio }) {
-  if (t.n === 0) return <Vacio titulo="Todavía sin datos esta semana" texto="Aparece cuando algún lead registrado desde el lunes reciba su primera llamada." />
+  if (t.n === 0) {
+    // Sin promedio todavía, pero los que esperan se cuentan: "sin datos" no es "sin leads".
+    const esperan = t.sinLlamar === 0 ? '' : t.sinLlamar === 1 ? ' 1 lead de esta semana sigue sin llamar.' : ` ${t.sinLlamar} leads de esta semana siguen sin llamar.`
+    return <Vacio titulo="Todavía sin datos esta semana" texto={`Aparece cuando algún lead registrado desde el lunes reciba su primera llamada.${esperan}`} />
+  }
   const caja = (valor: string, Icono: typeof Clock, texto: string) => (
     <div className="flex flex-col gap-1 rounded-lg border border-border p-3">
       <span className="text-xl font-semibold">{valor}</span>
