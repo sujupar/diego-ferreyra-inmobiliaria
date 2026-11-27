@@ -47,7 +47,8 @@
     "lib/nav/**/*.ts",
     "lib/supabase/cartera*.ts",
     "lib/supabase/rpc-paginado.ts",
-    "scripts/apply-crm-cartera-pg.ts"
+    "scripts/apply-crm-cartera-pg.ts",
+    "scripts/_qa-cartera-lectura.ts"
   ],
   "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
 }
