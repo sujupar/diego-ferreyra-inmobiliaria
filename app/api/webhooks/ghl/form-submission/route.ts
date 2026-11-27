@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
             origin: stage === 'clase_gratuita' ? 'clase_gratuita' : 'embudo',
             notes,
             stage,
-        })
+        }, null) // cuarentena: el sistema no tiene autor (crm-linea-de-tiempo D1)
 
         // Tarea para coordinadores: contactar y avanzar al lead.
         try {

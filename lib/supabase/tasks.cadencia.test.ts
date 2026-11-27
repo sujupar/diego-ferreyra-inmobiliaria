@@ -139,7 +139,7 @@ describe('undoTasksOfActivity', () => {
     const reapertura = pedidos.filter((p) => tiene(p, 'update')).slice(1)
     expect(reapertura).toHaveLength(2)
     for (const p of reapertura) {
-      expect(args(p, 'update')[0]).toEqual([{ status: 'pending', completed_at: null, closed_by_activity_id: null }])
+      expect(args(p, 'update')[0]).toEqual([{ status: 'pending', completed_at: null, completed_by: null, closed_by_activity_id: null }])
       expect(args(p, 'eq')).toContainEqual(['status', 'completed'])
     }
   })

@@ -325,7 +325,7 @@ export async function POST(request: NextRequest) {
     let avisoProceso: string | null = avisoSinAcceso ?? avisoSinProceso
     if (dealId) {
       try {
-        await linkPropertyToDeal(dealId, id)
+        await linkPropertyToDeal(dealId, id, user.id)
       } catch (e) {
         console.error('[properties] no se pudo vincular el proceso:', e)
         avisoProceso = 'La propiedad se creó, pero no se pudo mover su proceso a "Captada". Avisá al equipo.'

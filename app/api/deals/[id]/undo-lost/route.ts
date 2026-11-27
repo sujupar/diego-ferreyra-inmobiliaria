@@ -39,7 +39,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     }
     const decision = puedeDeshacerPerdido(proceso, await ultimoCambioDeEtapa(id), new Date())
     if (!decision.ok) return NextResponse.json({ error: decision.motivo }, { status: 409 })
-    const cambio = await deshacerPerdido(id, { volverA: decision.volverA, limpiarLostAt: decision.limpiarLostAt })
+    const cambio = await deshacerPerdido(id, { volverA: decision.volverA, limpiarLostAt: decision.limpiarLostAt, autorId: user.id })
     if (!cambio) {
       return NextResponse.json({ error: MENSAJE_NO_SE_PUEDE_DESHACER }, { status: 409 })
     }

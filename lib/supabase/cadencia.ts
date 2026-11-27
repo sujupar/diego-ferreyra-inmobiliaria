@@ -189,7 +189,7 @@ export async function aplicarCadencia(actividad: FilaActividad, solicitante: Sol
       soloPropias: cierraSoloPropias({ procesoPropio, rolRegistrante: registrante.role, dealId }),
     }).map((t) => t.id)
     if (aCerrar.length > 0) {
-      const cerro = await conUnReintento('cerrar tareas', actividad.id, () => closeTasksByActivity(aCerrar, actividad.id))
+      const cerro = await conUnReintento('cerrar tareas', actividad.id, () => closeTasksByActivity(aCerrar, actividad.id, registrante.id))
       if (!cerro) pendiente = true
     }
 

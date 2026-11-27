@@ -45,7 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
-    if (action === 'complete') await completeTask(id)
+    if (action === 'complete') await completeTask(id, user.id)
     else await dismissTask(id)
 
     return NextResponse.json({ success: true })

@@ -34,6 +34,7 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
       const prop = await getProperty(id)
       await createTaskForRole('abogado', {
         type: 'review_property',
+        created_by: user.id, // crm-linea-de-tiempo D2
         title: `Revisar documentacion: ${prop.address}`,
         description: `Propiedad en ${prop.neighborhood} enviada a revision legal.`,
         property_id: id,

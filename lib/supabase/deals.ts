@@ -80,11 +80,17 @@ export interface DealInput {
   origin_metadata?: unknown
 }
 
-export async function createDeal(input: DealInput) {
+/**
+ * `autorId`: quién abre el proceso (null = el sistema). Obligatorio a propósito, igual que
+ * en todas las funciones que escriben `stage` (crm-linea-de-tiempo D1): el trigger copia
+ * `stage_changed_by` al historial, y un escritor que no lo mandara heredaría el autor del
+ * cambio anterior.
+ */
+export async function createDeal(input: DealInput, autorId: string | null) {
   const { stage = 'scheduled', ...rest } = input
   const { data, error } = await getAdmin()
     .from('deals')
-    .insert({ ...rest, stage })
+    .insert({ ...rest, stage, stage_changed_by: autorId })
     .select('id')
     .single()
   if (error) throw error
@@ -201,9 +207,11 @@ export async function getDeal(id: string) {
   return data
 }
 
-export async function updateDealStage(id: string, stage: DealStage, notes?: string) {
+export async function updateDealStage(id: string, stage: DealStage, opciones: { autorId: string | null; notes?: string }) {
+  const { notes } = opciones
   const updates: Record<string, unknown> = {
     stage,
+    stage_changed_by: opciones.autorId,
     stage_changed_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }
@@ -275,10 +283,10 @@ export async function ultimoCambioDeEtapa(
  */
 export async function deshacerPerdido(
   id: string,
-  d: { volverA: string; limpiarLostAt: boolean },
+  d: { volverA: string; limpiarLostAt: boolean; autorId: string | null },
 ): Promise<boolean> {
   const ahora = new Date().toISOString()
-  const updates: Record<string, unknown> = { stage: d.volverA, stage_changed_at: ahora, updated_at: ahora }
+  const updates: Record<string, unknown> = { stage: d.volverA, stage_changed_by: d.autorId, stage_changed_at: ahora, updated_at: ahora }
   if (d.limpiarLostAt) updates.lost_at = null
   const { data, error } = await getAdmin()
     .from('deals')
@@ -315,7 +323,7 @@ export interface CamposConversion {
  * (el proceso sigue contando como del embudo) y NO llama a Mailchimp: la sincronización
  * busca a la persona por el email del contacto, que la ruta guarda después.
  */
-export async function convertirSolicitud(id: string, campos: CamposConversion): Promise<boolean> {
+export async function convertirSolicitud(id: string, campos: CamposConversion, autorId: string | null): Promise<boolean> {
   const ahora = new Date().toISOString()
   // Lista cerrada: aunque la entrada traiga de más, al `update` va solo esto.
   const updates: Record<string, unknown> = {
@@ -329,6 +337,7 @@ export async function convertirSolicitud(id: string, campos: CamposConversion): 
     rooms: campos.rooms,
     covered_area: campos.covered_area,
     stage: 'scheduled',
+    stage_changed_by: autorId,
     stage_changed_at: ahora,
     updated_at: ahora,
   }
@@ -391,12 +400,13 @@ export async function linkAppraisalToDeal(dealId: string, appraisalId: string) {
   await syncMailchimpBestEffort(dealId)
 }
 
-export async function linkPropertyToDeal(dealId: string, propertyId: string) {
+export async function linkPropertyToDeal(dealId: string, propertyId: string, autorId: string | null) {
   const { error } = await getAdmin()
     .from('deals')
     .update({
       property_id: propertyId,
       stage: 'captured',
+      stage_changed_by: autorId,
       stage_changed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

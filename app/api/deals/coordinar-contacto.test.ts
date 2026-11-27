@@ -111,7 +111,7 @@ describe('POST /api/deals con contact_id', () => {
     const res = await POST(pedido(completo))
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ success: true, id: 'deal-nuevo', contact_id: 'c-clase' })
-    expect(m.createDeal).toHaveBeenCalledWith(expect.objectContaining({ contact_id: 'c-clase', origin: 'referido', assigned_to: 'asesor-9' }))
+    expect(m.createDeal).toHaveBeenCalledWith(expect.objectContaining({ contact_id: 'c-clase', origin: 'referido', assigned_to: 'asesor-9' }), expect.any(String))
     expect(m.consultasDirectas).toEqual([])
     expect(m.contactosCreados).toEqual([])
     expect(m.convertirSolicitud).not.toHaveBeenCalled()

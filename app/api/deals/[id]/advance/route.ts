@@ -10,7 +10,7 @@ import { notifyWithEscalation } from '@/lib/email/notify-with-escalation'
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requirePermission('pipeline.advance')
+    const user = await requirePermission('pipeline.advance')
     const { id } = await params
     const { stage, notes, appraisal_id, property_id } = await request.json()
 
@@ -30,6 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         const deal = await getDeal(id)
         await createTaskForRole('coordinador', {
           type: 'update_contact',
+          created_by: user.id, // crm-linea-de-tiempo D2
           title: `Actualizar contacto: ${deal.property_address}`,
           description: `El asesor creo una tasacion. Verificar y completar datos del contacto.`,
           deal_id: id,
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // If linking a property, use the dedicated function
     if (property_id && stage === 'captured') {
-      await linkPropertyToDeal(id, property_id)
+      await linkPropertyToDeal(id, property_id, user.id)
       return NextResponse.json({ success: true })
     }
 
@@ -70,7 +71,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     } catch (e) { console.error('advance: prior-state fetch error:', e) }
 
     // Otherwise just update the stage
-    await updateDealStage(id, stage, notes)
+    await updateDealStage(id, stage, { autorId: user.id, notes })
 
     // N2: visita realizada — notificar coordinador+admins+dueños (solo en transición).
     if (stage === 'visited' && priorStage !== 'visited') {

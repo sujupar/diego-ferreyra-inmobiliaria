@@ -33,11 +33,13 @@ export async function getVisitData(dealId: string): Promise<VisitDataSnapshot | 
  * MISMA sentencia (`in('stage', …)`), no en una lectura previa: así no hay
  * carrera entre leer la etapa y escribirla.
  */
-export async function markVisitCompleted(dealId: string): Promise<boolean> {
+/** `autorId`: quién marcó la visita (crm-linea-de-tiempo D1; null = el sistema). */
+export async function markVisitCompleted(dealId: string, autorId: string | null): Promise<boolean> {
   const { data, error } = await getAdmin()
     .from('deals')
     .update({
       stage: 'visited',
+      stage_changed_by: autorId,
       visit_completed_at: new Date().toISOString(),
       stage_changed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

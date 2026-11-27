@@ -229,7 +229,7 @@ export async function POST(request: NextRequest) {
       neighborhood,
       rooms: typeof rooms === 'number' ? rooms : parseInt(rooms, 10),
       covered_area: covered_area != null && covered_area !== '' ? Number(covered_area) : null,
-    })
+    }, user.id)
 
     // Con `contact_id`, después de crear el proceso se guardan en esa persona los datos
     // validados: si al lead de la clase le faltaba el email, sin esto `advance`
@@ -249,6 +249,7 @@ export async function POST(request: NextRequest) {
           assigned_to: asesorId,
           deal_id: dealId,
           contact_id: contactId,
+          created_by: user.id, // crm-linea-de-tiempo D2
         })
       } catch (err) {
         console.error('Failed to create task:', err)
@@ -395,7 +396,7 @@ async function convertirDesdeSolicitud(p: {
 
   // Primero el proceso. Si no cambió ninguna fila (otro lo movió en el medio), no se
   // toca nada más: tampoco el contacto.
-  if (!(await convertirSolicitud(p.dealId, campos))) {
+  if (!(await convertirSolicitud(p.dealId, campos, p.user.id))) {
     return NextResponse.json({ error: YA_CAMBIO_DE_ETAPA }, { status: 409 })
   }
   const avisos = await actualizarContactoCoordinado(contactId, p.cliente, p.emailTipeado)
@@ -410,6 +411,7 @@ async function convertirDesdeSolicitud(p: {
       assigned_to: p.asesorId,
       deal_id: p.dealId,
       contact_id: contactId,
+      created_by: p.user.id, // crm-linea-de-tiempo D2
     })
   } catch (err) {
     console.error('POST /api/deals (conversión): no se pudo crear la tarea', { dealId: p.dealId, err })

@@ -172,7 +172,7 @@ export async function crearContactoYDeal(input: FunnelLeadInput): Promise<Funnel
     // así el insert queda idéntico al de antes cuando no hay experimento.
     ...(input.landingVariant ? { landing_variant: input.landingVariant } : {}),
     ...metaCols,
-  })
+  }, null) // el embudo es el sistema: sin autor (crm-linea-de-tiempo D1)
 
   return { contactId, dealId }
 }

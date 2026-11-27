@@ -36,6 +36,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
             description: notes ? `Observaciones: ${notes}` : 'Revisar y corregir documentacion.',
             assigned_to: prop.assigned_to,
             property_id: id,
+            created_by: user.id, // crm-linea-de-tiempo D2
           })
         }
       } catch (e) { console.error('Task creation error:', e) }

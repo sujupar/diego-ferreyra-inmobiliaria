@@ -234,13 +234,14 @@ export async function cierresDePeriodo(): Promise<string[]> {
  * Cierra las tareas `informe_quincenal` pendientes de la propiedad, SOLO si no le queda ningún borrador del ciclo:
  * con dos quincenas abiertas, la misma tarea las representa a las dos. Devuelve cuántas cerró.
  */
-export async function cerrarTareasDelInforme(propertyId: string): Promise<number> {
+/** `autorId`: quien dejó listo el informe; queda como quien completó la tarea (crm-linea-de-tiempo D2). */
+export async function cerrarTareasDelInforme(propertyId: string, autorId: string | null): Promise<number> {
   const quedan = await sb().from('property_reports').select('id', { count: 'exact', head: true })
     .eq('property_id', propertyId).eq('origen', 'ciclo').eq('estado', 'borrador')
   if (quedan.error) fallo('contar los borradores del ciclo', quedan.error)
   if ((quedan.count ?? 0) > 0) return 0
   const { data, error } = await sb().from('tasks')
-    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .update({ status: 'completed', completed_at: new Date().toISOString(), completed_by: autorId })
     .eq('property_id', propertyId).eq('type', 'informe_quincenal').eq('status', 'pending').select('id')
   if (error) fallo('cerrar la tarea del informe', error)
   return (data ?? []).length
