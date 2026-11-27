@@ -113,7 +113,7 @@ limpieza (10.4).
 
 - [x] 11.1 Auditor 1 (agente nuevo, sin contexto) revisa propuesta, maqueta, specs, diseño y código contra cada escenario de `crm-cartera` y del delta de `crm-sistema-diseno`; registra sus hallazgos en `auditoria.md` (sección "Auditoría del código")
 - [x] 11.2 Corregir los hallazgos de peso (y los que hayan quedado de 9.1), verificando cada uno contra el código antes de aplicarlo. **Una corrección de código después del QA vuelve a pasar por pruebas y QA:** vitest, `tsc` y `eslint`; volver a crear los datos con la receta; repetir en la vista previa, a 390 y a 1280 px, los escenarios que toca; actualizar la tabla; terminar con `borrar` y `verificar`. Anotar en `auditoria.md`
-- [ ] 11.3 Auditor 2 (otro agente nuevo) revisa el change completo y la auditoría del auditor 1; registra en `auditoria.md`
+- [x] 11.3 Auditor 2 (otro agente nuevo) revisa el change completo y la auditoría del auditor 1; registra en `auditoria.md`
 - [ ] 11.4 Repetir 11.2 y 11.3 hasta cero hallazgos de peso; verificar que `auditoria.md` cierra con los dos auditores conformes y que `npx -y @fission-ai/openspec@2.2.0 validate crm-cartera-por-rol --strict` pasa
 - [ ] 11.5 Después del deploy (10.3) y **antes de 10.4**: pasada final de un auditor contra producción con los escenarios de permisos (asesor por la red, `ver_como` desde un asesor → 403, abogado), la vista de cada rol y "Volver" desde la ficha, con los datos de la receta creados en esa misma sesión (`borrar` → `verificar` → `crear`); registra en `auditoria.md`
 

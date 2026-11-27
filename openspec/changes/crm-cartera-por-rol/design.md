@@ -250,7 +250,11 @@ cuenta. **Copias son solo las de `createTaskForRole`:** asignadas a coordinadore
 menos** de diferencia entre sí. Es una diferencia entre instantes, no "el mismo minuto" del
 reloj: `createTaskForRole` (`lib/supabase/tasks.ts:99-118`) inserta las copias una tras otra en
 un bucle, y dos hermanas creadas a las 12:00:59,9 y a las 12:01:00,1 caerían en minutos
-distintos si se truncara (hay un test con ese par).
+distintos si se truncara (hay un test con ese par). **La regla es por pares** (ajuste de las
+auditorías del código, B7 y H4): una pendiente se anula si hay una completada o descartada a 60
+segundos o menos de ELLA; las pendientes que quedan se cuentan juntas si están a 60 segundos o
+menos de la primera de su racimo. Nunca se encadena (un racimo no puede crecer de a 60 s) ni se
+ancla el racimo en una cerrada.
 No alcanza con mismo título: la cadencia crea "Llamar a {nombre}" y "Enviar WhatsApp a
 {nombre}" una y otra vez en el mismo proceso (`lib/crm/cadencia.ts:150` y `:185`), y una
 completada la semana pasada no puede esconder la pendiente de hoy. Para eso se leen también
@@ -260,8 +264,9 @@ la tanda 1). No "los últimos 90 días": una copia de la cuenta de prueba que na
 puede tener meses, y su hermana completada quedaría afuera de una ventana fija. Y sin los 60
 segundos de margen quedaría afuera la hermana que nació milisegundos antes que la pendiente en
 el mismo bucle. Columnas: `deal_id, type, title, assigned_to, status, created_at,
-source_activity_id`; respeta el tope y avisa `truncado` como el resto. Contactos del equipo
-(`cargarContactos`, D6) hace la misma lectura con el mismo corte. En la vista de una
+source_activity_id`; con el mismo tope, y cortada = error de tareas + `console.warn` (no avisa
+`truncado`; auditoría M2 y H5). Se lee solo en la vista del dueño (B1). Contactos del equipo
+(`cargarContactos`, D6, alcance `todos`) hace la misma lectura con el mismo corte. En la vista de una
 coordinadora cuenta solo su copia, como pide la spec.
 
 **Primera llamada sin fecha.** La tarea de entrada de cada lead es `update_contact` **sin

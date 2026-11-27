@@ -462,11 +462,15 @@ export function CarteraCRM({ inicial, rol, opcionesVerComo: opcionesIniciales, a
           setDatos(r.data)
           // Mirando a alguien la respuesta no trae opciones: al menos queda esa persona, como
           // hace la página al abrir (crm/page.tsx).
+          // La lista completa, si llegó, gana siempre; si no, al menos se suma la persona mirada (A3-2).
           const persona = r.data.vista.mirando ? r.data.vista.persona : null
-          const nuevas =
-            r.data.opcionesVerComo ??
-            (persona ? [{ id: persona.id, etiqueta: `${persona.nombre} · ${persona.rol === 'coordinador' ? 'coordinación' : 'asesor'}` }] : null)
-          if (esDueno && nuevas && nuevas.length > 0) setOpcionesVerComo((antes) => (antes && antes.length > 0 ? antes : nuevas))
+          if (esDueno && r.data.opcionesVerComo && r.data.opcionesVerComo.length > 0) setOpcionesVerComo(r.data.opcionesVerComo)
+          else if (esDueno && persona)
+            setOpcionesVerComo((antes) =>
+              antes?.some((o) => o.id === persona.id)
+                ? antes
+                : [...(antes ?? []), { id: persona.id, etiqueta: `${persona.nombre} · ${persona.rol === 'coordinador' ? 'coordinación' : 'asesor'}` }],
+            )
           setEstado('listo')
           ultimaCarga.current = Date.now()
           if (!r.data.vista.mirando) propia.current = r.data
