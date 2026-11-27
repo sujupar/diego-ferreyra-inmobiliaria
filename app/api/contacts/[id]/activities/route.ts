@@ -121,11 +121,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Una fila de más por fuente dice si hay otra página, sin contar todo.
     const conSistema = filtro === 'todo' || filtro === 'actividad'
+    // Una pestaña con el código anterior manda solo `antes`: los eventos del sistema se
+    // cortan igual desde ahí (revisión de código, hallazgo 7).
+    const cursorSistema = cursor ?? (antes ? { fecha: antes, id: '' } : null)
+    const limiteActividades = TAMANO_PAGINA + 1 + (cursor ? MARGEN_EMPATES : 0)
     const [filas, llamadas, sistema] = await Promise.all([
-      listarActividades(id, filtro, antes, TAMANO_PAGINA + 1 + (cursor ? MARGEN_EMPATES : 0), { inclusivo: cursor !== null }),
+      listarActividades(id, filtro, antes, limiteActividades, { inclusivo: cursor !== null }),
       llamadasNoAnuladasDelContacto(id),
       conSistema
-        ? leerEventosDelSistema(id, cursor, TAMANO_PAGINA, {
+        ? leerEventosDelSistema(id, cursorSistema, TAMANO_PAGINA, {
             usuarioId: user.id,
             // Asesor: lo de los procesos de otro asesor no viaja (spec crm-ficha-contacto).
             soloPropios: alcance === 'propios',
@@ -133,13 +137,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
             // Una falla general (los nombres, el plazo) es una falla de TODAS las fuentes
             // del sistema; las notas y llamadas se muestran igual.
             console.error('GET /api/contacts/[id]/activities eventos del sistema:', e)
-            return { eventos: [], fuentesConError: [...CLASES_EVENTO] }
+            return { eventos: [], fuentesConError: [...CLASES_EVENTO], piso: null }
           })
-        : Promise.resolve({ eventos: [], fuentesConError: [] }),
+        : Promise.resolve({ eventos: [], fuentesConError: [], piso: null }),
     ])
     const deActividades: ItemLinea<FilaActividad>[] = filas.map((actividad) => ({ tipo: 'actividad', actividad }))
     const deSistema: ItemLinea<FilaActividad>[] = sistema.eventos.map((evento) => ({ tipo: 'evento', evento }))
-    const pagina = unirYCortar([deActividades, deSistema], cursor ?? (antes ? { fecha: antes, id: '' } : null), TAMANO_PAGINA)
+    // Si una fuente vino cortada, lo anterior a su fila más vieja espera a la próxima página.
+    const pisos = [sistema.piso, filas.length >= limiteActividades ? filas[filas.length - 1].occurred_at : null]
+      .filter((x): x is string => !!x)
+    const piso = pisos.length > 0 ? pisos.reduce((a, b) => (Date.parse(a) >= Date.parse(b) ? a : b)) : null
+    const pagina = unirYCortar([deActividades, deSistema], cursorSistema, TAMANO_PAGINA, piso)
     const filasPagina = pagina.items.flatMap((i) => (i.tipo === 'actividad' ? [i.actividad] : []))
     const autores = [...new Set(filasPagina.map((f) => f.created_by).filter((x): x is string => !!x))]
     const [nombres, tareas] = await Promise.all([

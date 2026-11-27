@@ -95,7 +95,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       await updateDealSchedule(id, {
         scheduled_date: scheduledDate,
         scheduled_time: scheduledTime,
-      })
+      }, user.id) // crm-linea-de-tiempo: el primer día lo vuelve Coordinada, con autor
     }
 
     return NextResponse.json({ success: true })

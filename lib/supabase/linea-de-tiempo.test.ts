@@ -149,7 +149,8 @@ describe('leerEventosDelSistema', () => {
       ['whatsapp_messages', 'created_at'],
       ['video_view_state', 'first_at'],
     ]) {
-      const q = base.consultas.find((c) => c.tabla === tabla && c.select.includes(col))!
+      // En el historial, la consulta de los cambios (las aperturas van sin corte).
+      const q = base.consultas.find((c) => c.tabla === tabla && c.select.includes(col) && !c.filtros.includes('is:from_stage=null'))!
       // El milisegundo siguiente con `<`: la base tiene microsegundos (auditoría, hallazgo 2).
       expect(q.filtros).toContain(`lt:${col}=2026-11-21T10:00:00.001Z`)
       expect(q.rangos).toEqual([[0, 50 + MARGEN_EMPATES]])
@@ -229,5 +230,41 @@ describe('leerEventosDelSistema', () => {
       const ids = (await leer()).eventos.map((e) => e.id)
       expect(ids).toEqual(expect.arrayContaining(['registro:s3', 'etapa:4', 'tarea:t4:creada', 'tarea:t5:creada']))
     })
+  })
+
+  it('las aperturas se leen siempre, sin corte: su evento va en la fecha del proceso', async () => {
+    const t = tablas()
+    // Proceso de 2025 cuya apertura se escribió al cargar los datos, mucho después.
+    t.deals[0].created_at = '2025-01-10T10:00:00Z'
+    t.funnel_lead_submissions = t.funnel_lead_submissions.filter((x) => x.contact_id !== C)
+    t.deal_stage_history[0].changed_at = '2026-11-25T10:00:00Z'
+    usar(t)
+    const r = await leer({ fecha: '2026-03-01T00:00:00.000Z', id: 'zzz' })
+    expect(r.eventos.find((e) => e.id === 'etapa:1')).toMatchObject({ titulo: 'Se abrió un proceso', fecha: '2025-01-10T10:00:00Z' })
+    const aperturas = base.consultas.find((c) => c.tabla === 'deal_stage_history' && c.filtros.includes('is:from_stage=null'))!
+    expect(aperturas.filtros.some((f) => f.startsWith('lt:'))).toBe(false)
+  })
+
+  it('una fuente cortada por el límite devuelve su piso', async () => {
+    const t = tablas()
+    t.video_view_state = Array.from({ length: 80 }, (_, i) => ({
+      id: `v${i}`, contact_id: C, video_key: 'hero-tasacion', max_percent: 10,
+      first_at: new Date(Date.UTC(2026, 10, 1, 0, 80 - i)).toISOString(), playback_started: true,
+    }))
+    usar(t)
+    const r = await leer()
+    expect(r.piso).toBe(new Date(Date.UTC(2026, 10, 1, 0, 80 - (50 + MARGEN_EMPATES))).toISOString())
+  })
+
+  it('sin fuentes cortadas no hay piso', async () => {
+    expect((await leer()).piso).toBeNull()
+  })
+
+  it('asesor: una tarea suya del contacto con un proceso de OTRO contacto, ajeno, no viaja', async () => {
+    const t = tablas()
+    t.tasks.push({ id: 't6', type: 'follow_up', deal_id: D_OTRO, contact_id: C, title: 'Cruzada', status: 'pending', assigned_to: BRUNO, created_at: '2026-11-22T12:00:00Z', created_by: null, completed_at: null, completed_by: null, source_activity_id: null })
+    usar(t)
+    const ids = (await leer(null, { usuarioId: TOMAS, soloPropios: true })).eventos.map((e) => e.id)
+    expect(ids).not.toContain('tarea:t6:creada')
   })
 })

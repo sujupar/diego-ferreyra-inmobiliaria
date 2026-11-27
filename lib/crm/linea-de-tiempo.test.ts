@@ -382,6 +382,12 @@ describe('unirYCortar', () => {
     expect(p2.hayMas).toBe(false)
   })
 
+  it('con piso: lo anterior a lo más viejo leído de una fuente cortada espera, y hay más', () => {
+    const r = unirYCortar([[ev('a', '2026-11-22T10:00:00Z'), ev('b', '2026-11-20T10:00:00Z')], [ev('c', '2026-11-18T10:00:00Z')]], null, 50, '2026-11-20T10:00:00Z')
+    expect(r.items.map(claveDe)).toEqual(['a', 'b'])
+    expect(r.hayMas).toBe(true)
+  })
+
   it('compara instantes, no textos de fecha', () => {
     const r = unirYCortar([[ev('a', '2026-11-20T10:00:00.000Z'), ev('b', '2026-11-20T07:30:00-03:00')]], null, 50)
     expect(r.items.map(claveDe)).toEqual(['b', 'a'])

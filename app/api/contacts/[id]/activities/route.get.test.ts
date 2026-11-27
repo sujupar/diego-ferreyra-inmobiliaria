@@ -74,7 +74,7 @@ beforeEach(() => {
   m.llamadasNoAnuladasDelContacto.mockResolvedValue([])
   m.nombresDePerfiles.mockResolvedValue(new Map([['asesor-1', 'Ana Asesora'], ['coord-1', 'Cora']]))
   m.tareasCreadasPor.mockResolvedValue(new Map())
-  m.leerEventosDelSistema.mockResolvedValue({ eventos: [], fuentesConError: [] })
+  m.leerEventosDelSistema.mockResolvedValue({ eventos: [], fuentesConError: [], piso: null })
 })
 
 type Item = { tipo: 'actividad'; actividad: Record<string, unknown> & { id: string } } | { tipo: 'evento'; evento: Record<string, unknown> & { id: string } }
@@ -267,6 +267,23 @@ describe('GET — línea de tiempo completa (crm-linea-de-tiempo)', () => {
     expect(m.listarActividades).toHaveBeenCalledWith(expect.any(String), 'todo', f, 71, { inclusivo: true })
     expect(m.leerEventosDelSistema).toHaveBeenCalledWith(expect.any(String), { fecha: f, id: 'etapa:9' }, 50, { usuarioId: 'coord-1', soloPropios: false })
     expect(body.items.map((i: Item) => (i.tipo === 'evento' ? i.evento.id : i.actividad.id))).toEqual(['etapa:1', 'n1'])
+  })
+
+  it('el piso de una fuente cortada deja lo más viejo para la página siguiente', async () => {
+    m.listarActividades.mockResolvedValue([fila('n1', { occurred_at: '2026-11-10T12:00:00.000Z' })])
+    m.leerEventosDelSistema.mockResolvedValue({
+      eventos: [evento('whatsapp:1', '2026-11-20T12:00:00.000Z')],
+      fuentesConError: [],
+      piso: '2026-11-15T00:00:00.000Z',
+    })
+    const body = await (await get()).json()
+    expect(body.items.map((i: Item) => (i.tipo === 'evento' ? i.evento.id : i.actividad.id))).toEqual(['whatsapp:1'])
+    expect(body.hay_mas).toBe(true)
+  })
+
+  it('el camino viejo (solo `antes`) también corta los eventos del sistema', async () => {
+    await get('?antes=2026-11-20T10:00:00Z')
+    expect(m.leerEventosDelSistema).toHaveBeenCalledWith(expect.any(String), { fecha: '2026-11-20T10:00:00.000Z', id: '' }, 50, expect.anything())
   })
 
   it('`antes_id` sin `antes`, o vacío → 400', async () => {

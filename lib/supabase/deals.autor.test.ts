@@ -29,7 +29,7 @@ vi.mock('@supabase/supabase-js', () => ({
   }),
 }))
 
-import { convertirSolicitud, createDeal, deshacerPerdido, linkPropertyToDeal, updateDealStage } from './deals'
+import { convertirSolicitud, createDeal, deshacerPerdido, linkPropertyToDeal, updateDealSchedule, updateDealStage } from './deals'
 import { markVisitCompleted } from './visit-data'
 
 const PAULA = '00000000-0000-4000-8000-0000000000a1'
@@ -59,5 +59,12 @@ describe('cada escritura de etapa lleva su autor', () => {
     await llamar(null)
     const [e] = c.escrituras.filter((x) => 'stage' in x)
     expect(e).toHaveProperty('stage_changed_by', null)
+  })
+})
+
+describe('poner el día también firma (la fila scheduled → scheduled del trigger)', () => {
+  it('updateDealSchedule escribe stage_changed_by junto con el día', async () => {
+    await updateDealSchedule('d-1', { scheduled_date: '2026-12-01', scheduled_time: '10:00' }, PAULA)
+    expect(c.escrituras).toEqual([expect.objectContaining({ scheduled_date: '2026-12-01', stage_changed_by: PAULA })])
   })
 })
