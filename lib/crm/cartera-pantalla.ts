@@ -232,7 +232,17 @@ export function etapasDeVista(
 
 // ── Filtros puestos ──────────────────────────────────────────────────────────────────────
 
-type ClaveFicha = 'q' | 'trabado' | 'etapa' | 'origen' | 'asesor' | 'entro'
+export type ClaveFicha = 'q' | 'trabado' | 'etapa' | 'origen' | 'asesor' | 'entro'
+
+/** Qué saca la cruz de cada ficha: "Entró" se lleva también las dos fechas del rango. */
+export const SACAR_FICHA: Record<ClaveFicha, Partial<FiltrosCartera>> = {
+  q: { q: '' },
+  trabado: { trabado: '' },
+  etapa: { etapa: '' },
+  origen: { origen: '' },
+  asesor: { asesor: '' },
+  entro: { entro: '', desde: '', hasta: '' },
+}
 
 const dd_mm = (f: string) => (f ? `${f.slice(8, 10)}/${f.slice(5, 7)}` : '…')
 
