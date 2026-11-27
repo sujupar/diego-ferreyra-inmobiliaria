@@ -30,10 +30,13 @@
  * usuario). Es de UNA sesión: otra sesión que corra `borrar`/`verificar` usa el respaldo por
  * nombre, que tiene que dar el mismo resultado.
  */
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Client } from 'pg'
+import type { Client } from 'pg'
+import {
+  CLAUDE_QA, JULIAN_COORDINADOR, archivoDeIds, borrarMailchimpDeProcesos, borrarSupresiones, conectar,
+  contarMailchimp, cortar, fechaArgentina, filas, invarianteDeMetricas, perfil, suprimirEmails, uno,
+} from './_qa-receta-comun'
 
 const NOMBRE = '[TEST] Ficha QA'
 /** Emails que no pueden recibir correo (`example.com` está reservado). En minúsculas. */
@@ -43,8 +46,6 @@ const EMAIL_SEGUNDO = 'qa-ficha-segundo@example.com'
 const EMAILS = [EMAIL_CONTACTO, EMAIL_SEGUNDO]
 const TELEFONO = '+5491199990017'
 const DIRECCION = '[TEST] Ficha QA — Calle Falsa 123'
-const CLAUDE_QA = 'claude.qa@inmodf.com.ar'
-const JULIAN_COORDINADOR = 'inmobiliariadiegofer.deem471@passmail.com'
 const ARCHIVO_IDS = process.env.QA_FICHA_IDS ?? join(tmpdir(), 'qa-ficha-datos.ids.json')
 
 const BASES = [
@@ -79,45 +80,9 @@ function esAditiva(s: string): s is Aditiva {
   return (ADITIVAS as readonly string[]).includes(s)
 }
 
-function cortar(msg: string): never {
-  throw new Error(`CORTA: ${msg}`)
-}
-
-function leerIds(): Ids | null {
-  if (!existsSync(ARCHIVO_IDS)) return null
-  const crudo: unknown = JSON.parse(readFileSync(ARCHIVO_IDS, 'utf8'))
-  if (!crudo || typeof crudo !== 'object') cortar(`el archivo de ids ${ARCHIVO_IDS} no se entiende`)
-  return crudo as Ids
-}
-
-function guardarIds(ids: Ids): void {
-  writeFileSync(ARCHIVO_IDS, JSON.stringify(ids, null, 2))
-}
-
-async function conectar(): Promise<Client> {
-  if (!process.env.SUPABASE_DB_PASSWORD) cortar('falta SUPABASE_DB_PASSWORD en el entorno')
-  const c = new Client({
-    host: 'aws-0-us-west-2.pooler.supabase.com', port: 5432,
-    user: 'postgres.mncsnastmcjdjxrehdep', password: process.env.SUPABASE_DB_PASSWORD,
-    database: 'postgres', ssl: { rejectUnauthorized: false },
-  })
-  await c.connect()
-  return c
-}
-
-async function filas<R>(c: Client, sql: string, valores?: unknown[]): Promise<R[]> {
-  return (await c.query<R>(sql, valores)).rows
-}
-
-async function uno<R>(c: Client, sql: string, valores?: unknown[]): Promise<R> {
-  const r = await filas<R>(c, sql, valores)
-  if (r.length !== 1) throw new Error(`se esperaba 1 fila y vinieron ${r.length}: ${sql.slice(0, 80)}`)
-  return r[0]
-}
-
-async function perfil(c: Client, email: string): Promise<string> {
-  return (await uno<{ id: string }>(c, `SELECT id FROM profiles WHERE email = $1`, [email])).id
-}
+const archivo = archivoDeIds<Ids>(ARCHIVO_IDS)
+const leerIds = (): Ids | null => archivo.leer()
+const guardarIds = (ids: Ids): void => archivo.guardar(ids)
 
 /** Contactos de prueba por el respaldo: nombre EXACTO y uno de los dos emails EXACTOS. */
 async function contactosPorNombre(c: Client): Promise<string[]> {
@@ -167,10 +132,7 @@ async function contar(c: Client, k: Conjunto): Promise<Conteo> {
       WHERE contact_id = ANY($1::uuid[]) OR deal_id = ANY($2::uuid[]) OR id = ANY($3::uuid[])`,
     [k.contactos, k.procesos, ids?.tareas ?? []]),
     historialEtapas: await n(`SELECT count(*)::int AS n FROM deal_stage_history WHERE deal_id = ANY($1::uuid[])`, [k.procesos]),
-    mailchimpEstado: await n(`SELECT count(*)::int AS n FROM mailchimp_sync_state WHERE deal_id = ANY($1::uuid[])`, [k.procesos]),
-    mailchimpLog: await n(`SELECT count(*)::int AS n FROM mailchimp_sync_log
-      WHERE deal_id = ANY($1::uuid[]) OR lower(email) = ANY($2::text[])`, [k.procesos, EMAILS]),
-    supresiones: await n(`SELECT count(*)::int AS n FROM mailchimp_suppressions WHERE email = ANY($1::text[])`, [EMAILS]),
+    ...(await contarMailchimp(c, k.procesos, EMAILS)),
   }
 }
 
@@ -180,17 +142,6 @@ function totalDeFilas(x: Conteo): number {
 }
 
 // ── crear ────────────────────────────────────────────────────────────────────────────────
-
-/** Suprime los dos emails ANTES de cualquier proceso, en su propio commit, y los relee. */
-async function suprimirEmails(c: Client): Promise<void> {
-  await c.query(
-    `INSERT INTO mailchimp_suppressions (email, reason) SELECT unnest($1::text[]), 'test'
-     ON CONFLICT (email) DO NOTHING`, [EMAILS])
-  const leidos = await filas<{ email: string }>(c,
-    `SELECT email FROM mailchimp_suppressions WHERE email = ANY($1::text[])`, [EMAILS])
-  if (leidos.length !== 2) cortar(`no se encontraron los dos emails de prueba en mailchimp_suppressions (${leidos.length}); no se crea nada`)
-  console.log(`✓ suprimidos para Mailchimp: ${EMAILS.join(', ')}`)
-}
 
 interface Contexto {
   c: Client
@@ -237,12 +188,6 @@ async function insertarTarea(x: Contexto, datos: {
   return r.id
 }
 
-/** Fecha de Argentina desplazada `dias`, como `YYYY-MM-DD`. */
-function fechaArgentina(dias: number): string {
-  const ahora = new Date(Date.now() + dias * 86_400_000)
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(ahora)
-}
-
 async function crearBase(c: Client, situacion: Base): Promise<void> {
   // Cualquier dato de prueba previo (por ids o por nombre) → corta sin tocar nada.
   const previos = await contactosPorNombre(c)
@@ -254,7 +199,7 @@ async function crearBase(c: Client, situacion: Base): Promise<void> {
   const claude = await perfil(c, CLAUDE_QA)
   const julian = await perfil(c, JULIAN_COORDINADOR)
 
-  await suprimirEmails(c)
+  await suprimirEmails(c, EMAILS)
 
   const ids: Ids = { base: situacion, aditivas: [], contactos: [], procesos: [], procesosAditivos: [], tareas: [], actividades: [] }
   const x: Contexto = { c, claude, julian, ids }
@@ -430,8 +375,7 @@ async function borrar(c: Client): Promise<void> {
   await c.query('BEGIN')
   try {
     // Mailchimp primero: el log no tiene FK y no se borra solo.
-    await c.query(`DELETE FROM mailchimp_sync_log WHERE deal_id = ANY($1::uuid[]) OR lower(email) = ANY($2::text[])`, [k.procesos, EMAILS])
-    await c.query(`DELETE FROM mailchimp_sync_state WHERE deal_id = ANY($1::uuid[])`, [k.procesos])
+    await borrarMailchimpDeProcesos(c, k.procesos, EMAILS)
     await c.query(`DELETE FROM tasks WHERE contact_id = ANY($1::uuid[]) OR deal_id = ANY($2::uuid[]) OR id = ANY($3::uuid[])`,
       [k.contactos, k.procesos, ids?.tareas ?? []])
     await c.query(`DELETE FROM contact_activities WHERE contact_id = ANY($1::uuid[]) OR deal_id = ANY($2::uuid[]) OR id = ANY($3::uuid[])`,
@@ -440,13 +384,13 @@ async function borrar(c: Client): Promise<void> {
     await c.query(`DELETE FROM deals WHERE id = ANY($1::uuid[])`, [k.procesos])
     await c.query(`DELETE FROM contacts WHERE id = ANY($1::uuid[])`, [k.contactos])
     // Al final, las supresiones: mientras existió un proceso de prueba tenían que estar.
-    await c.query(`DELETE FROM mailchimp_suppressions WHERE email = ANY($1::text[])`, [EMAILS])
+    await borrarSupresiones(c, EMAILS)
     await c.query('COMMIT')
   } catch (e) {
     await c.query('ROLLBACK')
     throw e
   }
-  if (existsSync(ARCHIVO_IDS)) unlinkSync(ARCHIVO_IDS)
+  archivo.borrar()
   const despues = await contar(c, k)
   console.log(`después: ${JSON.stringify(despues)}`)
   if (totalDeFilas(despues) !== 0) cortar('quedaron filas de prueba después de borrar')
@@ -460,26 +404,7 @@ async function verificar(c: Client): Promise<void> {
   const conteo = await contar(c, k)
   console.log(`fuente: ${fuente}`)
   console.log(`filas de prueba: ${JSON.stringify(conteo)} (total ${totalDeFilas(conteo)})`)
-  const fallas: string[] = []
-
-  const conOrigen = (await uno<{ n: number }>(c,
-    `SELECT count(*)::int AS n FROM deals WHERE id = ANY($1::uuid[]) AND origin IS NOT NULL`, [k.procesos])).n
-  if (conOrigen !== 0) fallas.push(`${conOrigen} proceso(s) de prueba con origin cargado`)
-  const enMetricas = (await uno<{ n: number }>(c,
-    `SELECT count(*)::int AS n FROM deals WHERE id = ANY($1::uuid[]) AND origin IN ('embudo','clase_gratuita')`, [k.procesos])).n
-  if (enMetricas !== 0) fallas.push(`${enMetricas} proceso(s) de prueba cuentan en el embudo`)
-  console.log(`· procesos de prueba en el embudo (embudo/clase_gratuita): ${enMetricas}`)
-
-  const sincronizados = (await uno<{ n: number }>(c,
-    `SELECT count(*)::int AS n FROM mailchimp_sync_log
-      WHERE status = 'synced' AND (deal_id = ANY($1::uuid[]) OR lower(email) = ANY($2::text[]))`, [k.procesos, EMAILS])).n
-  console.log(`· renglones 'synced' de Mailchimp de prueba: ${sincronizados}`)
-  if (sincronizados !== 0) {
-    fallas.push(`${sincronizados} renglón(es) 'synced' en Mailchimp: frenar el QA y avisarle al dueño que saque ese email de la audiencia`)
-  }
-  if (conteo.procesos > 0 && conteo.supresiones !== 2) {
-    fallas.push(`hay ${conteo.procesos} proceso(s) de prueba y solo ${conteo.supresiones} de los 2 emails suprimidos`)
-  }
+  const fallas = await invarianteDeMetricas(c, k.procesos, EMAILS)
 
   if (fallas.length > 0) cortar(`verificación en rojo:\n  - ${fallas.join('\n  - ')}`)
   console.log('✓ verificación en verde')
