@@ -171,13 +171,18 @@ async function main(): Promise<void> {
     ok(nadie.rows.length === 0, 'una lista vacía no devuelve filas')
 
     // ── 6. Tiempo con 900 ids ────────────────────────────────────────────────────────────
-    const ids = await c.query<{ id: string }>(`SELECT id::text FROM contacts ORDER BY created_at DESC LIMIT 900`)
-    ok(ids.rows.length >= 800, `hay ${ids.rows.length} contactos para medir`)
+    // Hoy hay menos de 900 contactos (871 el 2026-11-26): se completa con ids al azar, que
+    // la función busca igual (y no encuentra), para medir con los 900 que pide D2.
+    const ids = await c.query<{ id: string }>(
+      `SELECT id::text FROM (SELECT id FROM contacts ORDER BY created_at DESC LIMIT 900) reales
+       UNION ALL
+       SELECT gen_random_uuid()::text FROM generate_series(1, greatest(0, 900 - (SELECT count(*) FROM contacts)::int))`)
+    ok(ids.rows.length === 900, `900 ids para medir (${ids.rows.length})`)
     const plan = await uno<{ 'QUERY PLAN': { 'Execution Time': number }[] }>(
       `EXPLAIN (ANALYZE, FORMAT JSON) SELECT * FROM public.crm_ultimos_contactos($1::uuid[])`,
       [ids.rows.map((x) => x.id)])
     const ms = plan['QUERY PLAN'][0]['Execution Time']
-    ok(ms < TOPE_MS, `EXPLAIN ANALYZE con ${ids.rows.length} ids: ${ms.toFixed(2)} ms (< ${TOPE_MS} ms)`)
+    ok(ms < TOPE_MS, `EXPLAIN ANALYZE con 900 ids: ${ms.toFixed(2)} ms (< ${TOPE_MS} ms)`)
   } finally {
     await c.query('ROLLBACK')
     console.log('· ROLLBACK de todo lo insertado')
