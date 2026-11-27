@@ -166,17 +166,30 @@ export async function leerEventosDelSistema(
       'video',
     )
 
+    // Todos los perfiles en una lectura (son pocos): dan los teléfonos del equipo, los
+    // nombres y quién es de la coordinación, sin un viaje más al final.
+    const perfilesP = filas<{ id: string; full_name: string | null; role: string | null; phone: string | null }>(
+      db.from('profiles').select('id, full_name, role, phone').abortSignal(s),
+      'perfiles',
+    )
+    const contactoP = filas<{ phone_norm: string | null }>(
+      db.from('contacts').select('phone_norm').eq('id', contactId).abortSignal(s),
+      'contacto',
+    )
+
     // WhatsApp (decisión 5 del dueño): solo si el teléfono es de esta persona y de nadie
-    // más. Si algo no se puede comprobar, no se muestra ninguno (falla cerrada).
+    // más. Si algo no se puede comprobar, no se muestra ninguno (falla cerrada). Las
+    // comprobaciones y los mensajes van en paralelo: los mensajes se descartan si alguna no pasa.
     const whatsappP = (async () => {
-      const [contacto] = await filas<{ phone_norm: string | null }>(
-        db.from('contacts').select('phone_norm').eq('id', contactId).abortSignal(s),
-        'contacto',
-      )
+      const [[contacto], perfiles] = await Promise.all([contactoP, perfilesP])
       const tel = ultimos10(contacto?.phone_norm)
       if (!tel) return []
-      const [equipo, otros, avisos] = await Promise.all([
-        filas<{ phone: string | null }>(db.from('profiles').select('phone').not('phone', 'is', null).abortSignal(s), 'equipo'),
+      const telefonosEquipo = new Set([
+        ...perfiles.map((p) => ultimos10(p.phone)).filter((x): x is string => !!x),
+        ...telefonosDeEntorno(),
+      ])
+      if (!telefonoUtilizable(tel, telefonosEquipo, false)) return []
+      const [otros, avisos, primero, ultimo, mensajes] = await Promise.all([
         filas<{ id: string }>(
           db.from('contacts').select('id').eq('phone_norm', tel).neq('id', contactId).limit(1).abortSignal(s),
           'compartidos',
@@ -188,33 +201,31 @@ export async function leerEventosDelSistema(
             .limit(1).abortSignal(s),
           'avisos al equipo',
         ),
+        // Los 10 dígitos pueden coincidir con un número de otro país: el menor y el mayor
+        // número completo dicen si hay más de uno.
+        filas<{ phone_e164: string }>(
+          db.from('whatsapp_messages').select('phone_e164').like('phone_e164', `%${tel}`)
+            .order('phone_e164', { ascending: true }).limit(1).abortSignal(s),
+          'primer número',
+        ),
+        filas<{ phone_e164: string }>(
+          db.from('whatsapp_messages').select('phone_e164').like('phone_e164', `%${tel}`)
+            .order('phone_e164', { ascending: false }).limit(1).abortSignal(s),
+          'último número',
+        ),
+        filas<FilaWhatsapp>(
+          conCorte(
+            db.from('whatsapp_messages')
+              .select('id, direction, status, template_name, body_preview, sent_by, ai_generated, created_at')
+              .like('phone_e164', `%${tel}`),
+            'created_at',
+          ).order('created_at', { ascending: false }).limit(n).abortSignal(s),
+          'whatsapp',
+        ),
       ])
-      const telefonosEquipo = new Set([
-        ...equipo.map((p) => ultimos10(p.phone)).filter((x): x is string => !!x),
-        ...telefonosDeEntorno(),
-      ])
-      const usable = telefonoUtilizable(tel, telefonosEquipo, otros.length > 0 || avisos.length > 0)
-      if (!usable) return []
-      const mensajes = await filas<FilaWhatsapp & { phone_e164: string }>(
-        conCorte(
-          db.from('whatsapp_messages')
-            .select('id, phone_e164, direction, status, template_name, body_preview, sent_by, ai_generated, created_at')
-            .like('phone_e164', `%${usable}`),
-          'created_at',
-        ).order('created_at', { ascending: false }).limit(n).abortSignal(s),
-        'whatsapp',
-      )
-      if (mensajes.length === 0) return []
-      // Los 10 dígitos pueden coincidir con un número de otro país: si hay más de un
-      // número completo, no se sabe de quién es cada mensaje y no se muestra ninguno.
-      const distintos = new Set(mensajes.map((m) => m.phone_e164))
-      if (distintos.size > 1) return []
-      const otroNumero = await filas<{ id: string }>(
-        db.from('whatsapp_messages').select('id').like('phone_e164', `%${usable}`).neq('phone_e164', mensajes[0].phone_e164)
-          .limit(1).abortSignal(s),
-        'otro número',
-      )
-      return otroNumero.length > 0 ? [] : mensajes
+      if (otros.length > 0 || avisos.length > 0) return []
+      if (primero[0]?.phone_e164 !== ultimo[0]?.phone_e164) return []
+      return mensajes
     })()
 
     const [procesos, registros, etapas, tareas, video, whatsapp] = await Promise.allSettled([
@@ -250,23 +261,14 @@ export async function leerEventosDelSistema(
     const listaVideo = ok(video, 'video')
     const listaWhatsapp = ok(whatsapp, 'whatsapp')
 
-    // Nombres (y rol, para las copias de la coordinación) de todos los que aparecen.
-    const idsPersonas = new Set<string>()
-    for (const e of listaEtapas ?? []) if (e.changed_by) idsPersonas.add(e.changed_by)
-    for (const t of listaTareas ?? []) for (const x of [t.assigned_to, t.created_by, t.completed_by]) if (x) idsPersonas.add(x)
-    for (const w of listaWhatsapp ?? []) if (w.sent_by) idsPersonas.add(w.sent_by)
+    // Sin nombres, cada evento perdería su autor sin avisar: si no se pudieron leer los
+    // perfiles, falla todo (la ruta lo muestra como "Parte de la historia no se pudo cargar").
+    const perfiles = await perfilesP
     const nombres = new Map<string, string>()
     const coordinacion = new Set<string>()
-    if (idsPersonas.size > 0) {
-      // Sin nombres, cada evento perdería su autor sin avisar: falla todo lo que los usa.
-      const perfiles = await filas<{ id: string; full_name: string | null; role: string | null }>(
-        db.from('profiles').select('id, full_name, role').in('id', [...idsPersonas]).abortSignal(s),
-        'nombres',
-      )
-      for (const p of perfiles) {
-        if (p.full_name?.trim()) nombres.set(p.id, p.full_name.trim())
-        if (p.role === 'coordinador') coordinacion.add(p.id)
-      }
+    for (const p of perfiles) {
+      if (p.full_name?.trim()) nombres.set(p.id, p.full_name.trim())
+      if (p.role === 'coordinador') coordinacion.add(p.id)
     }
 
     const todos = procesos.status === 'fulfilled' ? procesos.value.todos : []
