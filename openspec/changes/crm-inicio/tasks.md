@@ -8,17 +8,18 @@ misma sesión. Se trabaja en `~/Dev/crm-cartera`.
 ## 1. Preparación
 - [x] 1.1 Inventario de la maqueta, las specs, el código y la base; propuesta con 4 recomendaciones
 - [x] 1.2 Specs y diseño; `openspec validate --strict`
-- [ ] 1.3 Auditoría independiente de los artefactos; corregir y anotar en `auditoria.md`
+- [x] 1.3 Auditoría independiente de los artefactos; corregir y anotar en `auditoria.md`
 - [ ] 1.4 PR en borrador
 
 ## 2. Reglas y lecturas
-- [ ] 2.1 `lib/crm/inicio.ts` (D1) con sus tests
-- [ ] 2.2 `lib/supabase/inicio.ts` (D2) con sus tests
-- [ ] 2.3 `GET /api/inicio` (D3) con sus tests
+- [x] 2.1 `lib/crm/inicio.ts` (D1) con sus tests
+- [x] 2.2 `lib/supabase/inicio.ts` (D2) con sus tests
+- [x] 2.3 `GET /api/inicio` (D3) con sus tests
 
 ## 3. Pantalla
-- [ ] 3.1 Ficha con `?registrar=1` (D4) y su test
-- [ ] 3.2 `components/inicio/` y la página (D5) con sus tests; reescribir los tests viejos del Inicio
+- [x] 3.1 Ficha con `?registrar=1` (D4) y su test
+- [x] 3.2 `components/inicio/` y la página (D5) con sus tests; reescribir los tests viejos del Inicio
+- [x] 3.3 Correcciones de la auditoría de artefactos (cola única, sin próximo paso, fuentes, números, plazo, dos columnas)
 
 ## 4. Verificación
 - [ ] 4.1 Suite, `tsc` de toda la app, `eslint`, `next build` local
