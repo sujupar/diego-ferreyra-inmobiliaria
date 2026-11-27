@@ -45,6 +45,8 @@ export default defineConfig({
       // crm-cartera-por-rol (design.md D9 y D12)
       'app/api/crm/**/*.test.ts',
       'app/api/inicio/**/*.test.ts',
+      'components/inicio/**/*.test.tsx',
+      'app/*/inicio/**/*.test.tsx',
       'lib/nav/**/*.test.ts',
       'lib/supabase/cartera*.test.ts',
       'lib/supabase/rpc-paginado*.test.ts',
