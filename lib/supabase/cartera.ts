@@ -24,6 +24,14 @@ import {
   type TareaLeida,
 } from '@/lib/crm/cartera'
 import { procesoEnVista, vistaPara, type MotivoVista, type Vista } from '@/lib/crm/cartera-vista'
+import {
+  armarFilasContactos,
+  contactoVisible,
+  type ContactoLeido,
+  type FilaContacto,
+  type TasacionDeContacto,
+} from '@/lib/crm/contactos-cartera'
+import { alcanceContactos } from '@/lib/auth/contact-access'
 import { etapaCRM } from '@/lib/crm/etapas'
 import { esUuid } from '@/lib/crm/id-valido'
 import { contactoRegistrado, type ContactoRegistrado } from '@/lib/crm/ultimo-contacto'
@@ -52,6 +60,9 @@ const COLS_TAREA =
   'id, type, title, assigned_to, deal_id, contact_id, due_date, due_time, all_day, channel, created_at, source_activity_id, status'
 const COLS_CERRADA = 'id, deal_id, type, title, assigned_to, status, created_at, source_activity_id'
 const COLS_PERFIL = 'id, full_name, role, is_active'
+const COLS_CONTACTO = 'id, full_name, phone, email, origin, assigned_to, created_by, created_at'
+/** Solo esto de `appraisals`: un `select('*')` ancho tumbó la base el 2026-10-10 (fotos en base64). */
+export const COLS_TASACION_DE_CONTACTO = 'contact_id, assigned_to, user_id'
 
 /** Las etapas que la coordinación puede ver (lo grueso; `procesoEnVista` decide). */
 const ETAPAS_BASE_COORDINACION = ['request', 'scheduled', 'not_visited', 'lost']
@@ -78,6 +89,15 @@ export interface DatosCartera {
   asesores: AsesorDeLista[] | null
   /** Solo para admin y dueño en su propia vista. */
   opcionesVerComo: { id: string; etiqueta: string }[] | null
+  fuentes: { ultimoContacto: EstadoFuente; tareas: EstadoFuente }
+  truncado: boolean
+  generadoEn: string
+}
+
+export interface DatosContactos {
+  filas: FilaContacto[]
+  /** Solo para el equipo (el asesor no tiene columna Asesor). */
+  asesores: AsesorDeLista[] | null
   fuentes: { ultimoContacto: EstadoFuente; tareas: EstadoFuente }
   truncado: boolean
   generadoEn: string
@@ -236,6 +256,23 @@ function aPerfiles(filas: Record<string, unknown>[]): Map<string, PerfilCartera>
     })
   }
   return m
+}
+
+function aContacto(r: Record<string, unknown>): ContactoLeido {
+  return {
+    id: texto(r, 'id', 'contacto'),
+    full_name: textoONulo(r, 'full_name') ?? '',
+    phone: textoONulo(r, 'phone'),
+    email: textoONulo(r, 'email'),
+    origin: textoONulo(r, 'origin'),
+    assigned_to: textoONulo(r, 'assigned_to'),
+    created_by: textoONulo(r, 'created_by'),
+    created_at: texto(r, 'created_at', 'contacto'),
+  }
+}
+
+function aTasacion(r: Record<string, unknown>): TasacionDeContacto {
+  return { contact_id: texto(r, 'contact_id', 'tasación'), assigned_to: textoONulo(r, 'assigned_to'), user_id: textoONulo(r, 'user_id') }
 }
 
 /** Distintos asesores de las filas, por nombre: el filtro ofrece solo a quien tiene procesos. */
@@ -476,5 +513,145 @@ export async function cargarCartera(
       generadoEn: ahora.toISOString(),
     }
     return { ok: true, datos }
+  })
+}
+
+// ── Contactos ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Las personas que `usuario` puede ver, con la misma fila que el CRM. `null` si su rol no
+ * tiene Contactos (la ruta responde 403). Lanza si fallan contactos, procesos, perfiles o
+ * tasaciones (sin ellos no se sabe a quién mostrar); tareas, lectura (d) y RPC, como en la
+ * cartera.
+ *
+ * Para el asesor, todo se lee ya recortado a él: procesos con `assigned_to = él` (son los
+ * únicos que hacen visible un contacto por proceso y los únicos que su fila puede mostrar),
+ * tareas suyas y, de `appraisals`, SOLO tres columnas de las tasaciones suyas. Los contactos
+ * se leen todos (871 hoy) y `contactoVisible` deja pasar solo los suyos ANTES de pedir su
+ * último contacto: un ajeno nunca entra a la respuesta.
+ */
+export async function cargarContactos(
+  usuario: { id: string; role: string },
+  ahora: Date,
+  opciones: Opciones = {},
+): Promise<DatosContactos | null> {
+  const alcance = alcanceContactos(usuario.role)
+  if (alcance === 'ninguno') return null
+  const propios = alcance === 'propios'
+  // El id viaja dentro de un `or()` de PostgREST: nunca algo que no sea un uuid.
+  if (propios && !esUuid(usuario.id)) return null
+
+  const cliente = sb()
+  return conPlazoUnico(async (senal) => {
+    const t1 = Date.now()
+    const [contactosLeidos, procesosLeidos, tasacionesLeidas, pendientes, perfilesLeidos] = await Promise.all([
+      paginar(
+        'contacts',
+        (a, b) =>
+          cliente.from('contacts').select(COLS_CONTACTO).order('created_at', { ascending: false }).order('id').range(a, b).abortSignal(senal),
+        senal,
+      ),
+      paginar(
+        'deals',
+        (a, b) => {
+          let q = cliente.from('deals').select(COLS_PROCESO).not('contact_id', 'is', null)
+          if (propios) q = q.eq('assigned_to', usuario.id)
+          return q.order('created_at', { ascending: false }).order('id').range(a, b).abortSignal(senal)
+        },
+        senal,
+      ),
+      propios
+        ? paginar(
+            'appraisals',
+            (a, b) =>
+              cliente
+                .from('appraisals')
+                .select(COLS_TASACION_DE_CONTACTO)
+                .or(`assigned_to.eq.${usuario.id},user_id.eq.${usuario.id}`)
+                .not('contact_id', 'is', null)
+                .order('id')
+                .range(a, b)
+                .abortSignal(senal),
+            senal,
+          )
+        : Promise.resolve({ filas: [], truncado: false }),
+      leerPendientes((a, b) => {
+        let q = cliente
+          .from('tasks')
+          .select(COLS_TAREA)
+          .eq('status', 'pending')
+          .in('type', [...TIPOS_TAREA_DE_PROCESO])
+          .or('deal_id.not.is.null,contact_id.not.is.null')
+        if (propios) q = q.eq('assigned_to', usuario.id)
+        return q.order('id').range(a, b).abortSignal(senal)
+      }, senal),
+      paginar('profiles', (a, b) => cliente.from('profiles').select(COLS_PERFIL).order('id').range(a, b).abortSignal(senal), senal),
+    ])
+    const tanda1Ms = Date.now() - t1
+    const perfiles = aPerfiles(perfilesLeidos.filas)
+    const procesos = procesosLeidos.filas.map((r) => aProceso({ ...r, contacto: null }))
+    const tasaciones = tasacionesLeidas.filas.map(aTasacion)
+
+    // Quién es visible se decide ANTES de la tanda 2: la RPC no se pide por personas ajenas.
+    const asesoresDeProcesos = new Map<string, (string | null)[]>()
+    for (const p of procesos) if (p.contact_id) asesoresDeProcesos.set(p.contact_id, [...(asesoresDeProcesos.get(p.contact_id) ?? []), p.assigned_to])
+    const asesoresDeTasaciones = new Map<string, (string | null)[]>()
+    for (const t of tasaciones) asesoresDeTasaciones.set(t.contact_id, [...(asesoresDeTasaciones.get(t.contact_id) ?? []), t.assigned_to, t.user_id])
+    const contactos = contactosLeidos.filas.map(aContacto).filter((c) =>
+      contactoVisible(usuario, {
+        assigned_to: c.assigned_to,
+        created_by: c.created_by,
+        asesoresDeProcesos: asesoresDeProcesos.get(c.id) ?? [],
+        asesoresDeTasaciones: asesoresDeTasaciones.get(c.id) ?? [],
+      }),
+    )
+
+    const t2 = Date.now()
+    const [ultimos, cerradas] = await Promise.all([
+      leerUltimos(cliente, contactos.map((c) => c.id), senal),
+      pendientes.tareas === 'error'
+        ? Promise.resolve(null)
+        : leerCerradas(cliente, pendientes.tareas, perfiles, senal).catch((e: unknown) => {
+            console.error('[crm] tareas cerradas de la coordinación (contactos):', e)
+            return 'error' as const
+          }),
+    ])
+    const tanda2Ms = Date.now() - t2
+
+    const tareas: TareaLeida[] | 'error' = pendientes.tareas === 'error' || cerradas === 'error' ? 'error' : pendientes.tareas
+    const filas = armarFilasContactos({
+      usuario,
+      contactos,
+      procesos,
+      tasaciones,
+      tareas,
+      tareasCerradas: cerradas && cerradas !== 'error' ? cerradas.cerradas : [],
+      ultimos: ultimos.ultimos,
+      perfiles,
+      ahora,
+    })
+
+    opciones.alMedir?.({
+      previaMs: null,
+      tanda1Ms,
+      tanda2Ms,
+      cerradasLeidas: cerradas && cerradas !== 'error' && cerradas.desde ? cerradas.cerradas.length : null,
+      cerradasDesde: cerradas && cerradas !== 'error' ? cerradas.desde : null,
+    })
+
+    return {
+      filas,
+      asesores: propios ? null : asesoresDe(filas),
+      fuentes: { ultimoContacto: ultimos.ultimos === 'error' ? 'error' : 'ok', tareas: tareas === 'error' ? 'error' : 'ok' },
+      truncado:
+        contactosLeidos.truncado ||
+        procesosLeidos.truncado ||
+        tasacionesLeidas.truncado ||
+        pendientes.truncado ||
+        perfilesLeidos.truncado ||
+        ultimos.truncado ||
+        (!!cerradas && cerradas !== 'error' && cerradas.truncado),
+      generadoEn: ahora.toISOString(),
+    }
   })
 }
