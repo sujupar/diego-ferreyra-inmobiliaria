@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { completeTask, dismissTask, leerTareaParaCambio, posponerTarea, reabrirTarea } from '@/lib/supabase/tasks'
+import { completarCopiasDeEntrada, completeTask, dismissTask, leerTareaParaCambio, posponerTarea, reabrirTarea } from '@/lib/supabase/tasks'
 import { validarMomento } from '@/lib/tareas/agenda'
 import { requireAuth } from '@/lib/auth/require-role'
 import { hasPermission } from '@/lib/auth/roles'
@@ -39,6 +39,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     // `deshacer: true` es el "Deshacer" del aviso: vuelve a la fecha anterior tal cual, que
     // puede estar vencida o no existir (una tarea sin fecha).
     let nuevo: { fecha: string | null; hora: string | null } | null = null
+    let siSigue: { fecha: string | null; hora: string | null } | undefined
     if (action === 'posponer') {
       const deshacer = cuerpo.deshacer === true
       const fecha = typeof cuerpo.due_date === 'string' ? cuerpo.due_date : null
@@ -57,6 +58,11 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
         if (problema) return NextResponse.json({ error: problema }, { status: 400 })
       }
       nuevo = { fecha, hora }
+      if (deshacer) {
+        const desdeFecha = typeof cuerpo.desde_fecha === 'string' ? cuerpo.desde_fecha : null
+        const desdeHora = typeof cuerpo.desde_hora === 'string' ? cuerpo.desde_hora.slice(0, 5) : null
+        siSigue = { fecha: desdeFecha, hora: desdeHora === null ? null : `${desdeHora}:00` }
+      }
     }
     if (!esUuid(id)) return NextResponse.json(NO_ENCONTRADA, { status: 404 })
 
@@ -70,15 +76,27 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       )
     }
 
-    if (action === 'complete') await completeTask(id, user.id)
+    if (action === 'complete') {
+      await completeTask(id, user.id)
+      // La copia de la otra coordinadora también: el lead ya se atendió. Si falla, la tarea
+      // pedida igual quedó completada; la copia se cierra a mano.
+      try {
+        await completarCopiasDeEntrada(id, user.id)
+      } catch (e) {
+        console.error('PUT /api/tasks/[id]: no se pudieron completar las copias de la entrada', e)
+      }
+    }
     else if (action === 'dismiss') await dismissTask(id)
     else if (action === 'reopen') {
       const r = await reabrirTarea(id)
       if (r === 'conflicto') return NextResponse.json({ error: 'Ya hay otra tarea igual pendiente.' }, { status: 409 })
-      if (r === 'no_estaba_completada') return NextResponse.json({ error: 'Esa tarea no estaba completada.' }, { status: 409 })
+      if (r === 'no_estaba_completada') {
+        return NextResponse.json({ error: 'Esa tarea no se puede reabrir acá: no estaba completada o la cerró una llamada.' }, { status: 409 })
+      }
     } else if (nuevo) {
-      if (!(await posponerTarea(id, nuevo.fecha, nuevo.hora))) {
-        return NextResponse.json({ error: 'Esa tarea ya no está pendiente.' }, { status: 409 })
+      if (!(await posponerTarea(id, nuevo.fecha, nuevo.hora, siSigue))) {
+        const error = siSigue ? 'Esa tarea cambió mientras tanto: no se pudo deshacer.' : 'Esa tarea ya no está pendiente.'
+        return NextResponse.json({ error }, { status: 409 })
       }
       // La fecha anterior viaja para el "Deshacer" del aviso.
       return NextResponse.json({
