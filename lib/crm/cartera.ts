@@ -149,7 +149,10 @@ export function quitarNombreDelTitulo(titulo: string, nombre: string): string {
   // `': '` por los títulos automáticos "Seguimiento mensaje: EDUARDO STANIC" (QA 9.3: 385 tareas así).
   for (const nexo of [' a ', ' con ', ' de ', ': ']) {
     const sufijo = nexo + n
-    if (plano.endsWith(sufijo)) return original.slice(0, plano.length - sufijo.length).trim()
+    if (plano.endsWith(sufijo)) {
+      const resto = original.slice(0, plano.length - sufijo.length).trim()
+      return resto || titulo // un título que era solo el nombre queda como estaba (H8)
+    }
   }
   return titulo
 }
@@ -242,22 +245,25 @@ export function colapsarCopiasDeCoordinacion<T extends TareaLeida>(
     if (g) g.push({ t, pendiente: null }) // sin pendientes en el grupo, no hay nada que anular
   }
   for (const g of grupos.values()) {
-    g.sort((a, b) => Date.parse(a.t.created_at) - Date.parse(b.t.created_at))
-    let racimo: typeof g = []
-    const cerrarRacimo = () => {
-      const vivas = racimo.flatMap((x) => (x.pendiente ? [x.pendiente] : []))
-      const algunaCerrada = racimo.some((x) => !x.pendiente)
-      if (vivas.length > 0 && !algunaCerrada) salida.push({ tarea: vivas[0], copias: vivas.length })
-      racimo = []
+    // Regla por PARES (D3): una pendiente se anula si hay una cerrada a 60 s o menos de ELLA;
+    // las pendientes que quedan se cuentan juntas si están a 60 s o menos de la primera del
+    // racimo. Ni encadenar ni anclar el racimo con cerradas adentro (auditorías, B7 y H4).
+    const instante = (x: { t: TareaLeida }) => Date.parse(x.t.created_at)
+    const cerradasDelGrupo = g.filter((x) => !x.pendiente)
+    const vivas = g
+      .filter((x) => x.pendiente && !cerradasDelGrupo.some((c) => Math.abs(instante(c) - instante(x)) <= COPIAS_MS))
+      .sort((a, b) => instante(a) - instante(b))
+    let racimo: T[] = []
+    let inicio = 0
+    for (const x of vivas) {
+      if (racimo.length > 0 && instante(x) - inicio > COPIAS_MS) {
+        salida.push({ tarea: racimo[0], copias: racimo.length })
+        racimo = []
+      }
+      if (racimo.length === 0) inicio = instante(x)
+      racimo.push(x.pendiente as T)
     }
-    for (const x of g) {
-      // Contra la PRIMERA del racimo, no la última: encadenando, un racimo podía abarcar más
-      // de 60 s entre sus extremos y anular una copia que no lo era (auditoría, B7).
-      const primera = racimo[0]
-      if (primera && Date.parse(x.t.created_at) - Date.parse(primera.t.created_at) > COPIAS_MS) cerrarRacimo()
-      racimo.push(x)
-    }
-    cerrarRacimo()
+    if (racimo.length > 0) salida.push({ tarea: racimo[0], copias: racimo.length })
   }
   return salida
 }

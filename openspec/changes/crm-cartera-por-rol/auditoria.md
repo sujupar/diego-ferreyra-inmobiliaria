@@ -274,3 +274,37 @@ servidor→cliente (solo datos planos), `appraisals` (tres columnas, nunca `sele
 
 Después de las correcciones: vitest 2254 en verde, `tsc -p tsconfig.crm.json` y `eslint` sin
 errores. Como son cambios posteriores al QA, vuelven a pasar por la vista previa (tarea 11.2).
+
+## QA en pantalla después del Auditor 1 (2026-11-27, tareas 9.2–9.7 y 11.2)
+
+QA completo sobre 92f83abf: 132 criterios, 81 capturas (`~/Dev/crm-cartera-qa/`). Hallazgos:
+la fila de la tabla se desarmaba a partir de 44rem (Tailwind v4: `row-span-1` pisaba
+`row-start-1`; el avatar perdía la fila 1 y las columnas se corrían), "Seleccionar" sin
+casillas, el próximo paso repetía el nombre en títulos "X: Nombre" (385 tareas), y la hoja de
+filtros del celular con "Ver resultados" en negro y "Limpiar filtros" sin borde. Corregidos en
+f10bc085 y vueltos a probar en la vista previa nueva (dueño, coordinación y asesor, a 1280 y a
+390, Contactos, "Seleccionar" y la hoja): celdas alineadas bajo su cabecera, tarjeta intacta,
+consola limpia. Red con rol asesor: el proceso del otro asesor no viaja; abogado y `viewer`,
+403. Medición 9.4: `/api/crm/cartera` 0,9–1,1 s y 537 KB (101 KB comprimido) para el dueño;
+0,8–0,9 s y 323 KB para la coordinación; lejos de 1 MB. Limpieza 9.7: 0 filas, 0 emails, 0
+WhatsApp, Mailchimp limpio, cuenta en `admin`.
+
+## Auditoría del código — Auditor 2 (2026-11-27)
+
+Agente nuevo, solo lectura sobre f10bc085. Verificó 15 "Cumple" del Auditor 1 (8 de permisos):
+los 15 se cumplen. Compiló las clases nuevas de la fila con el Tailwind 4.1.18 del repo:
+correctas. Sin hallazgos de permisos ni de seguridad. Resultado: **No conforme** (1 MEDIA).
+
+| # | Nivel | Hallazgo (verificado) | Qué se hizo |
+|---|---|---|---|
+| H1 | MEDIA | M1 cambió una regla normativa sin anotarla: la spec decía "lo primero que vence entre tareas y tasación". | Aplicado: requisito nuevo "Próximo paso en la vista de la coordinación" con su escenario; D3 corregido; Diferencia 17. |
+| H2 | BAJA | Con la primera carga fallida, tras "Reintentar" el selector "Ver como" quedaba sin personas y el primer cambio de filtro sacaba `ver` de la dirección. | Aplicado: las opciones van en estado y se toman de la primera respuesta buena (o la persona mirada); la persona mirada siempre es un `ver` válido. Test de componente que falla sin el arreglo. |
+| H3 | BAJA | B6 incompleto: con búsqueda, origen, asesor o fechas puestos seguía afirmando "Nada urgente". | Aplicado: `!hayFiltros(filtros)`. Test que falla sin el arreglo. |
+| H4 | BAJA | B7(a) cambió un error por el opuesto: anclar el racimo en la primera dejaba viva una pendiente con una cerrada a ≤60 s. | Aplicado: regla por pares de D3 (una pendiente se anula si hay una cerrada a ±60 s de ELLA; las vivas se cuentan juntas a ≤60 s de la primera). Tests ajustados a D3. |
+| H5 | BAJA | Un corte de tareas/(d)/RPC por tope dejaba un error permanente sin ningún log. | Aplicado: `console.warn('[crm] tope de 3000 filas en …')` y línea en la Detección de `CLAUDE.md`. |
+| H6 | BAJA | En Contactos `TEXTO_TOPE_CONTACTOS` decía "más personas" también cuando se cortaban procesos o tasaciones. | Aplicado: "Esta lista quedó incompleta: hay más personas o procesos…". |
+| H7 | BAJA | Diseño y `CLAUDE.md` seguían describiendo el `truncado` y la (d) de antes de M2/B1. | Aplicado: D4, D6 y `CLAUDE.md` actualizados. |
+| H8 | BAJA | Un título que fuera solo ": {nombre}" quedaba vacío. | Aplicado: si el recorte queda vacío, se devuelve el título original. Test. |
+| H9 | BAJA | Faltaban las diferencias que marcó el QA, tests de B2/B6 y el registro del re-QA. | Aplicado: Diferencias 18–20, tests de H2/H3 (cubren B2/B6) y la sección de QA de arriba. |
+
+Después: vitest 2258 en verde, `tsc` y `eslint` sin errores, `openspec validate --strict` válido.

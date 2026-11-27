@@ -43,6 +43,13 @@ import { contactoRegistrado, type ContactoRegistrado } from '@/lib/crm/ultimo-co
  */
 export const PLAZO_LECTURA_MS = 15_000
 
+/** El último contacto: un corte de la RPC por tope cuenta como error, con su línea en el log (H5). */
+function ultimoContactoOError(u: { ultimos: Map<string, ContactoRegistrado> | 'error'; truncado: boolean }): Map<string, ContactoRegistrado> | 'error' {
+  if (!u.truncado) return u.ultimos
+  console.warn(`[crm] tope de ${TOPE_FILAS} filas en el último contacto: se muestra como error`)
+  return 'error'
+}
+
 /**
  * Las tareas para armar las filas: 'error' si la lectura de pendientes o la (d) fallaron o
  * quedaron cortadas por el tope (con un corte, qué tarea falta es al azar).
@@ -51,8 +58,17 @@ export function tareasOError(
   pendientes: { tareas: TareaLeida[] | 'error'; truncado: boolean },
   cerradas: { truncado: boolean } | 'error' | null,
 ): TareaLeida[] | 'error' {
-  if (pendientes.tareas === 'error' || pendientes.truncado) return 'error'
-  if (cerradas === 'error' || (cerradas && cerradas.truncado)) return 'error'
+  if (pendientes.tareas === 'error') return 'error'
+  // Un corte por tope no se arregla con "Reintentar": que quede en el log (auditoría, H5).
+  if (pendientes.truncado) {
+    console.warn(`[crm] tope de ${TOPE_FILAS} filas en las tareas pendientes: se muestran como error`)
+    return 'error'
+  }
+  if (cerradas === 'error') return 'error'
+  if (cerradas && cerradas.truncado) {
+    console.warn(`[crm] tope de ${TOPE_FILAS} filas en las tareas cerradas de coordinación (d): se muestran como error`)
+    return 'error'
+  }
   return pendientes.tareas
 }
 
@@ -490,7 +506,7 @@ export async function cargarCartera(
     // id): una fila diría "Nada agendado" sin saberlo. Cortada = no se sabe = error (auditoría, M2).
     const tareas = tareasOError(pendientes, cerradas)
     const tareasCerradas = cerradas && cerradas !== 'error' ? cerradas.cerradas : []
-    const ultimosOError = ultimos.truncado ? ('error' as const) : ultimos.ultimos
+    const ultimosOError = ultimoContactoOError(ultimos)
 
     const filas = armarFilasCartera({ vista, procesos, tareas, tareasCerradas, ultimos: ultimosOError, perfiles, ahora })
 
@@ -649,7 +665,7 @@ export async function cargarContactos(
     const tanda2Ms = Date.now() - t2
 
     const tareas = tareasOError(pendientes, cerradas)
-    const ultimosOError = ultimos.truncado ? ('error' as const) : ultimos.ultimos
+    const ultimosOError = ultimoContactoOError(ultimos)
     const filas = armarFilasContactos({
       usuario,
       contactos,

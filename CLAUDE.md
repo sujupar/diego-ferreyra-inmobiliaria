@@ -2668,7 +2668,11 @@ Change `openspec/changes/crm-cartera-por-rol/` (proposal, maqueta aprobada, desi
   "Reintentar", "Ver como" y volver a la pestaña tras 5 minutos.
 - **Lectura:** dos tandas en paralelo con un SOLO plazo de 15 s para todo
   (`PLAZO_LECTURA_MS`; un techo por lectura sumaba más que los ~26 s de Netlify), paginadas de
-  a 1000 con tope `TOPE_FILAS = 3000` por fuente → `truncado: true` y aviso en pantalla. Si
+  a 1000 con tope `TOPE_FILAS = 3000`. Pasado el tope, **procesos** (y en Contactos personas o
+  tasaciones) → `truncado: true` y aviso en pantalla; **tareas, (d) o último contacto** → ese
+  dato en `'error'` + `console.warn('[crm] tope de 3000 filas en …')` (con un corte, qué fila
+  falta es al azar: "Nada agendado" sería falso). La lectura (d) solo corre en la vista del
+  dueño y en Contactos con alcance `todos`. Si
   falla la lectura de procesos, error con "Reintentar"; si fallan tareas o último contacto, las
   filas salen igual con `'error'` en ese dato (nunca un vacío que parezca "no hay"). Medido en
   la base: 984 procesos en 2,4 ms; el tiempo lo pone la red.
@@ -2705,7 +2709,9 @@ Change `openspec/changes/crm-cartera-por-rol/` (proposal, maqueta aprobada, desi
 - **Celular:** un solo árbol con *container queries* sobre la lista (tabla desde 44rem de
   contenedor, tarjeta debajo), 44 px tocables y 16 px en campos con `pointer: coarse`. La
   barra inferior del celular NO se tocó (decisión del dueño).
-- **Detección:** si la lista avisa "se muestran los más recientes", correr
+- **Detección:** si "No se pudieron cargar las tareas" no se va con "Reintentar", buscar
+  `[crm] tope de 3000 filas` en los logs de Netlify: un tope alcanzado no se arregla
+  reintentando. Si la lista avisa "se muestran los más recientes", correr
   `select count(*) from deals;` contra el tope de 3000: llegó la hora de paginar por vista en
   el servidor, detrás de la misma forma de `FilaCartera`. Si en Contactos aparece una tarea de
   coordinación que alguien ya hizo, mirar la lectura (d) y la ventana de 60 s.

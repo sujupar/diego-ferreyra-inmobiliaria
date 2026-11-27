@@ -163,6 +163,13 @@ describe('grupos de cada vista', () => {
     expect(screen.getByText('No hay solicitudes sin primer contacto ni llamadas vencidas. Abajo sigue el resto de la cartera.')).toBeInTheDocument()
   })
 
+  it('"Nada urgente" no se afirma con un filtro puesto, aunque sea solo la búsqueda (H3)', () => {
+    irA('q=Ernesto')
+    const d = carteraCoordinacion()
+    montar({ ...d, filas: d.filas.filter((f) => f.id === 'tas-1' || f.id === 'resto-1') }, { rol: 'coordinador' })
+    expect(screen.queryByText('Nada urgente')).toBeNull()
+  })
+
   it('asesor sin procesos: "Abiertos 0" y "Todavía no tenés procesos"', () => {
     montar({ ...carteraAsesor(), filas: [] }, { rol: 'asesor' })
     expect(screen.getByRole('button', { name: 'Abiertos 0' })).toBeInTheDocument()
@@ -297,6 +304,29 @@ describe('errores', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
     await waitFor(() => expect(screen.getByRole('region', { name: 'El resto de las solicitudes y coordinadas' })).toBeInTheDocument())
     expect(direccion().get('origen')).toBe('embudo')
+  })
+
+  it('dueño mirando a alguien con la primera carga fallida: "Reintentar" conserva a la persona y el selector la ofrece (B2, H2)', async () => {
+    irA(`ver=${FLORENCIA.id}`)
+    const mirando = datosPrueba({
+      vista: { tipo: 'asesor', persona: { id: FLORENCIA.id, nombre: FLORENCIA.nombre, rol: 'asesor' }, mirando: true },
+      opcionesVerComo: null,
+      asesores: null,
+      filas: [filaPrueba({ id: 'f-1', nombre: 'Lucía Prado', etapa: 'seguimiento', proximo: pasoPrueba('2026-12-05', '10:00') })],
+    })
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toBe(`/api/crm/cartera?ver_como=${FLORENCIA.id}`)
+      return new Response(JSON.stringify(mirando), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    montar(null, { rol: 'dueno', opciones: [] })
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() => expect(screen.getByText('Lucía Prado')).toBeInTheDocument())
+    expect(direccion().get('ver')).toBe(FLORENCIA.id)
+    expect(screen.getByLabelText('Ver como')).toHaveValue(FLORENCIA.id)
+    // Cambiar otro filtro no saca a la persona de la dirección.
+    await userEvent.click(screen.getByRole('button', { name: /^Cerrados/ }))
+    expect(direccion().get('ver')).toBe(FLORENCIA.id)
   })
 
   it('falla solo el último contacto: aviso, "No se pudo cargar" y sin "Sin primer contacto"', () => {

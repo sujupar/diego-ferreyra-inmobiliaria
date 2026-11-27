@@ -280,9 +280,11 @@ solicitudes anteriores al registro siguen "Sin fecha" (no se sabe si se las llam
 cargó si se hizo). La fila no puede decir "Nada agendado" (escondería trabajo atrasado): el
 próximo paso es "Cargar el resultado de la tasación", vencido desde el día de la tasación, a
 nombre del asesor del proceso (cuenta para su vista y para la del dueño; para la coordinación
-no es su tarea: en su vista la fila igual dice "Cargar el resultado de la tasación · {asesor}"
-con la fecha, sin contar en su grupo "Llamada o mensaje vencido", porque "Nada agendado" sería
-falso). Sin hora cargada (3 casos), la tasación es "todo el día": vence recién al día siguiente
+no es su tarea: si ella no tiene ninguna tarea en el proceso, su fila dice "Cargar el resultado
+de la tasación · {asesor}" con la fecha, sin contar en su grupo "Llamada o mensaje vencido",
+porque "Nada agendado" sería falso; si tiene alguna tarea, el próximo paso es la suya —ajuste
+de la auditoría del código, M1: compitiendo por fecha, la tasación vencida escondía una llamada
+vencida de ella—, `tasacionVencidaSoloSinTareas` en `proximoPaso`). Sin hora cargada (3 casos), la tasación es "todo el día": vence recién al día siguiente
 y en "Tasaciones de hoy" va después de las que tienen hora.
 
 **Fecha de inicio del registro** (`INICIO_REGISTRO_CONTACTOS`, una constante en
@@ -324,8 +326,11 @@ plataforma cuesta su piso (sesión + red), así que la pantalla pide lo menos po
      `created_at desc, id` (así, pasado el tope, lo que queda son los más recientes, como dice
      el aviso), tareas por `id` (la API corta en 1000 sin
      avisar), con un tope de 3000 filas por fuente (`TOPE_FILAS`): pasado el tope devuelve
-     `truncado: true` y la pantalla lo avisa (spec "Listas largas"); (d) también, con el mismo
-     tope y el mismo aviso. Para la RPC se usa
+     `truncado: true` y la pantalla lo avisa (spec "Listas largas") **solo para procesos y
+     perfiles** (en Contactos, además personas y tasaciones). Un corte de las tareas
+     pendientes, de (d) o de la RPC no es "hay más procesos": deja afuera filas al azar, así
+     que ese dato va como `'error'` y queda una línea `console.warn` en el log (`tareasOError`,
+     auditoría del código M2 y H5). (d) se lee solo en la vista del dueño (B1). Para la RPC se usa
      `rpcPaginado` (`lib/supabase/rpc-paginado.ts`) con orden `contacto_id`. Contactos también
      pagina (868 hoy, cerca de la página de 1000).
    - **Un solo plazo de 15 s para todo el servicio** (una `AbortSignal.timeout(15000)`
@@ -601,9 +606,10 @@ pueda ensanchar el alcance: el único es `ver_como`, validado.
   `.or('assigned_to.eq.<id>,user_id.eq.<id>')` y `.not('contact_id','is',null)`; nunca
   `select('*')`, CLAUDE.md "tumbó la base"); `contactoVisible` decide y **solo los visibles** se arman y se mandan, con las
   tareas del asesor.
-- Contactos (todas las vistas): `cargarContactos` hace la misma lectura (d) de D4, con el
-  mismo corte (copia pendiente de coordinación más vieja menos 60 segundos), el mismo tope y
-  el mismo `truncado`, en una segunda tanda después de las tareas pendientes. Sin eso, en
+- Contactos (alcance `todos`: coordinación, admin y dueño; el asesor ve solo sus tareas y no
+  la necesita, B1): `cargarContactos` hace la misma lectura (d) de D4, con el
+  mismo corte (copia pendiente de coordinación más vieja menos 60 segundos) y el mismo tope
+  (cortada = error de tareas, M2), en una segunda tanda después de las tareas pendientes. Sin eso, en
   Contactos del equipo una copia cuya hermana ya se completó aparecería como pendiente.
 
 **Páginas.** `app/(dashboard)/crm/page.tsx` y `app/(dashboard)/contacts/page.tsx` pasan a ser
@@ -839,6 +845,19 @@ decide. Se le nombran al dueño al abrir el PR (tarea 1.4).
     nombra al dueño como diferencia. **Resuelta en este change (tarea 1.2(c), 2026-11-26):**
     `armarFicha` (`lib/crm/ficha.ts`) dice "Sin contacto registrado", sin alerta, cuando no
     hay contacto anotado y el proceso activo es anterior al registro; ficha y lista coinciden.
+17. **En la vista de la coordinación, su tarea gana a la tasación vencida del asesor**
+    (auditoría del código, M1). La maqueta y la spec aprobada ponían la tasación vencida a
+    competir por fecha; así, una llamada vencida de ella quedaba escondida fuera de "Llamada o
+    mensaje vencido". Ahora, si ella tiene alguna tarea en el proceso, ve la suya; la tasación
+    vencida solo aparece cuando no tiene ninguna. Spec actualizada con su escenario.
+18. **Con un filtro de "Lo que está trabado", "Abiertos" y la barra cuentan lo filtrado**
+    (QA 9.6). La maqueta seguía mostrando el total (493); la spec "Totales con filtros" pide
+    contar lo filtrado, que es lo que hace el código.
+19. **La barra superior no tiene "COMERCIAL / CRM" ni la campanita, y en la ficha "Volver al
+    CRM" va dentro de la tarjeta** (QA 9.6). Es de la plataforma y del change anterior; la
+    campanita llega con `crm-tareas-y-campanita`.
+20. **La casilla de "Seleccionar" es redonda** (ocupa el lugar del avatar), no el cuadrado del
+    `<input type="checkbox">` de la pantalla vieja.
 
 ## Risks / Trade-offs
 
