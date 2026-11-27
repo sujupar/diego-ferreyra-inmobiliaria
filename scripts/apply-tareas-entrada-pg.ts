@@ -67,6 +67,11 @@ async function main(): Promise<void> {
       ok(ea.completed_by === autor.id && eb.completed_by === autor.id, 'con el autor del cambio de etapa')
       ok(ev.status === 'pending', 'la tarea vieja sin canal no se toca')
 
+      // 1b. "Deshacer perdido": vuelve a Solicitud y las copias vuelven a pendientes.
+      await c.query(`UPDATE deals SET stage='request' WHERE id=$1`, [d1])
+      ok((await estado(a)).status === 'pending' && (await estado(b)).status === 'pending', 'volver a Solicitud las reabre')
+      ok((await estado(a)).completed_by === null, 'sin quién la completó')
+
       // 2. scheduled sin día → con día (coordinar) también cierra.
       const d2 = await proceso('scheduled', null)
       const t2 = await tarea(d2, 'call', autor.id)

@@ -38,12 +38,15 @@ function Aviso({
   conAcciones,
   onCompletar,
   onPosponer,
+  onIr,
   hecho,
 }: {
   t: TareaDeAgenda
   conAcciones: boolean
   onCompletar?: () => void
   onPosponer?: () => void
+  /** Ir a la tarea o al contacto cierra el panel (en el celular tapa toda la pantalla). */
+  onIr: () => void
   hecho?: boolean
 }) {
   const Icono = ICONO_TIPO[t.tipo]
@@ -52,7 +55,7 @@ function Aviso({
       <div className="flex min-w-0 items-start gap-2.5">
         <Icono aria-hidden className="mt-0.5 size-4 shrink-0 text-texto-suave" />
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <Link href={t.enlace} className={cn('text-sm font-medium leading-snug [overflow-wrap:anywhere] hover:underline', hecho && 'line-through')}>
+          <Link href={t.enlace} onClick={onIr} className={cn('text-sm font-medium leading-snug [overflow-wrap:anywhere] hover:underline', hecho && 'line-through')}>
             {t.title}
           </Link>
           <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-texto-suave">
@@ -60,7 +63,7 @@ function Aviso({
             {t.contacto && (
               <>
                 <span aria-hidden>·</span>
-                <Link href={`/contacts/${t.contacto.id}`} className="underline decoration-dotted underline-offset-2">
+                <Link href={`/contacts/${t.contacto.id}`} onClick={onIr} className="underline decoration-dotted underline-offset-2">
                   {t.contacto.nombre}
                 </Link>
               </>
@@ -101,10 +104,15 @@ export function Campanita({ intervaloMs = INTERVALO_MS }: { intervaloMs?: number
   const [hechas, setHechas] = useState<Set<string>>(new Set())
   const refBoton = useRef<HTMLButtonElement>(null)
   const refPanel = useRef<HTMLDivElement>(null)
+  const refCerrar = useRef<HTMLButtonElement>(null)
+  // Una respuesta vieja (la del minuto, que llegó después de la de un cambio) no pisa a la nueva.
+  const version = useRef(0)
 
   const leer = useCallback(async () => {
+    const v = ++version.current
     try {
       const r = await leerJson<Avisos>(await fetch('/api/tasks/avisos', { cache: 'no-store' }))
+      if (v !== version.current) return
       if (r.ok) {
         setAvisos(r.data)
         setFallo(false)
@@ -112,9 +120,14 @@ export function Campanita({ intervaloMs = INTERVALO_MS }: { intervaloMs?: number
       } else setFallo(true)
     } catch (err) {
       console.error('[campanita] no se pudieron leer los avisos', err)
-      setFallo(true)
+      if (v === version.current) setFallo(true)
     }
   }, [])
+
+  // Al abrir, el foco va al panel (en el celular lo tapa todo).
+  useEffect(() => {
+    if (abierto) refCerrar.current?.focus()
+  }, [abierto])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- suscripción a la red: el estado cambia después del pedido
@@ -215,7 +228,7 @@ export function Campanita({ intervaloMs = INTERVALO_MS }: { intervaloMs?: number
         >
           <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border pl-4 pr-2">
             <h2 className="min-w-0 flex-1 text-base font-semibold">{total > 0 ? `Avisos · ${total}` : 'Avisos'}</h2>
-            <button type="button" aria-label="Cerrar los avisos" onClick={() => setAbierto(false)} className="inline-flex size-11 items-center justify-center rounded-md hover:bg-accent raton:size-9">
+            <button ref={refCerrar} type="button" aria-label="Cerrar los avisos" onClick={() => setAbierto(false)} className="inline-flex size-11 items-center justify-center rounded-md hover:bg-accent raton:size-9">
               <X aria-hidden className="size-5" />
             </button>
           </div>
@@ -234,14 +247,14 @@ export function Campanita({ intervaloMs = INTERVALO_MS }: { intervaloMs?: number
             {avisos && avisos.vencidas.length > 0 && (
               <Grupo titulo={`Vencidas · ${avisos.vencidas.length}`} Icono={TriangleAlert} tono="text-destructive-texto">
                 {avisos.vencidas.map((t) => (
-                  <Aviso key={t.id} t={t} conAcciones hecho={hechas.has(t.id)} onCompletar={() => void completar(t)} onPosponer={() => posponer(t)} />
+                  <Aviso key={t.id} t={t} conAcciones hecho={hechas.has(t.id)} onCompletar={() => void completar(t)} onPosponer={() => posponer(t)} onIr={() => setAbierto(false)} />
                 ))}
               </Grupo>
             )}
             {avisos && avisos.ahora.length > 0 && (
               <Grupo titulo={`Ahora · ${avisos.ahora.length}`} Icono={Bell} tono="text-brand">
                 {avisos.ahora.map((t) => (
-                  <Aviso key={t.id} t={t} conAcciones hecho={hechas.has(t.id)} onCompletar={() => void completar(t)} onPosponer={() => posponer(t)} />
+                  <Aviso key={t.id} t={t} conAcciones hecho={hechas.has(t.id)} onCompletar={() => void completar(t)} onPosponer={() => posponer(t)} onIr={() => setAbierto(false)} />
                 ))}
               </Grupo>
             )}
@@ -255,7 +268,7 @@ export function Campanita({ intervaloMs = INTERVALO_MS }: { intervaloMs?: number
             {avisos && avisos.loQueViene.length > 0 && (
               <Grupo titulo="Lo que viene · avisa a su hora" Icono={CalendarDays} tono="text-texto-suave">
                 {avisos.loQueViene.map((t) => (
-                  <Aviso key={t.id} t={t} conAcciones={false} />
+                  <Aviso key={t.id} t={t} conAcciones={false} onIr={() => setAbierto(false)} />
                 ))}
               </Grupo>
             )}

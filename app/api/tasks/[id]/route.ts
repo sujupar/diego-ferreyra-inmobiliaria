@@ -45,7 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
       const fecha = typeof cuerpo.due_date === 'string' ? cuerpo.due_date : null
       const hora = typeof cuerpo.due_time === 'string' ? cuerpo.due_time.slice(0, 5) : null
       const fechaOk = fecha !== null && /^\d{4}-\d{2}-\d{2}$/.test(fecha)
-      const horaOk = hora === null || /^\d{2}:\d{2}$/.test(hora)
+      const horaOk = hora === null || /^([01]\d|2[0-3]):[0-5]\d$/.test(hora)
       if (deshacer) {
         if ((fecha !== null && !fechaOk) || !horaOk || (fecha === null && hora !== null)) {
           return NextResponse.json({ error: 'Elegí un día y una hora válidos.' }, { status: 400 })
@@ -77,11 +77,12 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     if (action === 'complete') {
-      await completeTask(id, user.id)
-      // La copia de la otra coordinadora también: el lead ya se atendió. Si falla, la tarea
-      // pedida igual quedó completada; la copia se cierra a mano.
+      const cambio = await completeTask(id, user.id)
+      // La copia de la otra coordinadora también: el lead ya se atendió. Solo si esta se
+      // completó ahora (un doble clic no vuelve a cerrar una copia reabierta). Si falla, la
+      // tarea pedida igual quedó completada; la copia se cierra a mano.
       try {
-        await completarCopiasDeEntrada(id, user.id)
+        if (cambio) await completarCopiasDeEntrada(id, user.id)
       } catch (e) {
         console.error('PUT /api/tasks/[id]: no se pudieron completar las copias de la entrada', e)
       }
