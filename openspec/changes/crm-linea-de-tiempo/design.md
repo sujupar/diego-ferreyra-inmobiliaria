@@ -48,6 +48,12 @@ Inventario verificado contra la base de producción (solo lectura, 2026-11-27) y
   qué página es cada clave (`pagina`).
 - **Notas y llamadas reales:** `contact_activities` tiene 0 filas hoy. La línea de tiempo
   va a mostrar sobre todo eventos del sistema.
+- **Lo que encontró la auditoría de estos artefactos** (`auditoria.md`, 18 hallazgos) y que
+  cambió el diseño: coordinar una solicitud que ya estaba en `scheduled` sin día no
+  escribía historial; 654 aperturas se escribieron al cargar datos viejos; las fechas
+  tienen microsegundos; 79 plantillas automáticas llevan `ai_generated`; el número que
+  recibe la copia de las consultas no está en `profiles`; 17 tareas tienen proceso sin
+  contacto; y la spec vigente de la ficha no deja que un asesor vea lo del proceso de otro.
 
 ## Goals / Non-Goals
 
@@ -70,18 +76,26 @@ Inventario verificado contra la base de producción (solo lectura, 2026-11-27) y
 
 ### D1. Base: `deals.stage_changed_by` y `tasks.completed_by`
 
-Migración `supabase/migrations/20261127000002_crm_linea_de_tiempo.sql` (verificar que el
-prefijo esté libre):
+Migración `supabase/migrations/20261127000002_crm_linea_de_tiempo.sql` (aplicada y
+verificada con `scripts/apply-crm-linea-de-tiempo-pg.ts`):
 
 - `deals.stage_changed_by uuid REFERENCES profiles(id) ON DELETE SET NULL`.
 - `fn_deals_write_stage_history` se redefine (`CREATE OR REPLACE`, misma firma) para
-  insertar `changed_by`: `COALESCE(auth.uid(), (SELECT p.id FROM profiles p WHERE p.id =
-  NEW.stage_changed_by))`. El `SELECT` contra `profiles` evita la violación de FK si el
-  perfil se está borrando (patrón de `property_visits_log_event`).
-- `tasks.completed_by uuid REFERENCES profiles(id) ON DELETE SET NULL`.
-- Índices de lectura: `deal_stage_history(deal_id, changed_at)` si no existe,
-  `funnel_lead_submissions(contact_id) WHERE status='complete'`,
-  `video_view_state(contact_id) WHERE playback_started`, `tasks(contact_id)` si no existe. Todos `IF NOT EXISTS`.
+  insertar `changed_by`: el perfil de `COALESCE(auth.uid(), NEW.stage_changed_by)`, leído
+  de `profiles` para no violar la FK si se está borrando (patrón de
+  `property_visits_log_event`), y `metadata = {scheduled_date, scheduled_date_antes}`.
+- **Coordinar una solicitud en `scheduled` sin día** (auditoría, hallazgo 1): el trigger
+  pasa a `AFTER INSERT OR UPDATE OF stage, scheduled_date` y también escribe una fila
+  `scheduled → scheduled` cuando el día pasa de vacío a cargado. Reprogramar (un día por
+  otro) no escribe nada. Las métricas que leen el historial toman la PRIMERA llegada a
+  cada etapa (`get_funnel_statement`, `lib/metrics/panel/personas.ts:185`,
+  `lib/metrics/tablero/comercial.ts:100`) y `ultimoCambioDeEtapa` solo mira procesos en
+  `lost`: una fila a `scheduled` más tardía no les cambia nada.
+- `tasks.completed_by uuid REFERENCES profiles(id) ON DELETE SET NULL`, con el trigger
+  `trg_tasks_completed_by_de_la_sesion`: con sesión propia el autor es siempre
+  `auth.uid()` (hallazgo 10).
+- Índices de lectura: `funnel_lead_submissions(contact_id) WHERE status='complete'` y
+  `tasks(contact_id)`. Ya existían `idx_deal_stage_history_deal` e `idx_vvs_contact`.
 - Script `scripts/apply-crm-linea-de-tiempo-pg.ts`: aplica, verifica columnas, índices y
   la función, y prueba dentro de una transacción con `ROLLBACK` que un UPDATE de etapa con
   `stage_changed_by` deja `changed_by` en el historial y uno sin él lo deja NULL.
@@ -93,8 +107,11 @@ el cambio a la persona anterior. Por eso **las seis funciones que escriben `stag
 `stage_changed_by: autorId` en el mismo UPDATE/INSERT: TypeScript obliga a cada llamador a
 decidir. El sistema pasa `null`. Un test (`lib/supabase/deals.autor.test.ts`) recorre esas
 funciones con una base simulada y exige `stage_changed_by` en cada escritura que lleva
-`stage`. Los escritores fuera de la app (GHL en cuarentena, scripts viejos) quedan como
-riesgo aceptado en "Risks".
+`stage`. Los escritores fuera de las seis funciones (`lib/ghl` en cuarentena, scripts viejos)
+quedan como riesgo aceptado en "Risks". **Excepción a los Non-Goals** (hallazgo 9): el
+webhook GHL en cuarentena y `scripts/reparar-procesos-manuales.ts` llaman a `createDeal` y
+`linkPropertyToDeal`, así que reciben un `null` de una línea; si no, el chequeo de tipos de
+`next build` falla y Netlify no despliega.
 
 ### D2. Autor en las escrituras de tareas
 
@@ -129,39 +146,62 @@ Funciones (cada una con su test, primero en rojo):
 
 - `eventosDeRegistro(filas, procesos)`: solo `status='complete'`; título por `funnel`;
   detalle "Anuncio de Meta · {meta_ad_name}" si el proceso lo tiene.
-- `eventosDeEtapa(historial, procesosConRegistro, nombres)`: `from_stage` null se omite
-  si el proceso tiene un registro; si no, "Se abrió un proceso en {etapa}". Nombre de
-  etapa con `nombreEtapaHistorial(stage)`, que usa `NOMBRE_ETAPA` (`lib/crm/etapas.ts`);
-  `scheduled` en el historial se lee "Coordinada" (el día no se conoce por evento). Una
-  etapa desconocida se muestra cruda antes que esconder el evento.
-- `eventosDeTareas(tareas, nombres)`: creación salvo `source_activity_id`; completada
-  solo con `status='completed'`. Copias de coordinación: mismo título, distinto
-  `assigned_to`, `created_at` a ≤60 s de la primera → una sola creación "Para la
-  coordinación" (misma ventana que `colapsarCopiasDeCoordinacion`).
+- `eventosDeEtapa(historial, procesosConRegistro, procesos, nombres)`: `from_stage` null
+  se omite si el proceso tiene un registro; si no, "Se abrió un proceso en {etapa}" en
+  `deals.created_at`, o "Se abrió un proceso" sin etapa ni autor si el historial lo
+  escribió más de un día después (datos cargados, hallazgo 8). Nombre de etapa con
+  `nombreEtapaHistorial(stage, conDia)`: `scheduled` es Coordinada con día y Solicitud sin
+  él, según `metadata`; las filas viejas sin `metadata` usan el día actual del proceso. Un
+  cambio cuyos dos nombres coinciden (request → scheduled sin día) no se muestra.
+- `eventosDeTareas(tareas, nombres, coordinacion)`: creación salvo `source_activity_id`;
+  completada solo con `status='completed'`. Copias de coordinación: asignadas a distintos
+  coordinadores, mismo tipo, título y proceso, a ≤60 s de la primera → una sola creación
+  "Para la coordinación" (la regla de `colapsarCopiasDeCoordinacion`, hallazgo 7).
 - `telefonoUtilizable(contacto, telefonosEquipo, compartidos)`: null si no hay 10 dígitos,
   si es del equipo o si lo comparte otro contacto.
 - `eventosDeWhatsapp(mensajes, nombres)`: descarta `status` que empieza con `agent_` y
-  plantillas con prefijo `consulta_portal`, `consulta_sin_enlace`, `consulta_plano`.
-  Entrante → "Escribió por WhatsApp"; saliente con `sent_by` → "Se le envió un WhatsApp" +
-  autor; `ai_generated` → "Le respondió el asistente por WhatsApp"; el resto → "Se le
-  envió un WhatsApp automático". Detalle: `body_preview` recortado a 140 caracteres por
+  las plantillas `consulta_portal*` (avisos al equipo). Las respuestas a una consulta
+  (`consulta_sin_enlace`, `consulta_plano`, `consulta_v2`…) van al interesado y se
+  muestran (hallazgo 14). Entrante → "Escribió por WhatsApp"; saliente con `sent_by` →
+  "Se le envió un WhatsApp" + autor; con plantilla → "Se le envió un WhatsApp automático"
+  aunque lleve `ai_generated` (hallazgo 4); texto con `ai_generated` → "Le respondió el
+  asistente por WhatsApp". Detalle: `body_preview` recortado a 140 caracteres por
   palabra, con "…". `failed` → sufijo "· no se pudo enviar".
 - `eventosDeVideo(filas)`: solo `playback_started`; "Vio el video de la landing de
-  tasación" (`pagina` tasacion o tasacion-neta), "… de la clase" (`clase`), "Vio la clase
-  completa" (`clase-completa`), "Vio un video de la landing" (clave desconocida); "· {max}
-  %"; fecha `first_at`.
-- `unirYCortar(listas, cursor, limite)`: ordena por `(fecha desc, id desc)`, descarta lo
-  que no sea estrictamente anterior al cursor, devuelve `limite` y `hayMas`. El cursor es
-  `{ fecha, id }` del último ítem mostrado.
+  tasación" (`pagina` tasacion o tasacion-neta), "… de la clase" (`clase`), "Vio el video
+  de la clase completa" (`clase-completa`), "Vio un video de la landing" (clave desconocida); "· {max}
+  %"; fecha `first_at`, que es cuándo abrió la página del video (no cuándo le dio play).
+- `unirYCortar(listas, cursor, limite)`: ordena por `(milisegundo desc, clave desc)`,
+  descarta lo que no sea estrictamente posterior al cursor en ese orden, devuelve `limite`
+  y `hayMas`. El cursor es `{ fecha, id }` del último ítem mostrado.
+- `aplicarAActividades(items, cambio)`: los cambios locales de la pantalla (nota editada,
+  registro anulado, registro nuevo arriba) tocan solo las actividades.
 
 ### D4. Lecturas `lib/supabase/linea-de-tiempo.ts` y la ruta
 
-Una función por fuente, service role, cada una con `fecha <= cursor.fecha` y `limit(51)`:
-registros, historial de los procesos del contacto, tareas, WhatsApp (con el teléfono que
-deja pasar `telefonoUtilizable`, por `phone_e164 like '%{10 dígitos}'`: la tabla tiene
-~1.700 filas, el comodín inicial no pesa), video,
-más los teléfonos del equipo (`profiles.phone`) y si el `phone_norm` del contacto lo tiene
-otro. Volumen medido: mediana 1 evento, máximo 38 por contacto.
+`leerEventosDelSistema(contacto, cursor, limite, { usuarioId, soloPropios })`, service
+role, una consulta por fuente:
+
+- **Corte:** con cursor, `< milisegundo siguiente` (las fechas tienen microsegundos;
+  `<=` al milisegundo perdía empates, hallazgo 2) y `limit(limite + 1 + 20)`: el margen
+  cubre lo ya mostrado con esa misma fecha, que vuelve y se descarta (hallazgo 12).
+  `contact_activities` hace lo mismo.
+- **Registros:** todos los del contacto (máximo 8).
+- **Historial:** de los procesos visibles para quien mira.
+- **Tareas:** `contact_id = X OR deal_id IN (procesos)` (hallazgo 6), hasta 500 sin corte
+  (cada una tiene dos fechas), filtradas con `tareasVisiblesEnFicha`.
+- **Video:** `playback_started`.
+- **WhatsApp:** `phone_e164 like '%{10 dígitos}'` solo si `telefonoUtilizable` lo deja:
+  no es del equipo (`profiles.phone`, `WHATSAPP_CC_PHONES`, `WHATSAPP_FALLBACK_PHONE`, o
+  un número que recibió alguna plantilla `consulta_portal*`, hallazgo 5), no lo comparte
+  otro contacto, y todos sus mensajes son de UN solo número completo (hallazgo 15). Si
+  algo de eso no se puede leer, falla cerrada: sin WhatsApp y con aviso.
+- **Nombres y roles** de autores y asignados en una lectura; si falla, fallan todas.
+- **Alcance del asesor** (`soloPropios`, hallazgo 3): historial, registro y tareas de un
+  proceso que no está a su nombre ni se consultan ni viajan, igual que en los bloques
+  "Procesos" y "Tareas" (spec vigente de la ficha). WhatsApp y video son de la persona.
+
+Volumen medido: mediana 1 evento, máximo 38 por contacto.
 
 `GET /api/contacts/[id]/activities` mantiene permisos, 404 y filtros. Cambia:
 
@@ -179,6 +219,8 @@ otro. Volumen medido: mediana 1 evento, máximo 38 por contacto.
 - `use-ficha.ts`: `items: ItemLinea[]`, cursor `{fecha, id}` del último, dedup por id con
   prefijo de tipo, `fuentesConError`. Las altas, ediciones y anulaciones de actividades
   siguen tocando solo los ítems `tipo:'actividad'`.
+- `FichaContacto.tsx` vuelve a pedir la línea después de marcar perdido, deshacerlo, y
+  crear o completar una tarea (hallazgo 11).
 - `Actividad.tsx`: aviso "Parte de la historia no se pudo cargar" con "Reintentar" arriba
   de la lista cuando `fuentesConError` no está vacío; vacíos como hoy.
 - `ItemEvento.tsx` (nuevo): misma anatomía que `ItemActividad` (ícono por clase con los de
@@ -206,17 +248,21 @@ suman al `vitest.crm.config.ts` y `tsconfig.crm.json`.
 5. "Tasación agendada" de la maqueta se lee "Coordinada", el nombre de la etapa en la
    plataforma (cartera, D5).
 6. Eventos que la maqueta no dibujaba: tareas, WhatsApp y "Se abrió un proceso en …".
-7. El aviso "Parte de la historia no se pudo cargar" no está en la maqueta: sigue el
+7. "Vio el video de la landing de tasación · 62 %" en lugar de "… de la landing · 62 %":
+   hay dos landings con video y la de la clase completa.
+8. El aviso "Parte de la historia no se pudo cargar" no está en la maqueta: sigue el
    patrón de error por bloque de `crm-sistema-diseno`.
 
 ## Risks / Trade-offs
 
-- **Autor pegado** (D1): mitigado con el parámetro obligatorio y su test. Riesgo
+- **Autor pegado** (D1): mitigado con el parámetro obligatorio y su test.
+- **WhatsApp que no se ve:** 6 contactos tienen el teléfono cargado con el "15" del
+  celular y no coinciden con ningún mensaje. Se arregla corrigiendo el dato, no acá. Riesgo
   residual: un escritor fuera de esas seis funciones (GHL en cuarentena, un script) que
   cambie la etapa hereda el último autor. Se documenta en `CLAUDE.md`.
 - **El asesor ve WhatsApp que en la bandeja no ve.** La bandeja es solo de operaciones; la
-  ficha de un contacto suyo le muestra sus mensajes. Es la historia de su cliente y la
-  spec lo pide; se le nombra al dueño al abrir el PR.
+  ficha de un contacto suyo le muestra sus mensajes. Es la historia de su cliente, como
+  las notas y llamadas; se le nombra al dueño al abrir el PR.
 - **Teléfono mal cargado.** Si dos personas distintas comparten número, no se muestra
   WhatsApp en ninguna (decisión 5): se pierde información antes que mezclarla.
 - **Rendimiento:** seis lecturas en paralelo con índice; se mide en el QA (objetivo: el
