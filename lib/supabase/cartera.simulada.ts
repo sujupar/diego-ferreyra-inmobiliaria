@@ -3,7 +3,7 @@
 // en lugar de `createClient` de supabase-js.
 //
 // Imita lo que importa para la seguridad y la paginación: aplica DE VERDAD los filtros que
-// pide la consulta (eq, in, is, not, or, gte), devuelve solo las columnas pedidas, ordena y
+// pide la consulta (eq, neq, in, is, not, or, gte, lte, like, limit), devuelve solo las columnas pedidas, ordena y
 // corta en 1000 filas por respuesta como la API real. Así una prueba que busca en la
 // respuesta datos de otro asesor se pone en rojo si el servicio deja de filtrar en la base
 // Y en el armado; una base falsa que devolviera todo escondería un filtro olvidado.
@@ -148,6 +148,31 @@ export function baseSimulada(tablas: Record<string, Fila[]>, opciones: OpcionesB
       or(expr: string) {
         registro.filtros.push(`or:${expr}`)
         filtros.push(filtroOr(expr))
+        return q
+      },
+      lte(col: string, v: string) {
+        registro.filtros.push(`lte:${col}=${v}`)
+        filtros.push((f) => Date.parse(String(valor(f, col))) <= Date.parse(v))
+        return q
+      },
+      neq(col: string, v: unknown) {
+        registro.filtros.push(`neq:${col}=${String(v)}`)
+        filtros.push((f) => valor(f, col) !== v)
+        return q
+      },
+      /** Solo `%texto` y `texto%` (lo que usa el servicio). */
+      like(col: string, patron: string) {
+        registro.filtros.push(`like:${col}=${patron}`)
+        const cuerpo = patron.replace(/^%|%$/g, '')
+        if (cuerpo.includes('%') || cuerpo.includes('_')) throw new Error(`base simulada: like "${patron}" no implementado`)
+        filtros.push((f) => {
+          const x = String(valor(f, col) ?? '')
+          return patron.startsWith('%') && patron.endsWith('%') ? x.includes(cuerpo) : patron.startsWith('%') ? x.endsWith(cuerpo) : x.startsWith(cuerpo)
+        })
+        return q
+      },
+      limit(n: number) {
+        rango = [0, n - 1]
         return q
       },
       gte(col: string, v: string) {

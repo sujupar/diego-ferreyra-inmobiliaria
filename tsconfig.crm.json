@@ -27,6 +27,7 @@
     "lib/supabase/tasks.ts",
     "lib/supabase/cadencia.ts",
     "lib/supabase/actividades.ts",
+    "lib/supabase/linea-de-tiempo*.ts",
     "app/api/contacts/**/*.ts",
     "app/api/appraisals/[id]/contact/route.ts",
     "app/api/tasks/**/*.ts",
