@@ -137,3 +137,15 @@ Sin migración.
 ## Open Questions
 
 Las cuatro recomendaciones de `proposal.md` se aplican mientras el dueño responde.
+
+## Cambios por la auditoría de artefactos
+
+Detalle en `auditoria.md`. Lo que cambia del diseño:
+
+- **D1.** `colaParaLlamar(filas, tareasDeLaCoordinacion, llamadasPorProceso, ahora)`: cola única.
+  `sinRespuesta` devuelve `{ conWhatsapp, sinProximo }`. `tareasSinLasDeLaCola(tareas, cola)`
+  cruza por proceso.
+- **D2.** La coordinación y el dueño leen la cartera completa (vista del dueño) en el servidor;
+  cada bloque devuelve solo lo suyo. Una fuente que falla vuelve el bloque `ok:false`. Plazo de
+  15 s por bloque.
+- **D5.** Dos columnas reales, sin `order` de CSS: el orden de lectura es el del DOM.
