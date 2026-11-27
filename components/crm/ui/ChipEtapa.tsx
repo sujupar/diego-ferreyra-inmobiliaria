@@ -10,17 +10,31 @@ const ESTILO: Record<string, string> = {
   descartado: 'bg-transparent border-border text-texto-suave',
 }
 
-export function ChipEtapa({ clave, etiqueta, className }: { clave: string; etiqueta: string; className?: string }) {
+// `neutro`: en una LISTA la etapa es un dato más (punto gris y texto, sin fondo): el color de
+// la fila queda para lo vencido y lo de hoy (spec crm-sistema-diseno, "Identidad visual
+// existente", modificada por crm-cartera-por-rol). La ficha sigue usando los colores.
+export function ChipEtapa({
+  clave,
+  etiqueta,
+  neutro = false,
+  className,
+}: {
+  clave: string
+  etiqueta: string
+  neutro?: boolean
+  className?: string
+}) {
   return (
     <span
       data-etapa={clave}
+      data-neutro={neutro ? '' : undefined}
       className={cn(
         'inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-transparent px-2 text-xs font-medium leading-none',
-        ESTILO[clave] ?? 'bg-secondary text-foreground',
+        neutro ? 'border-border bg-transparent text-foreground' : (ESTILO[clave] ?? 'bg-secondary text-foreground'),
         className,
       )}
     >
-      <span aria-hidden className="size-[0.4375rem] rounded-full bg-current opacity-90" />
+      <span aria-hidden className={cn('size-[0.4375rem] rounded-full', neutro ? 'bg-muted-foreground' : 'bg-current opacity-90')} />
       {etiqueta}
     </span>
   )

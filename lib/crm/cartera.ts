@@ -116,6 +116,13 @@ export interface FilaCartera {
   tasacion: TasacionDeFila | null
 }
 
+/**
+ * Lo que tienen en común la fila del CRM y la de Contactos (una persona sin ningún proceso
+ * no tiene etapa). Filtros, orden y las reglas de "trabado" trabajan sobre esto: así las
+ * dos listas usan las mismas funciones (design.md D5, "las funciones son genéricas").
+ */
+export type FilaComun = Omit<FilaCartera, 'etapa'> & { etapa: EtapaCRM | null }
+
 export interface TareaConQuien extends TareaLeida {
   quien: { id: string; nombre: string } | null
 }
@@ -460,13 +467,13 @@ export function armarFilasCartera(e: {
 // ── Trabado (la misma regla en filas, grupos y "Lo que está trabado") ────────────────────
 
 /** Solicitud abierta, desde el registro, sin ningún contacto. Con el dato en error: no. */
-export function sinPrimerContacto(f: FilaCartera): boolean {
+export function sinPrimerContacto(f: Pick<FilaComun, 'abierto' | 'etapa' | 'ultimoContacto' | 'anteriorAlRegistro'>): boolean {
   return f.abierto && f.etapa === 'solicitud' && f.ultimoContacto === null && !f.anteriorAlRegistro
 }
 
 /** Pasó la solicitud y nadie la tiene (o la tiene alguien dado de baja). */
-export function sinAsesor(f: FilaCartera): boolean {
-  return f.abierto && ETAPAS_CON_ASESOR.includes(f.etapa) && (!f.asesor || !f.asesor.activo)
+export function sinAsesor(f: Pick<FilaComun, 'abierto' | 'etapa' | 'asesor'>): boolean {
+  return f.abierto && f.etapa !== null && ETAPAS_CON_ASESOR.includes(f.etapa) && (!f.asesor || !f.asesor.activo)
 }
 
 /**
@@ -474,7 +481,7 @@ export function sinAsesor(f: FilaCartera): boolean {
  * último contacto o desde el inicio del registro, lo que sea más reciente: antes del
  * registro no se anotaba nada y no se puede afirmar que nadie llamó.
  */
-export function sinMovimiento(f: FilaCartera, ahora: Date): boolean {
+export function sinMovimiento(f: Pick<FilaComun, 'abierto' | 'etapa' | 'ultimoContacto'>, ahora: Date): boolean {
   if (!f.abierto || f.etapa !== 'seguimiento') return false
   const dias = diasSinMovimiento(f, ahora)
   return dias !== null && dias >= SIN_MOVIMIENTO_DIAS
@@ -485,7 +492,7 @@ export function sinMovimiento(f: FilaCartera, ahora: Date): boolean {
  * contacto o desde el inicio del registro, lo que sea más reciente. `null` si el dato
  * falló. Es el "22 días · " de "Lo que está trabado": una sola cuenta para la regla y el texto.
  */
-export function diasSinMovimiento(f: FilaCartera, ahora: Date): number | null {
+export function diasSinMovimiento(f: Pick<FilaComun, 'ultimoContacto'>, ahora: Date): number | null {
   if (f.ultimoContacto === 'error') return null
   const inicio = instanteDesdeAR(INICIO_REGISTRO_CONTACTOS, '00:00')
   const ultimo = f.ultimoContacto ? new Date(f.ultimoContacto.at) : null
@@ -524,12 +531,12 @@ export function textoBusqueda(s: string): string {
   return sinMarcas(s).replace(/\s+/g, ' ').trim()
 }
 
-function textoDeLaFila(f: FilaCartera): string {
+function textoDeLaFila(f: FilaComun): string {
   const digitos = (f.telefono ?? '').replace(/\D/g, '')
   return textoBusqueda([f.nombre, f.telefono, digitos, f.email, f.direccion, f.propiedad].filter(Boolean).join(' '))
 }
 
-function entroEnElRango(f: FilaCartera, filtros: FiltrosCartera, ahora: Date): boolean {
+function entroEnElRango(f: FilaComun, filtros: FiltrosCartera, ahora: Date): boolean {
   if (!filtros.entro) return true
   const creado = new Date(f.creadoEn)
   if (Number.isNaN(creado.getTime())) return false
@@ -545,7 +552,7 @@ function entroEnElRango(f: FilaCartera, filtros: FiltrosCartera, ahora: Date): b
 }
 
 /** Todos los filtros menos etapa y segmento (los usa `contarPorEtapa` tal cual). */
-function pasaFiltrosComunes(f: FilaCartera, filtros: FiltrosCartera, ahora: Date): boolean {
+function pasaFiltrosComunes(f: FilaComun, filtros: FiltrosCartera, ahora: Date): boolean {
   if (f.colega && filtros.colegas !== '1') return false
   if (filtros.origen) {
     // "Embudo" incluye a los que vienen de la clase gratuita (spec "Embudo incluye la clase").
@@ -567,7 +574,7 @@ function pasaFiltrosComunes(f: FilaCartera, filtros: FiltrosCartera, ahora: Date
   return true
 }
 
-export function filtrarFilas(f: FilaCartera[], filtros: FiltrosCartera, ahora: Date): FilaCartera[] {
+export function filtrarFilas<T extends FilaComun>(f: T[], filtros: FiltrosCartera, ahora: Date): T[] {
   return f.filter(
     (x) =>
       (filtros.seg === 'cerrados' ? !x.abierto : x.abierto) &&
@@ -596,7 +603,7 @@ const ms = (s: string | null | undefined): number => {
 }
 
 /** Instante del último contacto para ordenar: sin contacto = el más viejo posible; error = al final. */
-function ultimoParaOrdenar(f: FilaCartera): number {
+function ultimoParaOrdenar(f: FilaComun): number {
   if (f.ultimoContacto === 'error') return Number.POSITIVE_INFINITY
   if (!f.ultimoContacto) return Number.NEGATIVE_INFINITY
   const v = ms(f.ultimoContacto.at)
@@ -604,13 +611,13 @@ function ultimoParaOrdenar(f: FilaCartera): number {
 }
 
 /** Rango del próximo paso: 0 con fecha (por instante), 1 sin fecha, 2 sin nada, 3 sin dato. */
-function rangoProximo(f: FilaCartera): number {
+function rangoProximo(f: FilaComun): number {
   if (f.proximo === 'error') return 3
   if (!f.proximo) return 2
   return f.proximo.instante ? 0 : 1
 }
 
-function compararProximo(a: FilaCartera, b: FilaCartera): number {
+function compararProximo(a: FilaComun, b: FilaComun): number {
   const ra = rangoProximo(a)
   const rb = rangoProximo(b)
   if (ra !== rb) return ra - rb
@@ -625,7 +632,7 @@ function compararProximo(a: FilaCartera, b: FilaCartera): number {
   return ms(a.creadoEn) - ms(b.creadoEn) || a.id.localeCompare(b.id)
 }
 
-const COMPARAR: Record<FiltrosCartera['orden'], (a: FilaCartera, b: FilaCartera) => number> = {
+const COMPARAR: Record<FiltrosCartera['orden'], (a: FilaComun, b: FilaComun) => number> = {
   proximo: compararProximo,
   ultimo: (a, b) => ultimoParaOrdenar(a) - ultimoParaOrdenar(b) || ms(a.creadoEn) - ms(b.creadoEn) || a.id.localeCompare(b.id),
   nuevos: (a, b) => ms(b.creadoEn) - ms(a.creadoEn) || a.id.localeCompare(b.id),
@@ -633,7 +640,7 @@ const COMPARAR: Record<FiltrosCartera['orden'], (a: FilaCartera, b: FilaCartera)
 }
 
 /** Devuelve una lista nueva: no toca la que recibe. */
-export function ordenarFilas(f: FilaCartera[], orden: FiltrosCartera['orden']): FilaCartera[] {
+export function ordenarFilas<T extends FilaComun>(f: T[], orden: FiltrosCartera['orden']): T[] {
   return [...f].sort(COMPARAR[orden] ?? compararProximo)
 }
 

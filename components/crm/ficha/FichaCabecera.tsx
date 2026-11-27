@@ -5,6 +5,7 @@ import type { FichaContacto } from '@/lib/crm/ficha'
 import { enlaceTel, telefonoParaMostrar } from '@/lib/crm/telefono-ficha'
 import { cn } from '@/lib/utils'
 import { ChipEtapa } from '../ui/ChipEtapa'
+import { iniciales } from '../ui/iniciales'
 import { EstadoCarga, EstadoError } from '../ui/EstadoBloque'
 import { ALTO_CONTROL } from '../ui/medidas'
 
@@ -12,12 +13,6 @@ import { ALTO_CONTROL } from '../ui/medidas'
 // tarjeta de la persona con dos o tres columnas. Las pestañas van adentro (solo en la
 // vista de una columna) y las pasa FichaContacto como `pestanas`.
 
-function iniciales(nombre: string): string {
-  const p = nombre.trim().split(/\s+/)
-  const a = p[0]?.charAt(0) ?? ''
-  const b = p.length > 1 ? (p[p.length - 1]?.charAt(0) ?? '') : (p[0]?.charAt(1) ?? '')
-  return (a + b).toUpperCase()
-}
 
 export function EstadoUltimoContacto({ ultimo }: { ultimo: FichaContacto['ultimoContacto'] }) {
   const Icono = ultimo.alerta ? TriangleAlert : ultimo.dias === 0 ? CircleCheck : Clock
