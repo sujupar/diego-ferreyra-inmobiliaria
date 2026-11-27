@@ -301,7 +301,7 @@ export function FiltrosLista({ config, filtros, aplicar }: { config: ConfigFiltr
           type="button"
           onClick={() => setHojaFiltros(true)}
           className={cn('inline-flex items-center gap-2 rounded-md border border-border bg-card px-3.5 text-sm font-medium shadow-xs hover:bg-accent md:hidden', ALTO_CONTROL_LISTA)}
-          aria-label={n > 0 ? `Filtros (${n} puestos)` : 'Filtros'}
+          aria-label={n === 0 ? 'Filtros' : `Filtros (${n} ${n === 1 ? 'puesto' : 'puestos'})`}
         >
           <SlidersHorizontal aria-hidden className="size-4" />
           Filtros
