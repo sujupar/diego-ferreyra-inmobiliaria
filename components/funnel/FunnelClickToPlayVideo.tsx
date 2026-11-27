@@ -6,6 +6,7 @@ import { VideoProgressTracker } from '@/lib/funnel/video-progress'
 import { getOrCreateAnonId } from '@/lib/funnel/anon-id'
 import { isHeatmapPreview } from '@/lib/funnel/heatmap-preview'
 import { vslBarFraction } from '@/lib/funnel/vsl-bar'
+import { segundosDelAvance } from '@/lib/video-bienvenida/mostrar-bloque'
 import { almacenDelNavegador, guardarPendiente, tomarPendiente } from '@/lib/funnel/video-pendiente'
 
 /**
@@ -67,6 +68,14 @@ interface FunnelClickToPlayVideoProps {
    * transcurrido y sin poder adelantar. Opt-in, para las VSL largas.
    */
   vslBar?: boolean
+  /**
+   * Identidad fija para la medición, en vez de la cookie `df_anon` del navegador. La usa la
+   * página del video de bienvenida (`bv:<código>`): así lo que mira la persona queda en SU
+   * contacto en cualquier dispositivo, aunque ese navegador ya estuviera unido a otro.
+   */
+  anonId?: string
+  /** Avisa los segundos de reproducción REAL acumulados en esta visita (adelantar no suma). */
+  onSegundosReproducidos?: (segundos: number) => void
 }
 
 /**
@@ -94,6 +103,8 @@ export function FunnelClickToPlayVideo({
   context,
   warmup = false,
   vslBar = false,
+  anonId,
+  onSegundosReproducidos,
 }: FunnelClickToPlayVideoProps) {
   const [playing, setPlaying] = useState(false)
   const [paused, setPaused] = useState(false)
@@ -112,6 +123,9 @@ export function FunnelClickToPlayVideo({
   // Métricas de reproducción: intentos (clicks en play) y si el playback arrancó.
   const playIntentsRef = useRef<number>(0)
   const startedRef = useRef<boolean>(false)
+  // Segundos reproducidos de verdad (para `onSegundosReproducidos`).
+  const ultimaPosicionRef = useRef<number | null>(null)
+  const segundosRef = useRef<number>(0)
 
   const flush = useCallback(
     (useBeacon: boolean) => {
@@ -129,7 +143,7 @@ export function FunnelClickToPlayVideo({
       // Mandamos también cuando solo hubo INTENTO (sin reproducción): así el panel
       // puede mostrar la tasa real de play y detectar bloqueos del navegador.
       if (!tr && playIntentsRef.current <= 0) return
-      if (!anonIdRef.current) anonIdRef.current = getOrCreateAnonId()
+      if (!anonIdRef.current) anonIdRef.current = anonId ?? getOrCreateAnonId()
       const snap = tr?.snapshot()
       const payload = {
         anonId: anonIdRef.current,
@@ -150,7 +164,7 @@ export function FunnelClickToPlayVideo({
       guardarPendiente(almacenDelNavegador(), trackKey, payload, Date.now())
       enviar(payload, useBeacon)
     },
-    [trackKey, funnel, context],
+    [trackKey, funnel, context, anonId],
   )
 
   function pararLatido() {
@@ -333,6 +347,17 @@ export function FunnelClickToPlayVideo({
     // Solo la barra visual. Lo visto se mide con `video.played` en cada envío.
     const v = e.currentTarget
     if (vslBar && v.duration > 0) setFraction(vslBarFraction(v.currentTime / v.duration))
+    if (onSegundosReproducidos) {
+      const antes = ultimaPosicionRef.current
+      ultimaPosicionRef.current = v.currentTime
+      if (antes !== null && !v.paused) {
+        const suma = segundosDelAvance(antes, v.currentTime)
+        if (suma > 0) {
+          segundosRef.current += suma
+          onSegundosReproducidos(segundosRef.current)
+        }
+      }
+    }
   }
   function handlePause() {
     setPaused(true)
@@ -371,7 +396,7 @@ export function FunnelClickToPlayVideo({
         disablePictureInPicture
         onLoadedMetadata={tracked ? handleLoadedMetadata : undefined}
         onPlaying={tracked || vslBar ? handlePlaying : undefined}
-        onTimeUpdate={tracked || vslBar ? handleTimeUpdate : undefined}
+        onTimeUpdate={tracked || vslBar || onSegundosReproducidos ? handleTimeUpdate : undefined}
         onPause={tracked || vslBar ? handlePause : undefined}
         onEnded={tracked || vslBar ? handleEnded : undefined}
         className="absolute inset-0 h-full w-full object-contain"

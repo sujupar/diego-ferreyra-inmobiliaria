@@ -47,8 +47,8 @@
 
 ## 4. Página y medición
 
-- [ ] 4.1 `FunnelClickToPlayVideo` acepta `anonId` y `onSegundosReproducidos` (sin contar saltos); sin las props, igual que hoy (test)
-- [ ] 4.2 `VIDEO_KEYS` con `bienvenida-tasacion-v1` y `nombreEnLinea`; `video-keys.test.ts` en verde
+- [x] 4.1 `FunnelClickToPlayVideo` acepta `anonId` y `onSegundosReproducidos` (sin contar saltos); sin las props, igual que hoy (test)
+- [x] 4.2 `VIDEO_KEYS` con `bienvenida-tasacion-v1` y `nombreEnLinea`; `video-keys.test.ts` en verde
 - [ ] 4.3 `lib/video-bienvenida/contenido.ts`, `mostrar-bloque.ts` (puro, con tests) y `app/t/[codigo]/page.tsx` (logo centrado, sin duración, bloque a los 30 s, no indexa, `no-referrer`, sin Píxel, título sin nombre, código inexistente → no encontrado)
 - [ ] 4.4 `POST /api/public/video/[codigo]` con marca por pestaña; `/t/` pública en `middleware.ts` (test)
 - [ ] 4.5 `app/t/paula.vcf/route.ts`

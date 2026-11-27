@@ -39,6 +39,11 @@ export interface VideoKeyDef {
   desde?: string
   /** Día en que se lo reemplazó (exclusivo): las visitas de ese día en adelante ya vieron otro. */
   hasta?: string
+  /**
+   * Cómo lo nombra la línea de tiempo de la ficha ("Vio {nombreEnLinea} · N %") cuando el video
+   * no está en una landing (sin `pagina`). Lo usa el video de bienvenida.
+   */
+  nombreEnLinea?: string
 }
 
 export const VIDEO_KEYS = {
@@ -53,6 +58,11 @@ export const VIDEO_KEYS = {
   'hero-tasacion-neta': { label: 'Video de la Versión B — VSL largo (hasta el 6/11/2026)', orden: 20, retirada: true, pagina: 'tasacion-neta', hasta: '2026-11-06' },
   'hero-clase': { label: 'Video del hero', orden: 30, pagina: 'clase' },
   'clase-completa': { label: 'Clase completa (página de gracias)', orden: 40 },
+  // Video de bienvenida (tasacion-video-bienvenida): la página personal `inmodf.com.ar/t/<código>`
+  // que llega por WhatsApp. Sin `pagina` a propósito: no es una landing y no entra en el panel
+  // "registrados vs no". Su medición va con embudo nulo, así que tampoco entra en Embudos.
+  // Cuando llegue el video editado: clave `-v2` y esta pasa a `retirada`.
+  'bienvenida-tasacion-v1': { label: 'Video de bienvenida (WhatsApp de tasación)', orden: 50, nombreEnLinea: 'el video de bienvenida' },
 } as const satisfies Record<string, VideoKeyDef>
 
 /** Claves que alguna landing usa HOY (las retiradas quedan solo para nombrar datos viejos). */
