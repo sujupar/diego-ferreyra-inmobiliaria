@@ -876,6 +876,19 @@ decide. Se le nombran al dueño al abrir el PR (tarea 1.4).
 - **[`GET /api/contacts` y `GET /api/deals` quedan con sus defectos]** sin consumidor de
   pantalla → comentario en el código; si algún día se los vuelve a usar, hay que arreglar
   el alcance del asesor y los topes.
+- **[El último contacto incluye llamadas y WhatsApp de otras personas]** (revisión 9.1): un
+  asesor que ve un contacto por su proceso ve también "Llamada · no atendió, hace 1 h" si la
+  hizo la coordinación u otro asesor. Viaja solo el instante, el tipo y el resultado (ni el
+  autor ni las notas) y es lo mismo que dice la cabecera de la ficha. Aceptado: el último
+  contacto es de la persona, no de quien lo registró.
+- **[Una etapa nueva fuera del catálogo]** (revisión 9.1): `etapaCRM` la manda a
+  "Solicitud", pero la coordinación lee sus procesos con una lista fija de `stage`, así que
+  esa solicitud se vería solo en la vista del dueño. Hoy no existe ninguna; al agregar una
+  etapa a `deals.stage` hay que sumarla a `etapas.ts` y a esa lista juntas.
+- **[El tiempo de la página]** (revisión 9.1, corregido): el plazo de 15 s es por lectura;
+  `/crm` solo encadena una segunda lectura ("Ver como" inválido, opciones del selector) si
+  la primera tardó menos de 8 s. Si no, muestra el error con "Reintentar", que pide la ruta
+  (una sola lectura). Así una página nunca pasa los ~23 s.
 
 ## Migration Plan
 

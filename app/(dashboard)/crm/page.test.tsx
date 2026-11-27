@@ -122,6 +122,51 @@ describe('/crm — la vista la decide el servidor', () => {
     expect(el.props.opcionesVerComo).toEqual([{ id: OTRA, etiqueta: 'Florencia Ledesma · asesor' }])
   })
 
+  // Revisión adversarial (9.1): el plazo de 15 s es por lectura, no por página. Encadenar
+  // una segunda lectura después de una lenta pasaba el techo de Netlify (~26 s) y la persona
+  // veía el 504 en HTML en lugar del error de la pantalla con "Reintentar".
+  it('si la cartera falló, no se encadena la lectura de opciones de "Ver como"', async () => {
+    m.cargar.mockRejectedValue(new Error('La lectura del CRM tardó más de 15 segundos'))
+    const errorConsola = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const el = await abrir({ ver: OTRA })
+    expect(m.opciones).not.toHaveBeenCalled()
+    expect(el.props.inicial).toBeNull()
+    expect(el.props.opcionesVerComo).toEqual([])
+    errorConsola.mockRestore()
+  })
+
+  it('con una persona inválida después de una lectura lenta, no se lee otra vez: error con "Reintentar"', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      m.cargar.mockImplementation(async (p: { verComo: string | null }) => {
+        vi.setSystemTime(Date.now() + 9_000)
+        return p.verComo ? { ok: false, motivo: 'persona_invalida' } : { ok: true, datos: datos(false) }
+      })
+      const el = await abrir({ ver: OTRA })
+      expect(m.cargar).toHaveBeenCalledTimes(1)
+      expect(m.opciones).not.toHaveBeenCalled()
+      expect(el.props.inicial).toBeNull()
+      expect(el.props.avisoInicial).toBe('Esa persona no tiene una vista del CRM.')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('después de una lectura lenta mirando a otra persona, las opciones salen de esa persona sin otra lectura', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      m.cargar.mockImplementation(async () => {
+        vi.setSystemTime(Date.now() + 9_000)
+        return { ok: true, datos: datos(true) }
+      })
+      const el = await abrir({ ver: OTRA })
+      expect(m.opciones).not.toHaveBeenCalled()
+      expect(el.props.opcionesVerComo).toEqual([{ id: OTRA, etiqueta: 'Florencia Ledesma · asesor' }])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('si la lectura falla, la pantalla recibe null (muestra el error con "Reintentar")', async () => {
     m.cargar.mockRejectedValue(new Error('base caída'))
     const errorConsola = vi.spyOn(console, 'error').mockImplementation(() => {})
