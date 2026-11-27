@@ -23,7 +23,7 @@ import {
   type ProcesoLeido,
   type TareaLeida,
 } from '@/lib/crm/cartera'
-import { procesoEnVista, vistaPara, type MotivoVista, type Vista } from '@/lib/crm/cartera-vista'
+import { opcionesVerComo as opcionesVerComoDe, procesoEnVista, vistaPara, type MotivoVista, type Vista } from '@/lib/crm/cartera-vista'
 import {
   armarFilasContactos,
   contactoVisible,
@@ -477,12 +477,7 @@ export async function cargarCartera(
     const filas = armarFilasCartera({ vista, procesos, tareas, tareasCerradas, ultimos: ultimos.ultimos, perfiles, ahora })
 
     const verComoPermitido = (quien.role === 'admin' || quien.role === 'dueno') && !mirando
-    const opcionesVerComo = verComoPermitido
-      ? [...perfiles.entries()]
-          .filter(([, p]) => p.activo && (p.role === 'coordinador' || p.role === 'asesor'))
-          .sort(([, a], [, b]) => a.nombre.localeCompare(b.nombre, 'es'))
-          .map(([id, p]) => ({ id, etiqueta: `${p.nombre} · ${p.role === 'coordinador' ? 'coordinación' : 'asesor'}` }))
-      : null
+    const opcionesVerComo = verComoPermitido ? opcionesVerComoDe(perfiles) : null
 
     opciones.alMedir?.({
       previaMs,
@@ -513,6 +508,25 @@ export async function cargarCartera(
       generadoEn: ahora.toISOString(),
     }
     return { ok: true, datos }
+  })
+}
+
+/**
+ * Las opciones de "Ver como" de un admin o dueño, aparte de la cartera. Hace falta cuando
+ * la página abre YA mirando a otra persona (`/crm?ver=<id>`, por ejemplo al recargar): esa
+ * respuesta no trae opciones (5.1) y sin esto el selector quedaría vacío. Para cualquier
+ * otro rol devuelve `null` sin leer nada.
+ */
+export async function leerOpcionesVerComo(quien: { role: string }): Promise<{ id: string; etiqueta: string }[] | null> {
+  if (quien.role !== 'admin' && quien.role !== 'dueno') return null
+  const cliente = sb()
+  return conPlazoUnico(async (senal) => {
+    const perfiles = await paginar(
+      'profiles',
+      (a, b) => cliente.from('profiles').select(COLS_PERFIL).order('id').range(a, b).abortSignal(senal),
+      senal,
+    )
+    return opcionesVerComoDe(aPerfiles(perfiles.filas))
   })
 }
 

@@ -70,3 +70,23 @@ export function procesoEnVista(
   if (ETAPAS_ABIERTAS_COORDINACION.includes(d.etapa)) return true
   return d.etapa === 'descartado' && !d.assigned_to
 }
+
+/**
+ * Las personas del selector "Ver como" (D7): coordinadores y asesores ACTIVOS (las mismas
+ * que `vistaPara` acepta), por nombre. "asesor" para todos: la plataforma no guarda el
+ * género (Diferencias, 1). La usan la lectura de la cartera y la página cuando abre ya
+ * mirando a otra persona (la respuesta de esa vista no trae opciones, 5.1).
+ */
+export function opcionesVerComo(
+  perfiles: Map<string, { nombre: string; role: string; activo: boolean }>,
+): { id: string; etiqueta: string }[] {
+  return [...perfiles.entries()]
+    .filter(([, p]) => p.activo && (p.role === 'coordinador' || p.role === 'asesor'))
+    .sort(([, a], [, b]) => a.nombre.localeCompare(b.nombre, 'es'))
+    .map(([id, p]) => ({ id, etiqueta: `${p.nombre} · ${p.role === 'coordinador' ? 'coordinación' : 'asesor'}` }))
+}
+
+/** "Mi vista (dueño)" o "Mi vista (admin)" (Diferencias, 2). */
+export function etiquetaMiVista(rol: string): string {
+  return `Mi vista (${rol === 'admin' ? 'admin' : 'dueño'})`
+}

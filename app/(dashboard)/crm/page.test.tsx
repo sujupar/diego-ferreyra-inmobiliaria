@@ -1,555 +1,148 @@
-// @vitest-environment happy-dom
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import '@testing-library/jest-dom/vitest'
-import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
-import CRMPage from './page'
-import type { Deal } from './_components/types'
+// crm-cartera-por-rol, tareas 6.2 y 6.4: la página del CRM como componente de servidor.
+// Reemplaza las 23 pruebas de la pantalla vieja (`'use client'` con `/api/deals`): lo que
+// protegían quedó acá, en la ruta (`app/api/crm/cartera/route.test.ts`), en `vistaPara` y
+// `leerFiltrosCartera` (lib/crm) y en `components/crm/cartera/*.test.tsx`. La tabla vieja
+// → nueva está en el PR (tarea 6.4).
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { isValidElement, type ReactElement } from 'react'
 
-/**
- * CRM es la ÚNICA pantalla que usa la regla 3 del versionado ("Cargar más" /
- * `pedidos.actual()`) — ronda de arreglos 1 sobre la Task 11: el revisor mutó
- * las tres reglas contra `contacts/page.test.tsx` y dos quedaron en verde
- * porque Contactos no pagina. Este archivo cierra ese hueco (I1) y de paso fija
- * los otros seis casos que el revisor verificó a mano (seguridad por rol,
- * visibilidad del desplegable, valores inventados, ráfaga, F5, "Limpiar todo").
- *
- * Mismo patrón que `contacts/page.test.tsx`: `next/navigation` mockeado con una
- * `busqueda` simulada + `commitear()` que reproduce un commit asíncrono del
- * router, y `fetch` con promesas diferidas controlables a mano.
- */
-
-let busqueda = ''
-const escrituras: string[] = []
-
-vi.mock('next/navigation', () => ({
-  usePathname: () => '/crm',
-  useSearchParams: () => new URLSearchParams(busqueda),
-  useRouter: () => ({
-    replace: (href: string) => { escrituras.push(href) },
-    push: () => {},
-  }),
+const m = vi.hoisted(() => ({
+  usuario: null as null | { id: string; profile: { role: string; is_active: boolean } },
+  cargar: vi.fn(),
+  opciones: vi.fn(),
 }))
 
-interface Deferred<T> { promise: Promise<T>; resolve: (v: T) => void }
-function deferred<T>(): Deferred<T> {
-  let resolve!: (v: T) => void
-  const promise = new Promise<T>(r => { resolve = r })
-  return { promise, resolve }
+vi.mock('@/lib/auth/get-user', () => ({ getUser: async () => m.usuario }))
+vi.mock('@/lib/supabase/cartera', () => ({ cargarCartera: m.cargar, leerOpcionesVerComo: m.opciones }))
+vi.mock('next/navigation', () => ({
+  redirect: (url: string) => {
+    throw new Error(`REDIRECT:${url}`)
+  },
+}))
+
+import CRMPage from './page'
+import { CarteraCRM } from '@/components/crm/cartera/CarteraCRM'
+import { SinAccesoLista } from '@/components/crm/cartera/SinAcceso'
+
+const DUENO = '00000000-0000-4000-8000-000000000001'
+const ASESOR = '00000000-0000-4000-8000-000000000004'
+const OTRA = '00000000-0000-4000-8000-000000000005'
+
+function datos(mirando = false) {
+  return {
+    vista: { tipo: mirando ? 'asesor' : 'dueno', persona: mirando ? { id: OTRA, nombre: 'Florencia Ledesma', rol: 'asesor' } : null, mirando },
+    filas: [],
+    asesores: [],
+    opcionesVerComo: mirando ? null : [{ id: OTRA, etiqueta: 'Florencia Ledesma · asesor' }],
+    fuentes: { ultimoContacto: 'ok', tareas: 'ok' },
+    truncado: false,
+    generadoEn: '2026-12-02T13:40:00.000Z',
+  }
 }
 
-/** A4: permite simular un 401/404 de /api/auth/me (que igual devuelve JSON). */
-let authOk = true
-let authDeferred: Deferred<{ id: string; role: string }>
-let dealsCalls: { url: string; d: Deferred<Record<string, unknown>> }[]
+async function abrir(sp: Record<string, string> = {}): Promise<ReactElement<Record<string, unknown>>> {
+  const el = await CRMPage({ searchParams: Promise.resolve(sp) })
+  if (!isValidElement<Record<string, unknown>>(el)) throw new Error('la página no devolvió un elemento')
+  return el
+}
 
 beforeEach(() => {
-  busqueda = ''
-  escrituras.length = 0
-  authOk = true
-  authDeferred = deferred()
-  dealsCalls = []
-  vi.stubGlobal('fetch', vi.fn((url: string) => {
-    if (url.startsWith('/api/auth/me')) {
-      return authDeferred.promise.then(data => ({ ok: authOk, json: async () => data }))
-    }
-    if (url.startsWith('/api/users/advisors')) {
-      return Promise.resolve({
-        ok: true,
-        json: async () => ({ data: [{ id: 'adv1', full_name: 'Asesor Uno' }, { id: 'adv2', full_name: 'Asesor Dos' }] }),
-      })
-    }
-    if (url.startsWith('/api/deals')) {
-      const d = deferred<Record<string, unknown>>()
-      dealsCalls.push({ url, d })
-      return d.promise.then(data => ({ ok: true, json: async () => data }))
-    }
-    return Promise.reject(new Error(`fetch inesperado: ${url}`))
-  }))
+  m.usuario = { id: DUENO, profile: { role: 'dueno', is_active: true } }
+  m.cargar.mockReset()
+  m.opciones.mockReset()
+  m.cargar.mockImplementation(async (p: { verComo: string | null }) => ({ ok: true, datos: datos(!!p.verComo) }))
+  m.opciones.mockResolvedValue([{ id: OTRA, etiqueta: 'Florencia Ledesma · asesor' }])
 })
 
-/** Simula que Next terminó de commitear una URL — mismo patrón que el hook. */
-function commitear(rerender: (ui: React.ReactElement) => void, href: string) {
-  const i = href.indexOf('?')
-  busqueda = i === -1 ? '' : href.slice(i + 1)
-  act(() => { rerender(<CRMPage />) })
-}
+describe('/crm — quién entra', () => {
+  it('el abogado va a /properties/review sin leer nada', async () => {
+    m.usuario = { id: 'x', profile: { role: 'abogado', is_active: true } }
+    await expect(abrir()).rejects.toThrow('REDIRECT:/properties/review')
+    expect(m.cargar).not.toHaveBeenCalled()
+  })
 
-function fakeDeal(i: number): Deal {
-  return {
-    id: `d${i}`,
-    stage: 'captada',
-    property_address: `Calle Falsa ${i}`,
-    scheduled_date: null,
-    origin: null,
-    assigned_to: null,
-    assigned_to_name: '',
-    contact_name: `Contacto ${i}`,
-    contact_phone: '',
-    contact_email: '',
-    appraisal_id: null,
-    property_id: null,
-    stage_changed_at: '2026-08-01T00:00:00Z',
-    created_at: '2026-08-01T00:00:00Z',
-    tags: [],
-  }
-}
+  it('un rol sin vista ve "No tenés acceso al CRM" y ningún dato', async () => {
+    m.usuario = { id: 'x', profile: { role: 'viewer', is_active: true } }
+    m.cargar.mockResolvedValue({ ok: false, motivo: 'sin_vista' })
+    const el = await abrir()
+    expect(el.type).toBe(SinAccesoLista)
+    expect(el.props.titulo).toBe('No tenés acceso al CRM')
+  })
 
-function dealsPage(n: number, total: number) {
-  return {
-    data: Array.from({ length: n }, (_, i) => fakeDeal(i)),
-    total,
-    stageCounts: {},
-    crmStageCounts: {},
-  }
-}
-
-/** Una página con UN deal cuyo `property_address` es reconocible en pantalla —
- * para el test de carrera, que necesita distinguir "pintó el pedido viejo" de
- * "pintó el vigente" por el TEXTO visible, no solo por la URL pedida. */
-function dealsPageLabeled(label: string) {
-  return {
-    data: [{ ...fakeDeal(0), id: label, property_address: label }],
-    total: 1,
-    stageCounts: {},
-    crmStageCounts: {},
-  }
-}
-
-describe('CRMPage — seguridad por rol', () => {
-  it('un asesor con ?asesor=<otro> en la URL igual solo pide sus propios deals', async () => {
-    // UUID sintácticamente válido (sobrevive a `normalizarFiltros`) pero de
-    // OTRO asesor — el caso real que la seguridad tiene que resistir.
-    busqueda = 'asesor=00000000-0000-0000-0000-000000000099'
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'asesor' })
-    await waitFor(() => expect(dealsCalls.length).toBeGreaterThanOrEqual(1))
-
-    // TODOS los pedidos a /api/deals (incluido uno eventual por la limpieza
-    // del `?asesor=` huérfano, M3) tienen que llevar el id PROPIO — nunca el
-    // ajeno de la URL.
-    for (const c of dealsCalls) {
-      expect(c.url).toContain('assigned_to=u1')
-      expect(c.url).not.toContain('000000000099')
-    }
+  it('un usuario desactivado tampoco recibe datos', async () => {
+    m.usuario = { id: 'x', profile: { role: 'asesor', is_active: false } }
+    const el = await abrir()
+    expect(el.type).toBe(SinAccesoLista)
+    expect(m.cargar).not.toHaveBeenCalled()
   })
 })
 
-describe('CRMPage — visibilidad del desplegable Asesor', () => {
-  it('no aparece mientras no se conoce el rol, ni para el rol asesor una vez resuelto', async () => {
-    render(<CRMPage />)
-    // M4: antes de resolver identidad, `esAsesor` es `false` por defecto — si
-    // el desplegable se gatillara solo con `!esAsesor` aparecería acá y
-    // desaparecería al resolver el rol real (parpadeo).
-    expect(screen.queryByLabelText('Asesor')).not.toBeInTheDocument()
-
-    authDeferred.resolve({ id: 'u1', role: 'asesor' })
-    await waitFor(() => expect(dealsCalls.length).toBeGreaterThanOrEqual(1))
-    expect(screen.queryByLabelText('Asesor')).not.toBeInTheDocument()
+describe('/crm — la vista la decide el servidor', () => {
+  it('pasa a CarteraCRM solo datos planos: lo que armó el servicio, el rol y las opciones', async () => {
+    const el = await abrir()
+    expect(el.type).toBe(CarteraCRM)
+    expect(m.cargar).toHaveBeenCalledWith({ quien: { id: DUENO, role: 'dueno' }, verComo: null }, expect.any(Date))
+    expect(el.props.rol).toBe('dueno')
+    expect(el.props.opcionesVerComo).toEqual([{ id: OTRA, etiqueta: 'Florencia Ledesma · asesor' }])
+    for (const v of Object.values(el.props)) expect(typeof v).not.toBe('function')
+    expect(JSON.parse(JSON.stringify(el.props.inicial))).toEqual(el.props.inicial)
   })
 
-  it('aparece para un rol no-asesor una vez resuelta la identidad', async () => {
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(screen.getByLabelText('Asesor')).toBeInTheDocument())
+  it('un asesor con ?ver= de otra persona: se ignora, vista propia sin leer nada de la otra', async () => {
+    m.usuario = { id: ASESOR, profile: { role: 'asesor', is_active: true } }
+    const el = await abrir({ ver: OTRA })
+    expect(m.cargar).toHaveBeenCalledTimes(1)
+    expect(m.cargar).toHaveBeenCalledWith({ quien: { id: ASESOR, role: 'asesor' }, verComo: null }, expect.any(Date))
+    expect(el.props.avisoInicial).toBeNull()
+    expect(el.props.opcionesVerComo).toBeNull()
+    expect(m.opciones).not.toHaveBeenCalled()
   })
-})
 
-describe('CRMPage — valores inventados en la URL', () => {
-  it('no rompen la pantalla: caen al defecto y no viajan a la API', async () => {
-    busqueda = 'etapa=no-existe&asesor=no-es-un-uuid&origin=marciano'
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    expect(dealsCalls[0].url).not.toContain('crm_stage=')
-    expect(dealsCalls[0].url).not.toContain('origin=')
-    expect(dealsCalls[0].url).not.toContain('assigned_to=no-es-un-uuid')
-
-    dealsCalls[0].d.resolve(dealsPage(0, 0))
-    await screen.findByText('Sin procesos')
+  it('un asesor con ?asesor=<otro>: el servicio no recibe ese parámetro (ninguno ensancha la vista)', async () => {
+    m.usuario = { id: ASESOR, profile: { role: 'asesor', is_active: true } }
+    await abrir({ asesor: OTRA, assigned_to: OTRA })
+    expect(m.cargar).toHaveBeenCalledWith({ quien: { id: ASESOR, role: 'asesor' }, verComo: null }, expect.any(Date))
   })
-})
 
-describe('CRMPage — ráfaga', () => {
-  it('dos filtros tocados sin esperar el commit sobreviven los dos', async () => {
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve(dealsPage(0, 0))
-    await screen.findByText('Sin procesos')
-
-    fireEvent.change(screen.getByLabelText('Origen'), { target: { value: 'embudo' } })
-    fireEvent.change(screen.getByLabelText('Etapa'), { target: { value: 'captada' } })
-
-    const ultima = escrituras[escrituras.length - 1]
-    expect(ultima).toContain('etapa=captada')
-    expect(ultima).toContain('origin=embudo')
+  it('el dueño con un "ver" inválido: su propia vista con "Esa persona no tiene una vista del CRM."', async () => {
+    m.cargar.mockImplementation(async (p: { verComo: string | null }) =>
+      p.verComo ? { ok: false, motivo: 'persona_invalida' } : { ok: true, datos: datos(false) },
+    )
+    const el = await abrir({ ver: 'no-es-un-uuid' })
+    expect(m.cargar).toHaveBeenLastCalledWith({ quien: { id: DUENO, role: 'dueno' }, verComo: null }, expect.any(Date))
+    expect(el.props.avisoInicial).toBe('Esa persona no tiene una vista del CRM.')
+    expect((el.props.inicial as { vista: { mirando: boolean } }).vista.mirando).toBe(false)
   })
-})
 
-describe('CRMPage — F5 (montar con filtros ya en la URL)', () => {
-  it('los controles y el primer pedido reflejan los filtros de la URL', async () => {
-    busqueda = 'etapa=captada&origin=embudo'
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    expect(dealsCalls[0].url).toContain('crm_stage=captada')
-    expect(dealsCalls[0].url).toContain('origin=embudo')
-    expect(screen.getByLabelText('Etapa')).toHaveValue('captada')
-    expect(screen.getByLabelText('Origen')).toHaveValue('embudo')
+  it('el dueño que recarga mirando a otra persona: datos de esa persona y las opciones de su vista propia', async () => {
+    const el = await abrir({ ver: OTRA })
+    expect(m.cargar).toHaveBeenCalledWith({ quien: { id: DUENO, role: 'dueno' }, verComo: OTRA }, expect.any(Date))
+    expect((el.props.inicial as { vista: { mirando: boolean } }).vista.mirando).toBe(true)
+    expect(m.opciones).toHaveBeenCalledTimes(1)
+    expect(el.props.opcionesVerComo).toEqual([{ id: OTRA, etiqueta: 'Florencia Ledesma · asesor' }])
+  })
+
+  it('si la lectura falla, la pantalla recibe null (muestra el error con "Reintentar")', async () => {
+    m.cargar.mockRejectedValue(new Error('base caída'))
+    const errorConsola = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const el = await abrir()
+    expect(el.type).toBe(CarteraCRM)
+    expect(el.props.inicial).toBeNull()
+    errorConsola.mockRestore()
   })
 })
 
-describe('CRMPage — "Limpiar todo"', () => {
-  it('limpia etapa/origin/asesor y también el rango de fechas', async () => {
-    busqueda = 'etapa=captada&from=2026-08-01&to=2026-08-08'
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve(dealsPage(0, 0))
-    await screen.findByText('Sin procesos')
-
-    fireEvent.click(screen.getByText('Limpiar todo'))
-    expect(escrituras[escrituras.length - 1]).toBe('/crm')
-  })
-})
-
-describe('CRMPage — regla 1 del versionado (abrir() en el efecto principal)', () => {
-  it('un filtro nuevo mientras un pedido viaja: el listado viejo NO pinta, gana el vigente', async () => {
-    // Ronda de arreglos 2: análogo del test 1 de contacts/page.test.tsx
-    // ("la carrera real"), pero para el efecto PRINCIPAL de CRM. Ninguno de
-    // los 8 tests anteriores dejaba un segundo pedido a /api/deals en vuelo
-    // y miraba el LISTADO — así que cambiar `abrir()` por `actual()` en ese
-    // efecto (la generación queda clavada para siempre, `vigente(gen)` da
-    // `true` para cualquier respuesta) pasaba los 8 en verde. Este test lo
-    // ejercita: tres pedidos en ráfaga, el de en medio se resuelve DESPUÉS
-    // del último, y su contenido no puede llegar a pintarse nunca.
-    const { rerender } = render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-
-    // Primer pedido (origin='').
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve(dealsPageLabeled('Deal Original'))
-    await screen.findByText('Deal Original')
-
-    // La URL commitea a origin=embudo (gen 2) — sin resolver todavía.
-    commitear(rerender, '/crm?origin=embudo')
-    await waitFor(() => expect(dealsCalls.length).toBe(2))
-
-    // Y antes de que responda, otro commit a origin=historico (gen 3).
-    commitear(rerender, '/crm?origin=historico')
-    await waitFor(() => expect(dealsCalls.length).toBe(3))
-
-    // Responde PRIMERO el pedido viejo (gen 2, embudo): no tiene que pintar.
-    dealsCalls[1].d.resolve(dealsPageLabeled('Deal Embudo Viejo'))
-    await act(async () => { await Promise.resolve() })
-    expect(screen.queryByText('Deal Embudo Viejo')).not.toBeInTheDocument()
-    // El spinner del listado sigue prendido: la respuesta VIGENTE (gen 3) no llegó.
-    expect(screen.getByText('Cargando procesos...')).toBeInTheDocument()
-
-    // Responde el pedido vigente (gen 3, historico).
-    dealsCalls[2].d.resolve(dealsPageLabeled('Deal Historico Vigente'))
-    await screen.findByText('Deal Historico Vigente')
-
-    // El listado del pedido viejo nunca llegó a pintarse, ni después.
-    expect(screen.queryByText('Deal Embudo Viejo')).not.toBeInTheDocument()
-    expect(screen.queryByText('Cargando procesos...')).not.toBeInTheDocument()
-  })
-})
-
-describe('CRMPage — regla 3 del versionado ("Cargar más")', () => {
-  it('la bandera del botón se apaga con la respuesta VIEJA, aunque su generación haya caducado', async () => {
-    const { rerender } = render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve(dealsPage(50, 120))
-    await screen.findByRole('button', { name: /Cargar más/ })
-
-    fireEvent.click(screen.getByRole('button', { name: /Cargar más/ }))
-    await waitFor(() => expect(dealsCalls.length).toBe(2))
-    expect(screen.getByRole('button', { name: /Cargando/ })).toBeDisabled()
-
-    // Antes de que responda "cargar más", cambia un filtro real: abre una
-    // generación NUEVA (pedidos.abrir()) — la de "cargar más" queda caduca.
-    commitear(rerender, '/crm?origin=embudo')
-    await waitFor(() => expect(dealsCalls.length).toBe(3))
-
-    // Responde el pedido VIEJO de "cargar más" (gen caducada).
-    dealsCalls[1].d.resolve(dealsPage(50, 120))
-    await act(async () => { await Promise.resolve() })
-
-    // Responde el pedido del filtro nuevo — recién ahí la sección "Cargar
-    // más" vuelve a estar visible (el spinner del listado la tapaba).
-    dealsCalls[2].d.resolve(dealsPage(50, 120))
-
-    // Si la bandera del botón estuviera versionada (mutación), acá seguiría
-    // "Cargando…"/deshabilitado para siempre — este find falla (rojo).
-    const boton = await screen.findByRole('button', { name: /Cargar más/ })
-    expect(boton).not.toBeDisabled()
-  })
-})
-
-describe('CRMPage — tarjetas de números (task 16)', () => {
-  it('la tarjeta "Deals" muestra lo que la pantalla ya guardó, con el contexto de "sin filtros"', async () => {
-    // Ronda 1 de la revisión: el desglose por etapa YA lo muestra
-    // `StagePipeline` (con el mismo `stageCounts`, clickeable) — no se
-    // duplica acá arriba. Solo queda el total.
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve({ data: [fakeDeal(0)], total: 7, stageCounts: {}, crmStageCounts: {} })
-    await screen.findByText('Contacto 0')
-
-    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
-    const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
-    expect(deals.getByText('7')).toBeInTheDocument()
-    expect(deals.getByText('en el sistema')).toBeInTheDocument()
-    // La grilla por etapa no se repite: dentro de la fila de tarjetas nueva
-    // no hay una segunda tarjeta "Captada" (esa vive solo en StagePipeline).
-    expect(tarjetas.queryByText('Captada')).not.toBeInTheDocument()
+describe('/crm — marcadores de la pantalla vieja', () => {
+  it('origin/from/to se traducen con un redirect antes de leer nada', async () => {
+    await expect(abrir({ origin: 'referido', from: '2026-11-01', to: '2026-11-25' })).rejects.toThrow(
+      'REDIRECT:/crm?origen=referido&desde=2026-11-01&hasta=2026-11-25&entro=rango',
+    )
+    expect(m.cargar).not.toHaveBeenCalled()
   })
 
-  it('con un filtro puesto, "Deals" dice "con los filtros puestos" — no "en el sistema"', async () => {
-    busqueda = 'etapa=captada'
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve({ data: [], total: 0, stageCounts: {}, crmStageCounts: {} })
-    await screen.findByText('Sin procesos')
-
-    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
-    const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
-    expect(deals.getByText('con los filtros puestos')).toBeInTheDocument()
-    expect(deals.queryByText('en el sistema')).not.toBeInTheDocument()
-  })
-
-  // Ronda 1 de la revisión — I1: para un asesor, `totalDealsDisplay` NO es el
-  // total del servidor — es lo cargado en memoria (una página, filtrada por
-  // rol). Con más deals que los que trajo la página, "en el sistema" sería
-  // la mentira exacta que la regla del tablero prohíbe.
-  it('para un asesor con más deals que la página cargada, el contexto dice "de los cargados en pantalla" — no "en el sistema"', async () => {
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'asesor' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    // El servidor dice 70 en total; la página cargada trae solo 3 (el mismo
-    // desfasaje que "50 de 70" — se achica el dataset acá para que el test
-    // no dependa de renderizar 50 tarjetas dentro del timeout de `findBy`).
-    // `stage: 'captured'` (el valor CRUDO — `fakeDeal` por defecto usa
-    // 'captada', que `deriveCRMStage` no reconoce y cae al default
-    // 'solicitud'; para el rol asesor eso lo filtra de `roleFilteredDeals`
-    // vía `PRE_ASSIGNMENT_STAGES` y el conteo daría 0 en vez de 3).
-    dealsCalls[0].d.resolve({
-      data: [
-        { ...fakeDeal(0), stage: 'captured' },
-        { ...fakeDeal(1), stage: 'captured' },
-        { ...fakeDeal(2), stage: 'captured' },
-      ],
-      total: 70,
-      stageCounts: {},
-      crmStageCounts: {},
-    })
-    await screen.findByText('Contacto 0')
-
-    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
-    const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
-    expect(deals.getByText('3')).toBeInTheDocument()
-    expect(deals.getByText('de los cargados en pantalla')).toBeInTheDocument()
-    expect(deals.queryByText('en el sistema')).not.toBeInTheDocument()
-    expect(deals.queryByText('70')).not.toBeInTheDocument()
-  })
-
-  it('un /api/deals caído apaga los números a "Sin datos" — no al 0 que deja el catch', async () => {
-    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      vi.stubGlobal('fetch', vi.fn((url: string) => {
-        if (url.startsWith('/api/auth/me')) return authDeferred.promise.then(data => ({ ok: authOk, json: async () => data }))
-        if (url.startsWith('/api/users/advisors')) return Promise.resolve({ ok: true, json: async () => ({ data: [] }) })
-        if (url.startsWith('/api/deals')) return Promise.reject(new Error('caído'))
-        return Promise.reject(new Error(`fetch inesperado: ${url}`))
-      }))
-      render(<CRMPage />)
-      authDeferred.resolve({ id: 'u1', role: 'admin' })
-
-      const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
-      const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
-      // Se espera el CONTEXTO de error, no el "Sin datos": desde el arreglo C1
-      // el "Sin datos" ya está puesto mientras carga.
-      await waitFor(() => expect(deals.getByText('No se pudo consultar')).toBeInTheDocument())
-      expect(deals.getByText('Sin datos')).toBeInTheDocument()
-    } finally {
-      errores.mockRestore()
-    }
-  })
-
-  it('agregar las tarjetas no dispara ninguna llamada de más', async () => {
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve(dealsPage(0, 0))
-    await screen.findByText('Sin procesos')
-
-    // auth + advisors + deals = 3 fetch — ni uno más por las tarjetas nuevas.
-    expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(3)
-  })
-
-  // Revisión final Fase 3 — C1. Los tests de arriba resuelven el fetch ANTES
-  // de mirar la tarjeta; el defecto estaba justo en la ventana anterior.
-  it('mientras la respuesta viaja, "Deals" dice "Sin datos" — nunca 0', async () => {
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'admin' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-
-    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
-    const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
-    expect(deals.getByText('Sin datos')).toBeInTheDocument()
-    expect(deals.getByText('todavía cargando')).toBeInTheDocument()
-    expect(deals.queryByText('0')).not.toBeInTheDocument()
-    expect(deals.queryByText('en el sistema')).not.toBeInTheDocument()
-
-    dealsCalls[0].d.resolve({ data: [fakeDeal(0)], total: 9, stageCounts: {}, crmStageCounts: {} })
-    await screen.findByText('Contacto 0')
-    expect(deals.getByText('9')).toBeInTheDocument()
-    expect(deals.getByText('en el sistema')).toBeInTheDocument()
-  })
-
-  // Revisión final Fase 3 — C1, segunda cara. El gate fail-closed hace lo
-  // correcto (no pide nada sin identidad), pero como el efecto de datos hace
-  // `return` antes de tocar `loading`, el 0 inicial se quedaba en pantalla
-  // PARA SIEMPRE: un cero sin vencimiento, que es el peor de todos.
-  it('sin identidad (/api/auth/me caído), "Deals" dice "Sin datos" y no pide deals', async () => {
-    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      authOk = false
-      render(<CRMPage />)
-      authDeferred.resolve({ error: 'No autenticado' } as never)
-      await act(async () => { await Promise.resolve() })
-
-      const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
-      const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
-      await waitFor(() => expect(deals.getByText('Sin datos')).toBeInTheDocument())
-      expect(deals.getByText('sin identidad confirmada')).toBeInTheDocument()
-      expect(deals.queryByText('0')).not.toBeInTheDocument()
-      expect(deals.queryByText('en el sistema')).not.toBeInTheDocument()
-      // El gate sigue intacto: sin identidad no se pide ningún deal.
-      expect(dealsCalls.length).toBe(0)
-    } finally {
-      errores.mockRestore()
-    }
-  })
-
-  // N1 (pulido pre-entrega): antes de este fix, "sin identidad confirmada" era
-  // el texto que se veía en CADA carga normal de /crm, durante los cientos de
-  // ms en que /api/auth/me todavía no contestó — indistinguible de una sesión
-  // rota. Este test cubre justo esa ventana: `authDeferred` sin resolver.
-  it('mientras /api/auth/me está en vuelo (el caso normal), dice "todavía cargando" — no "sin identidad confirmada"', async () => {
-    render(<CRMPage />)
-    // No se resuelve `authDeferred`: la respuesta sigue en camino.
-
-    const tarjetas = within(screen.getByTestId('tarjetas-numeros'))
-    const deals = within(tarjetas.getByText('Deals').parentElement as HTMLElement)
-    expect(deals.getByText('Sin datos')).toBeInTheDocument()
-    expect(deals.getByText('todavía cargando')).toBeInTheDocument()
-    expect(deals.queryByText('sin identidad confirmada')).not.toBeInTheDocument()
-    // Fail-closed: tampoco se pidió nada todavía.
-    expect(dealsCalls.length).toBe(0)
-  })
-})
-
-/**
- * D33 — el desplegable "Etapa" es control NUEVO del rediseño y no heredó el
- * filtrado por rol que ya tenía la grilla. A un asesor le ofrecía dos etapas
- * (Solicitud y Clase Gratuita) que `roleFilteredDeals` borra en memoria: elegir
- * cualquiera de las dos daba SIEMPRE "Sin procesos". Y la grilla, que solo
- * tapaba 'solicitud', le seguía ofreciendo 'Clase Gratuita' como ficha
- * clickeable al mismo callejón sin salida.
- */
-describe('CRMPage — etapas que el rol no puede ver (D33)', () => {
-  function valoresDeEtapa() {
-    return Array.from((screen.getByLabelText('Etapa') as HTMLSelectElement).options).map(o => o.value)
-  }
-
-  it('a un asesor no se las ofrece ni el desplegable ni la grilla', async () => {
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'asesor' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve(dealsPage(0, 0))
-    await screen.findByText('Sin procesos')
-
-    expect(valoresDeEtapa()).not.toContain('solicitud')
-    expect(valoresDeEtapa()).not.toContain('clase_gratuita')
-    // Las que sí puede ver siguen estando.
-    expect(valoresDeEtapa()).toContain('captada')
-    // La grilla usa el MISMO criterio. Se busca por ROL (las fichas son
-    // botones); por texto no sirve, las etiquetas también viven en las
-    // `<option>` del desplegable.
-    expect(screen.queryByRole('button', { name: /Solicitud/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Clase Gratuita/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Captada/ })).toBeInTheDocument()
-  })
-
-  it('a un coordinador sí, que es quien las maneja', async () => {
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    dealsCalls[0].d.resolve(dealsPage(0, 0))
-    await screen.findByText('Sin procesos')
-
-    expect(valoresDeEtapa()).toContain('solicitud')
-    expect(valoresDeEtapa()).toContain('clase_gratuita')
-    expect(screen.getByRole('button', { name: /Clase Gratuita/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Solicitud/ })).toBeInTheDocument()
-  })
-
-  it('un ?etapa=solicitud heredado de un deep link se limpia solo', async () => {
-    // Sin la limpieza queda huérfano: el desplegable ya no tiene esa opción,
-    // así que `FilterBar` solo puede dibujarlo con la clave cruda, sobre una
-    // lista que va a estar vacía siempre.
-    busqueda = 'etapa=solicitud'
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'asesor' })
-    await waitFor(() => expect(escrituras.length).toBeGreaterThan(0))
-    expect(escrituras[escrituras.length - 1]).toBe('/crm')
-  })
-
-  it('a un coordinador NO se lo limpia: ?etapa=solicitud es un filtro legítimo', async () => {
-    busqueda = 'etapa=solicitud'
-    render(<CRMPage />)
-    authDeferred.resolve({ id: 'u1', role: 'coordinador' })
-    await waitFor(() => expect(dealsCalls.length).toBe(1))
-    expect(dealsCalls[0].url).toContain('crm_stage=solicitud')
-    dealsCalls[0].d.resolve(dealsPage(0, 0))
-    await screen.findByText('Sin procesos')
-    expect(escrituras.length).toBe(0)
-  })
-})
-
-describe('CRMPage — identidad fail-closed (A4)', () => {
-  it('un 401 de /api/auth/me (que igual devuelve JSON) NO deja salir el pedido sin assigned_to', async () => {
-    // Acá el `userInfo` truthy con `role` undefined caía justo en el `else` de
-    // `buildParams` — el if/else que es lo único que impide que un asesor vea
-    // deals ajenos.
-    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      authOk = false
-      render(<CRMPage />)
-      authDeferred.resolve({ error: 'No autenticado' } as never)
-      await act(async () => { await Promise.resolve() })
-      await act(async () => { await Promise.resolve() })
-      expect(dealsCalls.length).toBe(0)
-    } finally {
-      errores.mockRestore()
-    }
-  })
-
-  it('un 200 sin id tampoco es una identidad', async () => {
-    const errores = vi.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      render(<CRMPage />)
-      authDeferred.resolve({ role: 'asesor' } as never)
-      await act(async () => { await Promise.resolve() })
-      await act(async () => { await Promise.resolve() })
-      expect(dealsCalls.length).toBe(0)
-    } finally {
-      errores.mockRestore()
-    }
+  it('una etapa cerrada sin segmento suma seg=cerrados; la dirección nueva no se redirige', async () => {
+    await expect(abrir({ etapa: 'descartado' })).rejects.toThrow('REDIRECT:/crm?etapa=descartado&seg=cerrados')
+    const el = await abrir({ etapa: 'seguimiento', asesor: OTRA })
+    expect(el.type).toBe(CarteraCRM)
   })
 })
