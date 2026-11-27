@@ -393,11 +393,14 @@ export async function leerTareaParaCambio(id: string): Promise<TareaParaCambio |
  * `'no_estaba_completada'` si no cambió ninguna fila.
  */
 export async function reabrirTarea(id: string): Promise<'ok' | 'conflicto' | 'no_estaba_completada'> {
+  // Una tarea que cerró una llamada se reabre deshaciendo LA LLAMADA (`undoTasksOfActivity`):
+  // reabrirla acá borraría el rastro con el que la cadencia la encuentra (auditoría, 13).
   const { data, error } = await getAdmin()
     .from('tasks')
-    .update({ status: 'pending', completed_at: null, completed_by: null, closed_by_activity_id: null })
+    .update({ status: 'pending', completed_at: null, completed_by: null })
     .eq('id', id)
     .eq('status', 'completed')
+    .is('closed_by_activity_id', null)
     .select('id')
   if (error?.code === '23505') return 'conflicto'
   if (error) throw new Error(`reabrirTarea: ${error.message}`)
@@ -408,13 +411,48 @@ export async function reabrirTarea(id: string): Promise<'ok' | 'conflicto' | 'no
  * Pospone (o le pone fecha a) una tarea PENDIENTE. Con hora deja de ser de todo el día; sin
  * hora (el "Deshacer" de una de todo el día) vuelve a serlo; sin fecha, vuelve a "Sin fecha".
  */
-export async function posponerTarea(id: string, fecha: string | null, hora: string | null): Promise<boolean> {
-  const { data, error } = await getAdmin()
+export async function posponerTarea(
+  id: string,
+  fecha: string | null,
+  hora: string | null,
+  /** Para el "Deshacer": solo si la tarea sigue con lo que se le puso (nadie la cambió después). */
+  siSigue?: { fecha: string | null; hora: string | null },
+): Promise<boolean> {
+  let q = getAdmin()
     .from('tasks')
     .update({ due_date: fecha, due_time: hora, all_day: hora === null })
     .eq('id', id)
     .eq('status', 'pending')
-    .select('id')
+  if (siSigue) {
+    q = siSigue.fecha === null ? q.is('due_date', null) : q.eq('due_date', siSigue.fecha)
+    q = siSigue.hora === null ? q.is('due_time', null) : q.eq('due_time', siSigue.hora)
+  }
+  const { data, error } = await q.select('id')
   if (error) throw new Error(`posponerTarea: ${error.message}`)
   return (data ?? []).length > 0
+}
+
+/**
+ * Completa las copias hermanas de una tarea de entrada (una por coordinadora): mismo proceso,
+ * clase, canal y título. Sin esto, la otra coordinadora seguiría con el aviso de un lead que
+ * ya se atendió (pregunta 5 al dueño). Devuelve cuántas cerró.
+ */
+export async function completarCopiasDeEntrada(id: string, autorId: string | null): Promise<number> {
+  const db = getAdmin()
+  const { data: t, error } = await db.from('tasks').select('type, channel, deal_id, title').eq('id', id).maybeSingle()
+  if (error) throw new Error(`completarCopiasDeEntrada (leer): ${error.message}`)
+  const fila = t as { type: string; channel: string | null; deal_id: string | null; title: string } | null
+  if (!fila || fila.type !== 'update_contact' || fila.channel !== 'call' || !fila.deal_id) return 0
+  const { data, error: e2 } = await db
+    .from('tasks')
+    .update({ status: 'completed', completed_at: new Date().toISOString(), completed_by: autorId })
+    .eq('deal_id', fila.deal_id)
+    .eq('type', 'update_contact')
+    .eq('channel', 'call')
+    .eq('title', fila.title)
+    .eq('status', 'pending')
+    .neq('id', id)
+    .select('id')
+  if (e2) throw new Error(`completarCopiasDeEntrada: ${e2.message}`)
+  return (data ?? []).length
 }

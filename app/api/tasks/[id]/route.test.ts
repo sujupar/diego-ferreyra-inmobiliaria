@@ -15,6 +15,7 @@ const m = vi.hoisted(() => ({
   dismissTask: vi.fn(),
   reabrirTarea: vi.fn(),
   posponerTarea: vi.fn(),
+  completarCopiasDeEntrada: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-role', () => ({
@@ -24,6 +25,7 @@ vi.mock('@/lib/supabase/tasks', () => ({
   leerTareaParaCambio: m.leerTareaParaCambio,
   reabrirTarea: m.reabrirTarea,
   posponerTarea: m.posponerTarea,
+  completarCopiasDeEntrada: m.completarCopiasDeEntrada,
   completeTask: m.completeTask,
   dismissTask: m.dismissTask,
 }))
@@ -159,7 +161,7 @@ describe('PUT /api/tasks/[id] — reabrir y posponer (crm-tareas-y-campanita)', 
     const r = await put({ action: 'posponer', due_date: '2026-11-24', due_time: '11:45' })
     expect(r.status).toBe(200)
     expect(await r.json()).toEqual({ success: true, anterior: { due_date: '2026-11-20', due_time: null } })
-    expect(m.posponerTarea).toHaveBeenCalledWith(ID, '2026-11-24', '11:45')
+    expect(m.posponerTarea).toHaveBeenCalledWith(ID, '2026-11-24', '11:45', undefined)
   })
   it('posponer a un momento pasado o mal escrito → 400', async () => {
     const r = await put({ action: 'posponer', due_date: '2026-11-24', due_time: '10:00' })
@@ -170,10 +172,25 @@ describe('PUT /api/tasks/[id] — reabrir y posponer (crm-tareas-y-campanita)', 
     expect(m.posponerTarea).not.toHaveBeenCalled()
   })
   it('el "Deshacer" vuelve a una fecha vencida o a sin fecha', async () => {
-    expect((await put({ action: 'posponer', deshacer: true, due_date: '2026-11-20', due_time: null })).status).toBe(200)
-    expect(m.posponerTarea).toHaveBeenLastCalledWith(ID, '2026-11-20', null)
-    expect((await put({ action: 'posponer', deshacer: true, due_date: null, due_time: null })).status).toBe(200)
-    expect(m.posponerTarea).toHaveBeenLastCalledWith(ID, null, null)
+    expect((await put({ action: 'posponer', deshacer: true, due_date: '2026-11-20', due_time: null, desde_fecha: '2026-11-24', desde_hora: '11:45' })).status).toBe(200)
+    expect(m.posponerTarea).toHaveBeenLastCalledWith(ID, '2026-11-20', null, { fecha: '2026-11-24', hora: '11:45:00' })
+    expect((await put({ action: 'posponer', deshacer: true, due_date: null, due_time: null, desde_fecha: '2026-11-25', desde_hora: '09:00' })).status).toBe(200)
+    expect(m.posponerTarea).toHaveBeenLastCalledWith(ID, null, null, { fecha: '2026-11-25', hora: '09:00:00' })
+  })
+  it('el "Deshacer" no pisa un cambio posterior → 409', async () => {
+    m.posponerTarea.mockResolvedValue(false)
+    const r = await put({ action: 'posponer', deshacer: true, due_date: null, due_time: null, desde_fecha: '2026-11-25', desde_hora: '09:00' })
+    expect(r.status).toBe(409)
+    expect((await r.json()).error).toBe('Esa tarea cambió mientras tanto: no se pudo deshacer.')
+  })
+  it('completar cierra también la copia de la otra coordinadora (si falla, igual 200)', async () => {
+    m.completarCopiasDeEntrada.mockResolvedValue(1)
+    expect((await put({ action: 'complete' })).status).toBe(200)
+    expect(m.completarCopiasDeEntrada).toHaveBeenCalledWith(ID, 'asesor-1')
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    m.completarCopiasDeEntrada.mockRejectedValue(new Error('x'))
+    expect((await put({ action: 'complete' })).status).toBe(200)
+    err.mockRestore()
   })
   it('posponer una que ya no está pendiente → 409', async () => {
     m.posponerTarea.mockResolvedValue(false)

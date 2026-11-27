@@ -32,6 +32,7 @@
     "lib/supabase/linea-de-tiempo*.ts",
     "lib/supabase/agenda-tareas*.ts",
     "scripts/apply-crm-linea-de-tiempo-pg.ts",
+    "scripts/apply-tareas-entrada-pg.ts",
     "app/api/contacts/**/*.ts",
     "app/api/appraisals/[id]/contact/route.ts",
     "app/api/tasks/**/*.ts",
