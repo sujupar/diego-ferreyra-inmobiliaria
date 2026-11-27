@@ -63,7 +63,7 @@ describe('POST /api/deals/[id]/undo-lost', () => {
     const res = await post()
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ ok: true, stage: 'request' })
-    expect(m.deshacerPerdido).toHaveBeenCalledWith(ID, { volverA: 'request', limpiarLostAt: true })
+    expect(m.deshacerPerdido).toHaveBeenCalledWith(ID, { volverA: 'request', limpiarLostAt: true, autorId: 'coord-1' })
     expect(m.syncMailchimpBestEffort).toHaveBeenCalledTimes(1)
     expect(m.syncMailchimpBestEffort).toHaveBeenCalledWith(ID)
   })
@@ -77,7 +77,7 @@ describe('POST /api/deals/[id]/undo-lost', () => {
   it('un lost_at viejo (de otro descarte) no se limpia', async () => {
     m.proceso = { ...m.proceso!, lost_at: hace(60 * 24 * 30) }
     await post()
-    expect(m.deshacerPerdido).toHaveBeenCalledWith(ID, { volverA: 'request', limpiarLostAt: false })
+    expect(m.deshacerPerdido).toHaveBeenCalledWith(ID, { volverA: 'request', limpiarLostAt: false, autorId: 'coord-1' })
   })
 
   it('fuera de tiempo (hace 11 minutos) → 409, sin update y sin Mailchimp', async () => {

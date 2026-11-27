@@ -13,25 +13,26 @@ import { ETAPAS_CON_VISITA_PENDIENTE } from '@/lib/pipeline/visita-datos'
  * abogado no entra al pipeline. Hallazgo de la revisión adversarial 2026-09-14:
  * antes alcanzaba con tener sesión para leer o pisar la visita de cualquiera.
  */
-async function autorizar(id: string): Promise<NextResponse | null> {
+async function autorizar(id: string): Promise<{ bloqueo: NextResponse } | { bloqueo: null; userId: string }> {
   const user = await requireAuth()
-  if (user.profile.role === 'abogado') return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-  if (!(await canAccessDeal(user, id))) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
-  return null
+  if (user.profile.role === 'abogado') return { bloqueo: NextResponse.json({ error: 'forbidden' }, { status: 403 }) }
+  if (!(await canAccessDeal(user, id))) return { bloqueo: NextResponse.json({ error: 'forbidden' }, { status: 403 }) }
+  // Quién pide: el autor de la etapa si la visita se marca (crm-linea-de-tiempo D1).
+  return { bloqueo: null, userId: user.id }
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const bloqueo = await autorizar(id)
-  if (bloqueo) return bloqueo
+  const a = await autorizar(id)
+  if (a.bloqueo) return a.bloqueo
   const data = await getVisitData(id)
   return NextResponse.json({ data })
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const bloqueo = await autorizar(id)
-  if (bloqueo) return bloqueo
+  const a = await autorizar(id)
+  if (a.bloqueo) return a.bloqueo
   const body = await req.json()
   const { snapshot, complete } = body
   // Las secciones nuevas (portales, landing) terminan en prefills y prompts:
@@ -48,6 +49,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const pendiente = !!datos && (ETAPAS_CON_VISITA_PENDIENTE as readonly string[]).includes(datos.stage)
     if (datos && pendiente && datos.faltan.length > 0) return respuestaDatosIncompletos(id, datos.faltan)
   }
-  const etapaMovida = complete ? await markVisitCompleted(id) : false
+  const etapaMovida = complete ? await markVisitCompleted(id, a.userId) : false
   return NextResponse.json({ data: saved, ...(complete && !etapaMovida ? { etapaSinCambios: true } : {}) })
 }

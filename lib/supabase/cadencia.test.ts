@@ -113,7 +113,7 @@ describe('aplicarCadencia', () => {
     const escrituras = m.orden.filter((x) => ['cerrar', 'crear', 'leerTareas'].includes(x))
     expect(escrituras).toEqual(['cerrar', 'crear', 'leerTareas'])
     expect(m.orden.indexOf('pendientes')).toBeLessThan(m.orden.indexOf('cerrar'))
-    expect(m.closeTasksByActivity).toHaveBeenCalledWith(['t-entrada'], 'act-1')
+    expect(m.closeTasksByActivity).toHaveBeenCalledWith(['t-entrada'], 'act-1', 'coord-1')
     expect(m.createCadenceTask).toHaveBeenCalledWith({
       type: 'follow_up',
       title: 'Llamada 2 a [TEST] Ana',
@@ -206,7 +206,7 @@ describe('aplicarCadencia', () => {
     const a = actividad({ kind: 'whatsapp_sent', call_outcome: null })
     m.intentosNoAnulados.mockResolvedValue([intento(a)])
     const r = await aplicarCadencia(a, COORD)
-    expect(m.closeTasksByActivity).toHaveBeenCalledWith(['t-wa'], 'act-1')
+    expect(m.closeTasksByActivity).toHaveBeenCalledWith(['t-wa'], 'act-1', 'coord-1')
     expect(m.createCadenceTask).not.toHaveBeenCalled()
     expect(r.intento).toBeNull()
     expect(r.cadencia.motivoSinTarea).toBe('secuencia_terminada')

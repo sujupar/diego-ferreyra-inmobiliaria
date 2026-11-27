@@ -103,7 +103,7 @@ async function main() {
       continue
     }
     try {
-      await linkPropertyToDeal(v.dealId, v.propertyId)
+      await linkPropertyToDeal(v.dealId, v.propertyId, null) // script: sin autor
       if (Object.keys(v.heredar).length > 0) {
         const { error } = await db.from('properties')
           .update({ ...v.heredar, updated_at: new Date().toISOString() }).eq('id', v.propertyId)

@@ -278,7 +278,7 @@ export async function marcarInformeListo(i: Informe, pdfPath: string, userId: st
   // La tarea de Pendientes que creó el ciclo se cierra sola si la propiedad no tiene otro informe del ciclo
   // por completar. Si falla, el informe igual quedó listo: la tarea se cierra a mano.
   try {
-    await datos.cerrarTareasDelInforme(i.propertyId)
+    await datos.cerrarTareasDelInforme(i.propertyId, userId)
   } catch (e) {
     console.error('[informes] no se pudo cerrar la tarea del informe', i.propertyId, e)
   }

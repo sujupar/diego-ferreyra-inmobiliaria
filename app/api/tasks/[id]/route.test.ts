@@ -47,7 +47,7 @@ describe('PUT /api/tasks/[id]', () => {
   it('el asesor completa su propia tarea → 200', async () => {
     const res = await put({ action: 'complete' })
     expect(res.status).toBe(200)
-    expect(m.completeTask).toHaveBeenCalledWith(ID)
+    expect(m.completeTask).toHaveBeenCalledWith(ID, 'asesor-1')
   })
 
   it('el asesor descarta su propia tarea → 200', async () => {
@@ -76,7 +76,7 @@ describe('PUT /api/tasks/[id]', () => {
     m.leerAsignadoDeTarea.mockResolvedValue({ assigned_to: 'asesor-9' })
     const res = await put({ action: 'complete' })
     expect(res.status).toBe(200)
-    expect(m.completeTask).toHaveBeenCalledWith(ID)
+    expect(m.completeTask).toHaveBeenCalledWith(ID, `${rol}-1`)
   })
 
   it('el abogado completa su tarea de revisión legal → 200; la de otro → 403', async () => {

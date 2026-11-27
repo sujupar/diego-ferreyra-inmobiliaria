@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
       neighborhood: c.barrio,
       rooms: c.ambientes,
       stage: etapaInicial(motivo),
-    })
+    }, propioId)
 
     // Sin emails ni tareas: el trabajo ya lo hizo la persona que está cargando
     // esto. `debeNotificarCreacion` deja la decisión escrita y testeada.

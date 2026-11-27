@@ -158,10 +158,11 @@ export async function leerAsignadoDeTarea(id: string): Promise<{ assigned_to: st
   return fila ? { assigned_to: fila.assigned_to ?? null } : null
 }
 
-export async function completeTask(id: string) {
+/** `autorId`: quién la completó (crm-linea-de-tiempo D2; la línea de tiempo lo muestra). */
+export async function completeTask(id: string, autorId: string | null) {
   const { error } = await getAdmin()
     .from('tasks')
-    .update({ status: 'completed', completed_at: new Date().toISOString() })
+    .update({ status: 'completed', completed_at: new Date().toISOString(), completed_by: autorId })
     .eq('id', id)
   if (error) throw error
 }
@@ -274,11 +275,16 @@ export async function createCadenceTask(
  * Solo toca las que siguen pendientes: correrlo dos veces no cambia nada la segunda.
  * Devuelve los ids que cerró de verdad.
  */
-export async function closeTasksByActivity(ids: string[], activityId: string): Promise<string[]> {
+export async function closeTasksByActivity(ids: string[], activityId: string, autorId: string | null): Promise<string[]> {
   if (ids.length === 0) return []
   const { data, error } = await getAdmin()
     .from('tasks')
-    .update({ status: 'completed', completed_at: new Date().toISOString(), closed_by_activity_id: activityId })
+    .update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      completed_by: autorId, // quien registró la actividad que la cierra (crm-linea-de-tiempo D2)
+      closed_by_activity_id: activityId,
+    })
     .in('id', ids)
     .eq('status', 'pending')
     .select('id')
@@ -315,7 +321,7 @@ export async function undoTasksOfActivity(activityId: string): Promise<{ descart
   for (const { id } of (cerradas ?? []) as { id: string }[]) {
     const { data, error } = await supabase
       .from('tasks')
-      .update({ status: 'pending', completed_at: null, closed_by_activity_id: null })
+      .update({ status: 'pending', completed_at: null, completed_by: null, closed_by_activity_id: null })
       .eq('id', id)
       .eq('status', 'completed')
       .select('id')
