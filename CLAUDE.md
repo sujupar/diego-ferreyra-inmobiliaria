@@ -2749,7 +2749,7 @@ Change archivado en `openspec/changes/archive/2026-11-27-crm-tareas-y-campanita/
   - rutas `GET /api/tasks/agenda`, `GET /api/tasks/avisos` y `PUT /api/tasks/[id]` con `reopen` y `posponer`;
   - pantalla en `components/tareas/` (`Campanita` en el layout, `Pendientes` en `/tasks`, `NuevaTarea`, `HojaPosponer`).
 - **`AddTaskDialog`** quedó como envoltorio del formulario único. Sus pantallas no cambian.
-- **El Inicio** sigue con `GET /api/tasks` y `getMyTasks` (tope de 50, sin futuras) hasta `crm-inicio`, así que muestra otro número que Pendientes.
+- **El Inicio** usa la misma agenda desde `crm-inicio` (PR #102; ver la sección siguiente).
 - **Cuándo suena:** con hora, a esa hora. De todo el día, desde las 9:00. Sin fecha, nunca. Antes de `INICIO_AVISOS` (00:00 del 27/11/2026), tampoco.
 - **Toda mutación de tareas emite `tareas:cambio`** (`components/tareas/acciones.ts`) para que la campanita se actualice. Una pantalla nueva que cree, complete o posponga tareas tiene que usar esas acciones o emitir el evento.
 - **La tarea de entrada de una solicitud de TASACIÓN nace con fecha** (`tareaDeCoordinacion`, a partir de `registradoEn`) y canal `call`:
@@ -2762,7 +2762,20 @@ Change archivado en `openspec/changes/archive/2026-11-27-crm-tareas-y-campanita/
   - **Sin esto, la campanita se llena:** de 126 tareas de entrada en 60 días se había completado 1.
 - **Copias de la coordinación:** completar una copia de la entrada completa la otra, y "Deshacer" las reabre (salvo que el proceso ya haya salido de Solicitud).
 - **Netlify:** la vista previa falló dos veces en el primer build de un commit nuevo y pasó al reintentar sin cambios. Si un deploy falla y el build local (`npx next build` en `~/Dev`) anda, reintentar primero.
-- **Falla vieja, no de este PR:** `app/(dashboard)/inicio/page.test.tsx` ("2 avisos sin identificar") ya fallaba en `main`.
+- **Falla vieja, no de este PR:** `app/(dashboard)/inicio/page.test.tsx` ("2 avisos sin identificar") ya fallaba en `main`. La arregló `crm-inicio`.
+
+## CRM — Inicio por rol (PR #102, 2026-11-27)
+
+Change archivado en `openspec/changes/archive/2026-11-27-crm-inicio/` (auditoría de artefactos, revisión de código, QA y cierre en `auditoria.md`).
+
+- **Piezas:** reglas puras en `lib/crm/inicio.ts`; lectura en `lib/supabase/inicio.ts` (`leerInicio`); `GET /api/inicio`; pantalla en `components/inicio/Inicio.tsx`. La página `app/(dashboard)/inicio/page.tsx` es de SERVIDOR y le pasa al cliente solo el rol (un string).
+- **Quién ve qué:** coordinador, asesor, admin y dueño ven el Inicio nuevo (admin y dueño, la misma "vista del dueño", de solo lectura). Los demás roles siguen con `components/inicio/InicioClasico.tsx`. El abogado entra igual a `/properties/review`.
+- **La cola "Para llamar ahora" es UNA para las dos coordinadoras:** lee las tareas de llamada de TODAS las coordinadoras. Para eso la coordinación lee la cartera COMPLETA (vista del dueño) en el servidor, y cada bloque devuelve solo lo suyo. **No pasar la cartera completa al navegador.**
+- **Toda lectura que pueda pasar de 1000 filas va con `todas()`** (de a 1000, orden por id, tope 20.000 y error al pasarlo). La revisión encontró tres lecturas que PostgREST cortaba en silencio.
+- **Ningún bloque muestra vacío o cero en vez de error:** si una fuente de la cartera falla o viene cortada, los bloques que dependen de ella llegan con `ok:false`. Cada bloque tiene 15 s de plazo.
+- **"Registrar" abre `/contacts/<id>?registrar=1`:** la ficha abre "Registrar llamada" y saca el parámetro de la dirección.
+- **Trampa de la hoja del celular (`HojaAgregar`):** al abrirla directo en una vista desde `onOpenAutoFocus`, `flushSync` no llega a dibujarla y el foco quedaba en la página. Se reintenta en el cuadro siguiente. **happy-dom no lo reproduce:** solo se ve en el navegador real.
+- **Teléfonos:** hay guardados como `1155550142` y como `+5491155550142`. Para mostrar, usar `telVisible` (de `components/inicio/Inicio.tsx`), que normaliza los dos.
 
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
