@@ -2739,6 +2739,31 @@ Change archivado en `openspec/changes/archive/2026-11-27-crm-linea-de-tiempo/` (
   - 6 contactos tienen el teléfono cargado con el "15" del celular y no coinciden con ningún WhatsApp.
 
 
+## CRM — Tareas y campanita (PR #100, 2026-11-27)
+
+Change archivado en `openspec/changes/archive/2026-11-27-crm-tareas-y-campanita/` (3 rondas de auditoría y QA en `auditoria.md`).
+
+- **Piezas:**
+  - reglas puras en `lib/tareas/agenda.ts` (tipo, grupo, cuándo suena, posponer, entrada del lead) y `lib/tareas/enlace.ts`;
+  - lecturas en `lib/supabase/agenda-tareas.ts`;
+  - rutas `GET /api/tasks/agenda`, `GET /api/tasks/avisos` y `PUT /api/tasks/[id]` con `reopen` y `posponer`;
+  - pantalla en `components/tareas/` (`Campanita` en el layout, `Pendientes` en `/tasks`, `NuevaTarea`, `HojaPosponer`).
+- **`AddTaskDialog`** quedó como envoltorio del formulario único. Sus pantallas no cambian.
+- **El Inicio** sigue con `GET /api/tasks` y `getMyTasks` (tope de 50, sin futuras) hasta `crm-inicio`, así que muestra otro número que Pendientes.
+- **Cuándo suena:** con hora, a esa hora. De todo el día, desde las 9:00. Sin fecha, nunca. Antes de `INICIO_AVISOS` (00:00 del 27/11/2026), tampoco.
+- **Toda mutación de tareas emite `tareas:cambio`** (`components/tareas/acciones.ts`) para que la campanita se actualice. Una pantalla nueva que cree, complete o posponga tareas tiene que usar esas acciones o emitir el evento.
+- **La tarea de entrada de una solicitud de TASACIÓN nace con fecha** (`tareaDeCoordinacion`, a partir de `registradoEn`) y canal `call`:
+  - si entró en horario hábil, vence en el registro y se lee "Espera hace…";
+  - si no, vence el día hábil siguiente a las 9:00.
+- **La de la clase gratuita nace sin fecha, a propósito.** Su proceso nunca pasa por Solicitud: si tuviera fecha, sonaría para siempre.
+- **Trigger `trg_deals_cerrar_tareas_de_entrada`** (`20261127000003`, aplicado y verificado con `scripts/apply-tareas-entrada-pg.ts`):
+  - completa las tareas de entrada nuevas (`update_contact` + `call`) cuando el proceso sale de Solicitud;
+  - en "Deshacer perdido" reabre solo las que él cerró.
+  - **Sin esto, la campanita se llena:** de 126 tareas de entrada en 60 días se había completado 1.
+- **Copias de la coordinación:** completar una copia de la entrada completa la otra, y "Deshacer" las reabre (salvo que el proceso ya haya salido de Solicitud).
+- **Netlify:** la vista previa falló dos veces en el primer build de un commit nuevo y pasó al reintentar sin cambios. Si un deploy falla y el build local (`npx next build` en `~/Dev`) anda, reintentar primero.
+- **Falla vieja, no de este PR:** `app/(dashboard)/inicio/page.test.tsx` ("2 avisos sin identificar") ya fallaba en `main`.
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.
