@@ -6,20 +6,16 @@ import { estadoCadencia, type IntentoDeCadencia } from './cadencia'
 import { sinPrimerContacto, type FilaCartera } from './cartera'
 import { textoEspera } from './cartera-trabado'
 import { NOMBRE_ETAPA, type EtapaCRM } from './etapas'
-import { diaCorto, duracion, fechaRelativa, haceCuanto, textoVencimiento } from './formato-fecha'
+import { diaCorto, duracion, fechaRelativa, haceCuanto } from './formato-fecha'
 import { diasDeCalendarioEntre, enArgentina, instanteDesdeAR, minutosHabilesEntre } from './horario-laboral'
 import { INICIO_REGISTRO_CONTACTOS } from './ultimo-contacto'
 import type { TareaDeAgenda } from '@/lib/supabase/agenda-tareas'
-
-const ES_LLAMADA = /^(Primera llamada|Llamada \d+)$/
 
 /** "18 nov" (la maqueta, en "Se registró 18 nov"). */
 function diaYMes(iso: string): string {
   return diaCorto(enArgentina(new Date(iso)).fecha).replace(/^\S+\s/, '')
 }
 
-type Proximo = Exclude<FilaCartera['proximo'], null | 'error'>
-const proximoDe = (f: FilaCartera): Proximo | null => (f.proximo && f.proximo !== 'error' ? f.proximo : null)
 const ultimoDe = (f: FilaCartera) => (f.ultimoContacto && f.ultimoContacto !== 'error' ? f.ultimoContacto : null)
 
 export interface PersonaDelInicio {

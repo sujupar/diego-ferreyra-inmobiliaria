@@ -28,11 +28,6 @@ function fila(o: Partial<FilaCartera>): FilaCartera {
     colega: false, anteriorAlRegistro: false, ultimoContacto: null, proximo: null, tasacion: null, ...o,
   }
 }
-const _proximo = (o: Partial<Exclude<FilaCartera['proximo'], null | 'error'>>) => ({
-  clase: 'tarea' as const, titulo: 'Primera llamada', vence: { due_date: '2026-11-25', due_time: '09:00', all_day: false },
-  quien: { id: COORD, nombre: 'Paula' }, espera: null, instante: ar('2026-11-25', '09:00').toISOString(), ...o,
-})
-
 const tarea = (o: Record<string, unknown>) => ({
   id: 't', deal_id: 'd1', title: 'Llamada', tipo: 'llamada' as const, due_date: '2026-11-25', due_time: '09:00', todoElDia: false,
   vencimiento: { texto: 'Vencida hace 1 h', estado: 'vencida' }, enlace: '/x', contacto: { id: 'c1', nombre: 'M' },

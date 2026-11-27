@@ -161,7 +161,7 @@ function fechaLocalHoy(): string {
   return `${d.getFullYear()}-${mes}-${dia}`
 }
 
-export default function InicioPage() {
+export function InicioClasico() {
   const [identidad, setIdentidad] = useState<Identidad | null>(null)
   const [cargandoIdentidad, setCargandoIdentidad] = useState(true)
   const [errorIdentidad, setErrorIdentidad] = useState(false)

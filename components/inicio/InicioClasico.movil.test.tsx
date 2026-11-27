@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import InicioPage from './page'
+import { InicioClasico as InicioPage } from './InicioClasico'
 
 /**
  * Piso móvil de Inicio.
