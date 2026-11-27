@@ -49,6 +49,7 @@
     "lib/supabase/rpc-paginado.ts",
     "scripts/apply-crm-cartera-pg.ts",
     "scripts/_qa-cartera-lectura.ts",
+    "scripts/cartera.probe.tsx",
     "components/nav/**/*.tsx",
     "components/dashboard/Topbar.tsx"
   ],
