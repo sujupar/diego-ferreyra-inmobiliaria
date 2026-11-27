@@ -123,6 +123,8 @@ export function construirTrabajos(d: DatosDelEnvio): TrabajoEncolable[] {
         dealId: d.dealId,
         contactId: d.contactId,
         nombre: d.nombre,
+        // El vencimiento de la tarea de entrada sale del registro, no de cuándo corre el worker.
+        registradoEn: new Date(d.eventTimeUnixSeconds * 1000).toISOString(),
       },
     },
     { kind: 'notify', payload: { funnel: d.funnel, dealId: d.dealId } },
