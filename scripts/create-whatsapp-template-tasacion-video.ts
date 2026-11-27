@@ -116,7 +116,7 @@ async function main() {
   if (usar !== SIN_VIDEO) {
     console.log('Antes de ponerla en Netlify:')
     console.log('  1. scripts/sincronizar-cuerpos-plantillas.ts (y commitear cuerpos-aprobados.ts + deployar)')
-    console.log('  2. CAMBIO_DESDE en lib/metrics/panel/video-bienvenida.ts con la fecha de activación')
+    console.log(`  2. WHATSAPP_TEMPLATE_TASACION=${usar} en Netlify (la fecha del cambio para Métricas sale sola del primer envío)`)
   }
 }
 
