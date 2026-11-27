@@ -42,3 +42,32 @@ Sin fugas de datos: el asesor filtra por su id en todas las lecturas; la coordin
 | 9 | "Tasaciones" se escondía vacía sin estar en la spec | Agregado a la spec |
 | 10 | "Registrar" sin contacto no abría el formulario | Sin contacto no se ofrece. Prueba |
 | 11 | `?registrar=1` volvía a abrir el formulario al recargar | Se saca de la dirección al abrirlo. Prueba |
+
+## QA en la vista previa (tarea 4.3)
+
+Seis casos `[TEST]` (origin vacío, emails suprimidos, borrados al terminar: 0 filas). 3 roles × 390/1024/1280 px.
+
+- Cada caso cae en su bloque: "Llamada 2 · Vencida hace 1 h" con la tarea a nombre de la OTRA coordinadora; "Llamada 1 · Espera"; "WhatsApp enviado hace 3 h · 2 llamadas sin atender"; "Sin tarea pendiente · … · 1 llamada"; tasación "Mañana 10:00"; "Entregar la tasación: la visita fue hace 4 días."; visita de hoy.
+- Dos columnas desde 1024 px, una en el celular, sin desborde. Orden del DOM = orden de lectura.
+- Dueño: 0 botones de llamar, registrar o tildar. Asesor: por la red solo `procesos, tareas, visitas`. Abogado: Inicio de siempre y 403 en `/api/inicio`.
+- Tildar → "Tarea completada · Deshacer" → la tarea vuelve habilitada y `pending` en la base.
+- `/api/inicio`: 0,9–1,6 s. Consola: sin errores (solo el 403 provocado con el abogado).
+- Encontrado y corregido en el QA: en el celular "Registrar" abría la hoja con el foco en la página (defecto previo de la hoja, también desde la ficha); teléfonos guardados con `+549` se veían crudos; iniciales "[I"; el tiempo medio sin promedio no decía cuántos esperan.
+
+## Auditoría de cierre (tarea 5.1)
+
+Escenario por escenario de la spec, con su evidencia:
+
+| Requisito | Evidencia |
+|---|---|
+| Un Inicio para cada rol (saludo, abogado, bloque que falla) | QA en vivo + `Inicio.test`, `page.test`, `inicio.test` (fuente que falla) |
+| Para llamar ahora (fila, espera, antes del registro, otra coordinadora, vacío) | QA en vivo + `lib/crm/inicio.test` |
+| Registrar abre la ficha con el formulario (compu y celular) | QA en vivo (foco en "No atendió" en los dos) |
+| Sin respuesta tras WhatsApp / Sin próximo paso | QA en vivo + pruebas de reglas y de lectura (tarea solo del contacto) |
+| Tareas de hoy y para mañana (completar, Deshacer, asesor sin tareas) | QA en vivo + `Inicio.test` |
+| Tasaciones y números del día | QA en vivo + `inicio.test` (origin `embudo`, anuladas fuera) |
+| Lo del asesor (visita sin entregar, solo lo suyo) | QA en vivo (por la red) + `inicio.test` |
+| Lo del dueño (pocos casos, sin datos, solo lectura) | QA en vivo + `Inicio.test` |
+| Aviso de consultas sin propiedad | QA en vivo ("39 avisos sin propiedad") + `InicioClasico.test` |
+
+Sin pendientes que bloqueen. Queda para vigilar: si la cartera completa supera 3000 procesos, la coordinación y el dueño ven sus bloques con error (no cortados); hoy no se alcanza.
