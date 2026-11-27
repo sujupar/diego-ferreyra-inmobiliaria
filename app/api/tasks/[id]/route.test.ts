@@ -4,22 +4,26 @@
  * reproduce la policy de la base (`tasks_update_assigned_or_ops`): la tarea es de quien pide,
  * o quien pide es de operaciones (`pipeline.view_all`: admin, dueño, coordinador).
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const ID = '3f2b8c1e-4d5a-4b6c-9d7e-8f9a0b1c2d3e'
 
 const m = vi.hoisted(() => ({
   estado: { role: 'asesor' as string, id: 'asesor-1' },
-  leerAsignadoDeTarea: vi.fn(),
+  leerTareaParaCambio: vi.fn(),
   completeTask: vi.fn(),
   dismissTask: vi.fn(),
+  reabrirTarea: vi.fn(),
+  posponerTarea: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-role', () => ({
   requireAuth: vi.fn(async () => ({ id: m.estado.id, email: 'x@ejemplo.com', profile: { id: m.estado.id, role: m.estado.role } })),
 }))
 vi.mock('@/lib/supabase/tasks', () => ({
-  leerAsignadoDeTarea: m.leerAsignadoDeTarea,
+  leerTareaParaCambio: m.leerTareaParaCambio,
+  reabrirTarea: m.reabrirTarea,
+  posponerTarea: m.posponerTarea,
   completeTask: m.completeTask,
   dismissTask: m.dismissTask,
 }))
@@ -38,7 +42,7 @@ const como = (role: string, id: string) => {
 beforeEach(() => {
   vi.clearAllMocks()
   como('asesor', 'asesor-1')
-  m.leerAsignadoDeTarea.mockResolvedValue({ assigned_to: 'asesor-1' })
+  m.leerTareaParaCambio.mockResolvedValue({ assigned_to: 'asesor-1' })
   m.completeTask.mockResolvedValue(undefined)
   m.dismissTask.mockResolvedValue(undefined)
 })
@@ -57,7 +61,7 @@ describe('PUT /api/tasks/[id]', () => {
   })
 
   it('el asesor y la tarea de otra persona → 403 y no se toca', async () => {
-    m.leerAsignadoDeTarea.mockResolvedValue({ assigned_to: 'coord-1' })
+    m.leerTareaParaCambio.mockResolvedValue({ assigned_to: 'coord-1' })
     const res = await put({ action: 'complete' })
     expect(res.status).toBe(403)
     expect((await res.json()).error).toMatch(/otra persona/)
@@ -65,7 +69,7 @@ describe('PUT /api/tasks/[id]', () => {
   })
 
   it('el asesor y una tarea sin asignar (de rol) → 403', async () => {
-    m.leerAsignadoDeTarea.mockResolvedValue({ assigned_to: null })
+    m.leerTareaParaCambio.mockResolvedValue({ assigned_to: null })
     const res = await put({ action: 'dismiss' })
     expect(res.status).toBe(403)
     expect(m.dismissTask).not.toHaveBeenCalled()
@@ -73,7 +77,7 @@ describe('PUT /api/tasks/[id]', () => {
 
   it.each(['coordinador', 'admin', 'dueno'])('%s completa la tarea de otra persona → 200', async (rol) => {
     como(rol, `${rol}-1`)
-    m.leerAsignadoDeTarea.mockResolvedValue({ assigned_to: 'asesor-9' })
+    m.leerTareaParaCambio.mockResolvedValue({ assigned_to: 'asesor-9' })
     const res = await put({ action: 'complete' })
     expect(res.status).toBe(200)
     expect(m.completeTask).toHaveBeenCalledWith(ID, `${rol}-1`)
@@ -81,21 +85,21 @@ describe('PUT /api/tasks/[id]', () => {
 
   it('el abogado completa su tarea de revisión legal → 200; la de otro → 403', async () => {
     como('abogado', 'abogado-1')
-    m.leerAsignadoDeTarea.mockResolvedValue({ assigned_to: 'abogado-1' })
+    m.leerTareaParaCambio.mockResolvedValue({ assigned_to: 'abogado-1' })
     expect((await put({ action: 'complete' })).status).toBe(200)
-    m.leerAsignadoDeTarea.mockResolvedValue({ assigned_to: 'asesor-1' })
+    m.leerTareaParaCambio.mockResolvedValue({ assigned_to: 'asesor-1' })
     expect((await put({ action: 'complete' })).status).toBe(403)
     expect(m.completeTask).toHaveBeenCalledTimes(1)
   })
 
   it('rol viejo `agent` y la tarea de otro → 403', async () => {
     como('agent', 'agent-1')
-    m.leerAsignadoDeTarea.mockResolvedValue({ assigned_to: 'asesor-1' })
+    m.leerTareaParaCambio.mockResolvedValue({ assigned_to: 'asesor-1' })
     expect((await put({ action: 'complete' })).status).toBe(403)
   })
 
   it('tarea que no existe → 404', async () => {
-    m.leerAsignadoDeTarea.mockResolvedValue(null)
+    m.leerTareaParaCambio.mockResolvedValue(null)
     const res = await put({ action: 'complete' })
     expect(res.status).toBe(404)
     expect(m.completeTask).not.toHaveBeenCalled()
@@ -104,7 +108,7 @@ describe('PUT /api/tasks/[id]', () => {
   it('id que no es uuid → 404 sin consultar la base', async () => {
     const res = await put({ action: 'complete' }, 'no-es-un-id')
     expect(res.status).toBe(404)
-    expect(m.leerAsignadoDeTarea).not.toHaveBeenCalled()
+    expect(m.leerTareaParaCambio).not.toHaveBeenCalled()
   })
 
   it('acción desconocida → 400 sin tocar nada', async () => {
@@ -115,9 +119,64 @@ describe('PUT /api/tasks/[id]', () => {
   })
 
   it('falla la lectura → 500 sin el detalle', async () => {
-    m.leerAsignadoDeTarea.mockRejectedValue(new Error('detalle interno'))
+    m.leerTareaParaCambio.mockRejectedValue(new Error('detalle interno'))
     const res = await put({ action: 'complete' })
     expect(res.status).toBe(500)
     expect(JSON.stringify(await res.json())).not.toContain('detalle interno')
+  })
+})
+
+describe('PUT /api/tasks/[id] — reabrir y posponer (crm-tareas-y-campanita)', () => {
+  const ar = (f: string, h: string) => new Date(`${f}T${h}:00-03:00`)
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(ar('2026-11-24', '10:42'))
+    m.reabrirTarea.mockResolvedValue('ok')
+    m.posponerTarea.mockResolvedValue(true)
+    m.leerTareaParaCambio.mockResolvedValue({ assigned_to: 'asesor-1', status: 'pending', due_date: '2026-11-20', due_time: null, all_day: true })
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('reabrir la propia → 200', async () => {
+    expect((await put({ action: 'reopen' })).status).toBe(200)
+    expect(m.reabrirTarea).toHaveBeenCalledWith(ID)
+  })
+  it('reabrir una que no estaba completada o con otra igual pendiente → 409', async () => {
+    m.reabrirTarea.mockResolvedValueOnce('no_estaba_completada').mockResolvedValueOnce('conflicto')
+    expect((await put({ action: 'reopen' })).status).toBe(409)
+    const r = await put({ action: 'reopen' })
+    expect(r.status).toBe(409)
+    expect((await r.json()).error).toBe('Ya hay otra tarea igual pendiente.')
+  })
+  it('reabrir o posponer una ajena siendo asesor → 403', async () => {
+    m.leerTareaParaCambio.mockResolvedValue({ assigned_to: 'asesor-9', status: 'completed', due_date: null, due_time: null, all_day: true })
+    expect((await put({ action: 'reopen' })).status).toBe(403)
+    expect((await put({ action: 'posponer', due_date: '2026-11-25', due_time: '09:00' })).status).toBe(403)
+    expect(m.reabrirTarea).not.toHaveBeenCalled()
+    expect(m.posponerTarea).not.toHaveBeenCalled()
+  })
+  it('posponer: guarda y devuelve la fecha anterior para el "Deshacer"', async () => {
+    const r = await put({ action: 'posponer', due_date: '2026-11-24', due_time: '11:45' })
+    expect(r.status).toBe(200)
+    expect(await r.json()).toEqual({ success: true, anterior: { due_date: '2026-11-20', due_time: null } })
+    expect(m.posponerTarea).toHaveBeenCalledWith(ID, '2026-11-24', '11:45')
+  })
+  it('posponer a un momento pasado o mal escrito → 400', async () => {
+    const r = await put({ action: 'posponer', due_date: '2026-11-24', due_time: '10:00' })
+    expect(r.status).toBe(400)
+    expect((await r.json()).error).toBe('Elegí un día y una hora que todavía no hayan pasado.')
+    expect((await put({ action: 'posponer', due_date: 'mañana', due_time: '10:00' })).status).toBe(400)
+    expect((await put({ action: 'posponer', due_date: '2026-11-25' })).status).toBe(400)
+    expect(m.posponerTarea).not.toHaveBeenCalled()
+  })
+  it('el "Deshacer" vuelve a una fecha vencida o a sin fecha', async () => {
+    expect((await put({ action: 'posponer', deshacer: true, due_date: '2026-11-20', due_time: null })).status).toBe(200)
+    expect(m.posponerTarea).toHaveBeenLastCalledWith(ID, '2026-11-20', null)
+    expect((await put({ action: 'posponer', deshacer: true, due_date: null, due_time: null })).status).toBe(200)
+    expect(m.posponerTarea).toHaveBeenLastCalledWith(ID, null, null)
+  })
+  it('posponer una que ya no está pendiente → 409', async () => {
+    m.posponerTarea.mockResolvedValue(false)
+    expect((await put({ action: 'posponer', due_date: '2026-11-25', due_time: '09:00' })).status).toBe(409)
   })
 })

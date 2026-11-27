@@ -5,6 +5,7 @@ import { requireAuth } from '@/lib/auth/require-role'
 import { resolverAlcanceAsignado } from '@/lib/auth/scope'
 import { getUser } from '@/lib/auth/get-user'
 import { validateTaskInput } from '@/lib/tasks/validate-task-input'
+import { enArgentina } from '@/lib/crm/horario-laboral'
 
 export async function GET(request: NextRequest) {
   try {
@@ -47,12 +48,14 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
   try {
     const body = await request.json()
-    const today = new Date().toISOString().slice(0, 10)
+    // Hoy y la hora en Argentina (crm-tareas-y-campanita): con UTC, de 21 a 24 h no se podía
+    // agendar nada para hoy.
+    const { fecha: today, hora: horaActual } = enArgentina(new Date())
 
     // Toda tarea creada por HTTP es un follow_up de usuario. La validación + la regla
     // de autorización de asignación viven en validateTaskInput (pura, testeada). Esto
     // también evita que el cliente cree tipos de sistema (new_assignment, etc.).
-    const parsed = validateTaskInput(body, { id: user.id, role: user.profile.role }, today)
+    const parsed = validateTaskInput(body, { id: user.id, role: user.profile.role }, today, horaActual)
     if (!parsed.ok) {
       return NextResponse.json({ error: parsed.error }, { status: parsed.status })
     }

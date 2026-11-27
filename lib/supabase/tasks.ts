@@ -34,7 +34,7 @@ export interface CreateTaskInput {
   contact_id?: string | null
   // Follow-up specific (used when type === 'follow_up')
   channel?: TaskChannel
-  due_date?: string // YYYY-MM-DD
+  due_date?: string | null // YYYY-MM-DD; null = sin fecha
   due_time?: string | null // HH:MM (24h), null si all_day
   all_day?: boolean
   created_by?: string | null
@@ -365,4 +365,56 @@ export async function getTasksOfActivity(activityId: string): Promise<{
     creada: (creada as { id: string; title: string; due_date: string; due_time: string; channel: string } | null) ?? null,
     cerradas: (cerradas ?? []) as { id: string; title: string }[],
   }
+}
+
+// ---------------------------------------------------------------------------
+// Reabrir y posponer (crm-tareas-y-campanita, D3)
+// ---------------------------------------------------------------------------
+
+export interface TareaParaCambio {
+  assigned_to: string | null
+  status: string
+  due_date: string | null
+  due_time: string | null
+  all_day: boolean | null
+}
+
+export async function leerTareaParaCambio(id: string): Promise<TareaParaCambio | null> {
+  const { data, error } = await getAdmin()
+    .from('tasks').select('assigned_to, status, due_date, due_time, all_day').eq('id', id).maybeSingle()
+  if (error) throw new Error(`leerTareaParaCambio: ${error.message}`)
+  return (data as TareaParaCambio | null) ?? null
+}
+
+/**
+ * Vuelve a dejar pendiente una tarea COMPLETADA (el "Deshacer" de completar). Limpia quién y
+ * cuándo la completó y qué actividad la cerró: una pendiente no puede decir que la cerraron.
+ * `'conflicto'` si ya hay otra pendiente igual (índices únicos `uq_tasks_pending_*`, 23505);
+ * `'no_estaba_completada'` si no cambió ninguna fila.
+ */
+export async function reabrirTarea(id: string): Promise<'ok' | 'conflicto' | 'no_estaba_completada'> {
+  const { data, error } = await getAdmin()
+    .from('tasks')
+    .update({ status: 'pending', completed_at: null, completed_by: null, closed_by_activity_id: null })
+    .eq('id', id)
+    .eq('status', 'completed')
+    .select('id')
+  if (error?.code === '23505') return 'conflicto'
+  if (error) throw new Error(`reabrirTarea: ${error.message}`)
+  return (data ?? []).length > 0 ? 'ok' : 'no_estaba_completada'
+}
+
+/**
+ * Pospone (o le pone fecha a) una tarea PENDIENTE. Con hora deja de ser de todo el día; sin
+ * hora (el "Deshacer" de una de todo el día) vuelve a serlo; sin fecha, vuelve a "Sin fecha".
+ */
+export async function posponerTarea(id: string, fecha: string | null, hora: string | null): Promise<boolean> {
+  const { data, error } = await getAdmin()
+    .from('tasks')
+    .update({ due_date: fecha, due_time: hora, all_day: hora === null })
+    .eq('id', id)
+    .eq('status', 'pending')
+    .select('id')
+  if (error) throw new Error(`posponerTarea: ${error.message}`)
+  return (data ?? []).length > 0
 }
