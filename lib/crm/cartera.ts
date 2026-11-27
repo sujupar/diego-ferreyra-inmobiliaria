@@ -1,0 +1,463 @@
+// La fila de la cartera del CRM (crm-cartera-por-rol, design.md D3 y D5). Puro: sin red,
+// sin base y sin reloj propio (`ahora` llega por parámetro). El servidor arma las filas con
+// esto y el navegador solo filtra, agrupa y ordena (D4): así la ficha, el CRM, Contactos y
+// (más adelante) el Inicio dicen lo mismo de la misma persona.
+import { procesoEnVista, type Vista } from './cartera-vista'
+import { estaAbierto, etapaCRM, type EtapaCRM } from './etapas'
+import {
+  HORARIO_LABORAL,
+  diasDeCalendarioEntre,
+  enArgentina,
+  esDiaHabil,
+  instanteDesdeAR,
+  siguienteDiaHabil,
+} from './horario-laboral'
+import { tareasVisiblesEnFicha, vencimientoDeTarea } from './tareas-ficha'
+import { INICIO_REGISTRO_CONTACTOS, anteriorAlRegistro, type ContactoRegistrado } from './ultimo-contacto'
+
+/**
+ * Las tareas que cuentan para el próximo paso: llamada, seguimiento y asignación. Lista
+ * EXPLÍCITA: un tipo nuevo no entra hasta que alguien lo agregue acá. Las de propiedades
+ * (`informe_quincenal`, `review_property`, `rejected_docs`, `complete_imported_property`)
+ * no son de la persona.
+ */
+export const TIPOS_TAREA_DE_PROCESO = ['update_contact', 'follow_up', 'new_assignment'] as const
+
+/** Respuesta 2 del dueño (2026-11-26). */
+export const SIN_MOVIMIENTO_DIAS = 14
+
+/** `createTaskForRole` inserta las copias una tras otra: entre hermanas hay milisegundos. */
+const COPIAS_MS = 60_000
+
+/** Etapas en las que el proceso ya tendría que tener asesor (spec "Cuándo un proceso está trabado"). */
+const ETAPAS_CON_ASESOR: readonly EtapaCRM[] = ['coordinada', 'no_realizada', 'realizada', 'entregada', 'seguimiento']
+
+const NOMBRE_TIPO_PROPIEDAD: Record<string, string> = { departamento: 'Depto', ph: 'PH', casa: 'Casa' }
+
+export interface ProcesoLeido {
+  id: string
+  stage: string
+  scheduled_date: string | null
+  scheduled_time: string | null
+  origin: string | null
+  assigned_to: string | null
+  created_at: string
+  property_type: string | null
+  property_type_other: string | null
+  rooms: number | null
+  neighborhood: string | null
+  property_address: string | null
+  tags: string[] | null
+  captured_at: string | null
+  lost_at: string | null
+  stage_changed_at: string | null
+  contact_id: string | null
+  contacto: { id: string; full_name: string; phone: string | null; email: string | null; created_at: string } | null
+}
+
+export interface TareaLeida {
+  id: string
+  type: string
+  title: string
+  assigned_to: string | null
+  deal_id: string | null
+  contact_id: string | null
+  due_date: string | null
+  due_time: string | null
+  all_day: boolean | null
+  channel: string | null
+  created_at: string
+  source_activity_id: string | null
+  status: string
+}
+
+export interface PerfilCartera {
+  nombre: string
+  role: string
+  activo: boolean
+}
+
+export interface ProximoPaso {
+  clase: 'tarea' | 'tasacion'
+  titulo: string // 'Llamada 2' | 'Primera llamada' | 'Tasación' | 'Cargar el resultado de la tasación'
+  vence: { due_date: string | null; due_time: string | null; all_day: boolean }
+  quien: { id: string; nombre: string } | null
+  espera: { registradoEn: string } | null
+  instante: string | null // para ordenar; null = sin fecha
+}
+
+export interface TasacionDeFila {
+  fecha: string
+  hora: string | null // null = todo el día
+  // Para ordenar: la hora, o el final del día si no tiene (va después de las que tienen hora).
+  instante: string
+  asesor: string | null
+  direccion: string | null
+}
+
+export interface FilaCartera {
+  id: string
+  contactoId: string | null
+  nombre: string
+  telefono: string | null
+  email: string | null
+  propiedad: string
+  direccion: string
+  etapa: EtapaCRM
+  abierto: boolean
+  origen: string | null
+  asesor: { id: string; nombre: string; activo: boolean } | null
+  creadoEn: string
+  cerradoEn: string | null
+  colega: boolean
+  anteriorAlRegistro: boolean
+  ultimoContacto: ContactoRegistrado | null | 'error'
+  proximo: ProximoPaso | null | 'error'
+  tasacion: TasacionDeFila | null
+}
+
+export interface TareaConQuien extends TareaLeida {
+  quien: { id: string; nombre: string } | null
+}
+
+// ── Utilidades ───────────────────────────────────────────────────────────────────────────
+
+function sinMarcas(s: string): string {
+  return s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
+}
+
+/**
+ * "Llamada 2 a Sofía Lanús" → "Llamada 2". Compara sin tildes y sin mayúsculas, y sin
+ * expresiones regulares (un nombre con `(` o `*` no rompe nada). Trabaja sobre el título en
+ * NFC: así cada letra con tilde ocupa un lugar y el corte cae donde corresponde aunque el
+ * título o el nombre llegaran descompuestos (macOS). Si el nombre no está al final, el
+ * título queda como está.
+ */
+export function quitarNombreDelTitulo(titulo: string, nombre: string): string {
+  const n = sinMarcas(nombre.trim())
+  if (!n) return titulo
+  const original = titulo.normalize('NFC')
+  const plano = sinMarcas(original)
+  for (const nexo of [' a ', ' con ', ' de ']) {
+    const sufijo = nexo + n
+    if (plano.endsWith(sufijo)) return original.slice(0, plano.length - sufijo.length).trim()
+  }
+  return titulo
+}
+
+function horaHHMM(h: string | null): string | null {
+  return h ? h.slice(0, 5) : null
+}
+
+/** Instante en que vence: con hora, esa hora; con fecha sola, el final del día; sin fecha, null. */
+function instanteDeVencimiento(v: { due_date: string | null; due_time: string | null }): string | null {
+  if (!v.due_date) return null
+  try {
+    return instanteDesdeAR(v.due_date, horaHHMM(v.due_time) ?? '23:59').toISOString()
+  } catch {
+    return null
+  }
+}
+
+function esLlamada(t: { type: string; channel: string | null }): boolean {
+  return t.type === 'update_contact' || (t.type === 'follow_up' && t.channel === 'call')
+}
+
+function textoPropiedad(p: ProcesoLeido): string {
+  const tipo =
+    p.property_type === 'otro'
+      ? p.property_type_other?.trim() || null
+      : p.property_type
+        ? (NOMBRE_TIPO_PROPIEDAD[p.property_type] ?? p.property_type.charAt(0).toUpperCase() + p.property_type.slice(1))
+        : null
+  const partes = [[tipo, p.rooms ? `${p.rooms} amb` : null].filter(Boolean).join(' '), p.neighborhood?.trim() || null]
+  return partes.filter(Boolean).join(' · ')
+}
+
+function cierreDe(p: ProcesoLeido, etapa: EtapaCRM): string | null {
+  if (etapa === 'captada') return p.captured_at ?? p.stage_changed_at
+  if (etapa === 'descartado') return p.lost_at ?? p.stage_changed_at
+  return null
+}
+
+/**
+ * Vencimiento de la tarea de entrada sin fecha de un lead nuevo (D3): si entró en horario
+ * laboral, vence en el momento del registro y se dice "Espera hace …"; si entró fuera,
+ * vence a las 9:00 del día hábil siguiente (o del mismo día si entró de madrugada). Sin
+ * esto, toda solicitud nueva diría "Sin fecha" y quedaría al final, al revés de la urgencia.
+ */
+function venceDePrimeraLlamada(registradoEn: string): { due_date: string; due_time: string; espera: boolean } | null {
+  const r = new Date(registradoEn)
+  if (Number.isNaN(r.getTime())) return null
+  const ar = enArgentina(r)
+  if (esDiaHabil(ar.fecha)) {
+    if (ar.hora >= HORARIO_LABORAL.inicio && ar.hora < HORARIO_LABORAL.fin) return { due_date: ar.fecha, due_time: ar.hora, espera: true }
+    if (ar.hora < HORARIO_LABORAL.inicio) return { due_date: ar.fecha, due_time: HORARIO_LABORAL.inicio, espera: false }
+  }
+  const s = siguienteDiaHabil(r)
+  return { due_date: s.fecha, due_time: s.hora, espera: false }
+}
+
+// ── Copias de la coordinación ────────────────────────────────────────────────────────────
+
+/**
+ * `createTaskForRole` crea una copia de la tarea por cada coordinador activo; cuando una la
+ * completa, la otra queda pendiente para siempre. Copias = asignadas a coordinadores, sin
+ * `source_activity_id`, mismo proceso, tipo y título, creadas con 60 s o menos de
+ * diferencia (diferencia entre instantes, no "el mismo minuto": 12:00:59,9 y 12:01:00,1
+ * son hermanas). Si alguna hermana se cerró (completada o descartada), no cuenta ninguna;
+ * si siguen todas pendientes, cuentan una vez (`copias` dice cuántas eran). Una tarea de la
+ * cadencia (con `source_activity_id`) nunca es copia: "Enviar WhatsApp" se repite a
+ * propósito en el mismo proceso.
+ */
+export function colapsarCopiasDeCoordinacion<T extends TareaLeida>(
+  pendientes: T[],
+  cerradas: TareaLeida[],
+  esCoordinador: (id: string | null) => boolean,
+): { tarea: T; copias: number }[] {
+  const esCandidata = (t: TareaLeida) => esCoordinador(t.assigned_to) && !t.source_activity_id
+  const salida: { tarea: T; copias: number }[] = []
+  const grupos = new Map<string, { t: TareaLeida; pendiente: T | null }[]>()
+  for (const t of pendientes) {
+    if (!esCandidata(t)) {
+      salida.push({ tarea: t, copias: 1 })
+      continue
+    }
+    const k = `${t.deal_id}|${t.type}|${t.title}`
+    grupos.set(k, [...(grupos.get(k) ?? []), { t, pendiente: t }])
+  }
+  for (const t of cerradas) {
+    if (!esCandidata(t)) continue
+    const k = `${t.deal_id}|${t.type}|${t.title}`
+    const g = grupos.get(k)
+    if (g) g.push({ t, pendiente: null }) // sin pendientes en el grupo, no hay nada que anular
+  }
+  for (const g of grupos.values()) {
+    g.sort((a, b) => Date.parse(a.t.created_at) - Date.parse(b.t.created_at))
+    let racimo: typeof g = []
+    const cerrarRacimo = () => {
+      const vivas = racimo.flatMap((x) => (x.pendiente ? [x.pendiente] : []))
+      const algunaCerrada = racimo.some((x) => !x.pendiente)
+      if (vivas.length > 0 && !algunaCerrada) salida.push({ tarea: vivas[0], copias: vivas.length })
+      racimo = []
+    }
+    for (const x of g) {
+      const ultimo = racimo[racimo.length - 1]
+      if (ultimo && Date.parse(x.t.created_at) - Date.parse(ultimo.t.created_at) > COPIAS_MS) cerrarRacimo()
+      racimo.push(x)
+    }
+    cerrarRacimo()
+  }
+  return salida
+}
+
+// ── Próximo paso ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Lo primero que vence entre las tareas (ya filtradas para la vista) y la tasación del
+ * proceso. La tasación que ya pasó sigue siendo el próximo paso: "Cargar el resultado de
+ * la tasación", vencida desde ese día (13 de 15 Coordinadas estaban así el 2026-11-26);
+ * "Nada agendado" escondería trabajo atrasado. Sin hora, la tasación es de todo el día y
+ * vence recién al día siguiente (la misma regla que una tarea con fecha sola).
+ */
+export function proximoPaso(e: {
+  tareas: TareaConQuien[]
+  tasacion: TasacionDeFila | null
+  quienTasacion: { id: string; nombre: string } | null
+  etapa: EtapaCRM
+  hayContactos: boolean
+  registradoEn: string
+  nombrePersona: string
+  ahora: Date
+}): ProximoPaso | null {
+  const candidatos: (ProximoPaso & { creado: string })[] = []
+  const primeraLlamada = e.etapa === 'solicitud' && !e.hayContactos
+
+  for (const t of e.tareas) {
+    const llamada = esLlamada(t)
+    let vence = { due_date: t.due_date, due_time: horaHHMM(t.due_time), all_day: t.all_day === true }
+    let espera: ProximoPaso['espera'] = null
+    if (!t.due_date && llamada && primeraLlamada && !anteriorAlRegistro(e.registradoEn)) {
+      const calculado = venceDePrimeraLlamada(e.registradoEn)
+      if (calculado) {
+        vence = { due_date: calculado.due_date, due_time: calculado.due_time, all_day: false }
+        if (calculado.espera) espera = { registradoEn: e.registradoEn }
+      }
+    }
+    candidatos.push({
+      clase: 'tarea',
+      titulo: llamada && primeraLlamada ? 'Primera llamada' : quitarNombreDelTitulo(t.title, e.nombrePersona),
+      vence,
+      quien: t.quien,
+      espera,
+      instante: instanteDeVencimiento(vence),
+      creado: t.created_at,
+    })
+  }
+
+  if (e.tasacion) {
+    const vence = { due_date: e.tasacion.fecha, due_time: e.tasacion.hora, all_day: !e.tasacion.hora }
+    candidatos.push({
+      clase: 'tasacion',
+      titulo: vencimientoDeTarea(vence, e.ahora).vencida ? 'Cargar el resultado de la tasación' : 'Tasación',
+      vence,
+      quien: e.quienTasacion,
+      espera: null,
+      instante: instanteDeVencimiento(vence),
+      creado: e.tasacion.instante,
+    })
+  }
+
+  if (candidatos.length === 0) return null
+  candidatos.sort((a, b) => {
+    if (a.instante && b.instante && a.instante !== b.instante) return Date.parse(a.instante) - Date.parse(b.instante)
+    if (a.instante && !b.instante) return -1
+    if (!a.instante && b.instante) return 1
+    return Date.parse(a.creado) - Date.parse(b.creado)
+  })
+  const c = candidatos[0]
+  return { clase: c.clase, titulo: c.titulo, vence: c.vence, quien: c.quien, espera: c.espera, instante: c.instante }
+}
+
+// ── Las filas ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Una fila por proceso de la vista. `procesoEnVista` se aplica OTRA VEZ acá aunque la
+ * consulta ya filtró: si la consulta se ensancha por error, igual no sale nada ajeno. Las
+ * tareas de un proceso fuera de la vista nunca llegan a una fila (se toman por proceso).
+ * `tareasCerradas` son las de coordinación completadas o descartadas (lectura (d) de D4),
+ * solo para anular copias; `tareas === 'error'` o `ultimos === 'error'` se propagan a la
+ * fila: nunca se rellena con un vacío lo que no se pudo leer.
+ */
+export function armarFilasCartera(e: {
+  vista: Vista
+  procesos: ProcesoLeido[]
+  tareas: TareaLeida[] | 'error'
+  tareasCerradas: TareaLeida[]
+  ultimos: Map<string, ContactoRegistrado> | 'error'
+  perfiles: Map<string, PerfilCartera>
+  ahora: Date
+}): FilaCartera[] {
+  const { vista, perfiles, ahora } = e
+  const esCoordinador = (id: string | null) => !!id && perfiles.get(id)?.role === 'coordinador'
+  const nombreDe = (id: string) => perfiles.get(id)?.nombre ?? 'Sin nombre'
+  const personaDeLaVista = vista.tipo === 'dueno' ? null : vista.personaId
+
+  const porProceso = new Map<string, TareaLeida[]>()
+  if (e.tareas !== 'error') {
+    for (const t of e.tareas) {
+      if (!t.deal_id || t.status !== 'pending') continue
+      if (!(TIPOS_TAREA_DE_PROCESO as readonly string[]).includes(t.type)) continue
+      if (personaDeLaVista && t.assigned_to !== personaDeLaVista) continue
+      porProceso.set(t.deal_id, [...(porProceso.get(t.deal_id) ?? []), t])
+    }
+  }
+
+  const filas: FilaCartera[] = []
+  for (const p of e.procesos) {
+    const etapa = etapaCRM(p)
+    if (!procesoEnVista({ etapa, origin: p.origin, assigned_to: p.assigned_to }, vista)) continue
+    const abierto = estaAbierto(etapa)
+    const asesor = p.assigned_to
+      ? { id: p.assigned_to, nombre: nombreDe(p.assigned_to), activo: perfiles.get(p.assigned_to)?.activo === true }
+      : null
+    const contactoId = p.contacto?.id ?? null
+    const ultimoContacto: FilaCartera['ultimoContacto'] =
+      e.ultimos === 'error' ? 'error' : contactoId ? (e.ultimos.get(contactoId) ?? null) : null
+    const conTasacion = etapa === 'coordinada' && !!p.scheduled_date
+    let tasacion: TasacionDeFila | null = null
+    if (abierto && conTasacion && p.scheduled_date) {
+      const hora = horaHHMM(p.scheduled_time)
+      const instante = instanteDeVencimiento({ due_date: p.scheduled_date, due_time: hora })
+      if (instante) {
+        tasacion = { fecha: p.scheduled_date, hora, instante, asesor: asesor?.nombre ?? null, direccion: p.property_address }
+      }
+    }
+    const nombre = p.contacto?.full_name?.trim() || 'Sin nombre'
+
+    let proximo: FilaCartera['proximo'] = null
+    if (abierto) {
+      if (e.tareas === 'error') proximo = 'error'
+      else {
+        // Regla (a) de la ficha: la asignación de un proceso con tasación agendada no se muestra.
+        const visibles = tareasVisiblesEnFicha(porProceso.get(p.id) ?? [], {
+          dealsConTasacionAgendada: conTasacion ? [p.id] : [],
+          dealsOcultos: [],
+          usuarioId: '',
+          soloPropiasSinProceso: false,
+        })
+        const conQuien: TareaConQuien[] =
+          vista.tipo === 'dueno'
+            ? colapsarCopiasDeCoordinacion(visibles, e.tareasCerradas, esCoordinador).map(({ tarea, copias }) => ({
+                ...tarea,
+                quien:
+                  copias > 1
+                    ? { id: 'coordinacion', nombre: 'coordinación' }
+                    : tarea.assigned_to && tarea.assigned_to !== p.assigned_to
+                      ? { id: tarea.assigned_to, nombre: nombreDe(tarea.assigned_to) }
+                      : null,
+              }))
+            : visibles.map((t) => ({ ...t, quien: null }))
+        proximo = proximoPaso({
+          tareas: conQuien,
+          tasacion,
+          // La tasación es del asesor: la coordinación ve de quién es; el asesor es él mismo y
+          // el dueño ya lo lee en la columna Asesor (el nombre no se repite).
+          quienTasacion: vista.tipo === 'coordinacion' && asesor ? { id: asesor.id, nombre: asesor.nombre } : null,
+          etapa,
+          hayContactos: ultimoContacto !== null,
+          registradoEn: p.created_at,
+          nombrePersona: nombre,
+          ahora,
+        })
+      }
+    }
+
+    filas.push({
+      id: p.id,
+      contactoId,
+      nombre,
+      telefono: p.contacto?.phone ?? null,
+      email: p.contacto?.email ?? null,
+      propiedad: textoPropiedad(p),
+      direccion: p.property_address?.trim() ?? '',
+      etapa,
+      abierto,
+      origen: p.origin,
+      asesor,
+      creadoEn: p.created_at,
+      cerradoEn: cierreDe(p, etapa),
+      colega: (p.tags ?? []).includes('colega'),
+      anteriorAlRegistro: anteriorAlRegistro(p.created_at),
+      ultimoContacto,
+      proximo,
+      tasacion,
+    })
+  }
+  return filas
+}
+
+// ── Trabado (la misma regla en filas, grupos y "Lo que está trabado") ────────────────────
+
+/** Solicitud abierta, desde el registro, sin ningún contacto. Con el dato en error: no. */
+export function sinPrimerContacto(f: FilaCartera): boolean {
+  return f.abierto && f.etapa === 'solicitud' && f.ultimoContacto === null && !f.anteriorAlRegistro
+}
+
+/** Pasó la solicitud y nadie la tiene (o la tiene alguien dado de baja). */
+export function sinAsesor(f: FilaCartera): boolean {
+  return f.abierto && ETAPAS_CON_ASESOR.includes(f.etapa) && (!f.asesor || !f.asesor.activo)
+}
+
+/**
+ * Seguimiento abierto con 14 días o más (de Argentina) sin contacto, contados desde el
+ * último contacto o desde el inicio del registro, lo que sea más reciente: antes del
+ * registro no se anotaba nada y no se puede afirmar que nadie llamó.
+ */
+export function sinMovimiento(f: FilaCartera, ahora: Date): boolean {
+  if (!f.abierto || f.etapa !== 'seguimiento' || f.ultimoContacto === 'error') return false
+  const inicio = instanteDesdeAR(INICIO_REGISTRO_CONTACTOS, '00:00')
+  const ultimo = f.ultimoContacto ? new Date(f.ultimoContacto.at) : null
+  const desde = ultimo && !Number.isNaN(ultimo.getTime()) && ultimo > inicio ? ultimo : inicio
+  return diasDeCalendarioEntre(desde, ahora) >= SIN_MOVIMIENTO_DIAS
+}
