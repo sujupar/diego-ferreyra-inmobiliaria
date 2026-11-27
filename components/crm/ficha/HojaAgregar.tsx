@@ -44,9 +44,18 @@ export function HojaAgregar({
     // flushSync: la vista tiene que estar visible ANTES de darle foco, en este mismo toque.
     flushSync(() => setVista(v))
     if (refCuerpo.current) refCuerpo.current.scrollTop = 0
-    if (v === 'llamada') refNoAtendio.current?.focus({ preventScroll: true })
-    else if (v === 'nota') refNota.current?.focus({ preventScroll: true })
-    else refPrimera.current?.focus({ preventScroll: true })
+    const enfocar = () => {
+      if (v === 'llamada') refNoAtendio.current?.focus({ preventScroll: true })
+      else if (v === 'nota') refNota.current?.focus({ preventScroll: true })
+      else refPrimera.current?.focus({ preventScroll: true })
+    }
+    enfocar()
+    // Al ABRIR directo en una vista (desde onOpenAutoFocus), flushSync no llega a dibujarla:
+    // el botón todavía no existe y el foco quedaba en la página (QA de crm-inicio, celular).
+    // Se reintenta en el cuadro siguiente si el foco no quedó dentro de la hoja.
+    requestAnimationFrame(() => {
+      if (!refCuerpo.current?.closest('[role="dialog"]')?.contains(document.activeElement)) enfocar()
+    })
   }
 
   return (
