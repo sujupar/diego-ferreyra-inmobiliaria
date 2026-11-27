@@ -9,20 +9,22 @@ test primero y verlo fallar; `npx vitest run -c vitest.crm.config.ts`,
 
 - [x] 1.1 Inventario del código, la maqueta y la base; propuesta con las 4 recomendaciones
 - [x] 1.2 Specs y diseño; `openspec validate --strict`
-- [ ] 1.3 Auditoría independiente de los artefactos; corregir y anotar en `auditoria.md`
+- [x] 1.3 Auditoría independiente de los artefactos: 22 hallazgos, corregidos (`auditoria.md`)
 - [ ] 1.4 PR en borrador con los documentos y el pre-flight
 
 ## 2. Reglas
 
-- [ ] 2.1 `lib/tareas/agenda.ts` (D1) con sus tests
-- [ ] 2.2 `lib/tareas/enlace.ts` (`getTaskLink` movido, mismos tests)
+- [x] 2.1 `lib/tareas/agenda.ts` (D1) con sus tests
+- [x] 2.2 `lib/tareas/enlace.ts` (`getTaskLink` movido; la entrada abre la ficha)
+- [x] 2.3 La cartera usa la misma regla de entrada y conserva la espera con fecha
 
 ## 3. Lecturas y rutas
 
-- [ ] 3.1 `lib/supabase/agenda-tareas.ts` (`leerAgenda`, `leerAvisos`) con sus tests
-- [ ] 3.2 `GET /api/tasks/agenda` y `GET /api/tasks/avisos` con sus tests (permisos incluidos)
-- [ ] 3.3 `PUT /api/tasks/[id]`: `reopen` y `posponer`; `POST /api/tasks`: Argentina, sin fecha, 120
-- [ ] 3.4 Tarea de entrada con fecha (D4) y su test
+- [x] 3.1 `lib/supabase/agenda-tareas.ts` (`leerAgenda`, `leerAvisos`, `leerPersonas`) con sus tests
+- [x] 3.2 `GET /api/tasks/agenda` y `GET /api/tasks/avisos` con sus tests (permisos incluidos)
+- [x] 3.3 `PUT /api/tasks/[id]`: `reopen` y `posponer` con sus guardas, copias de la entrada; `POST /api/tasks`: Argentina, sin fecha, hora pasada, 120
+- [x] 3.4 Tarea de entrada con fecha (D4): `construirTrabajos` + `tareaDeCoordinacion` y sus tests
+- [x] 3.5 Migración `20261127000003` (cierre al salir de Solicitud) aplicada y verificada dos veces
 
 ## 4. Pantalla
 
@@ -30,7 +32,8 @@ test primero y verlo fallar; `npx vitest run -c vitest.crm.config.ts`,
 - [ ] 4.2 `HojaPosponer`
 - [ ] 4.3 `Campanita` + `PanelAvisos` en la barra
 - [ ] 4.4 `/tasks` con la maqueta
-- [ ] 4.5 "Deshacer" al completar en la ficha; evento `tareas:cambio` en todas las mutaciones
+- [ ] 4.5 "Deshacer" y espera en la ficha; evento `tareas:cambio` en todos los emisores de D5
+- [ ] 4.6 "Seguimiento" de `pipeline/[id]`: hoy en Argentina, sin "Correo", título 120
 
 ## 5. Verificación
 

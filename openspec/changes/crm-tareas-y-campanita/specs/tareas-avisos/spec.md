@@ -30,8 +30,8 @@ nunca, y las tareas de otras personas tampoco.
 - **THEN** no las cuenta
 
 ### Requirement: Las vencidas antes de este cambio no suenan
-Las tareas cuyo momento es anterior al día en que se publica este cambio MUST NOT sonar en la
-campanita, aunque sigan pendientes: se ven en Pendientes, en "Vencidas".
+Las tareas cuyo momento es anterior a las 00:00 de Argentina del día en que se publica este
+cambio MUST NOT sonar en la campanita, aunque sigan pendientes: se ven en Pendientes.
 
 #### Scenario: Tarea vieja vencida
 - **WHEN** el dueño tiene una tarea vencida de octubre

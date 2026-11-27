@@ -13,7 +13,7 @@ la cadencia de llamadas funcione, la tarea tiene que avisar a su hora.
   completa o se pospone (1 hora, mañana, elegir).
 - Página de tareas reorganizada en Vencidas / Hoy / Próximas / Sin fecha (plegado), con
   filtro por tipo y, para operaciones, por persona. Total exacto y paginado, sin techo oculto.
-- Crear tarea con fecha y hora desde la ficha, la página de tareas y el Inicio.
+- Crear tarea con fecha y hora desde la ficha, Pendientes y las pantallas de proceso, propiedad y tasación (el Inicio no crea tareas, como la maqueta).
 - La campanita no cuenta tareas sin fecha ni las vencidas antes de la salida de este change.
 - La tarea de entrada de cada lead nuevo nace con fecha y hora (la de su registro si entra en
   horario hábil; si no, el día hábil siguiente a las 9:00), así suena en la campanita.
@@ -24,7 +24,10 @@ la cadencia de llamadas funcione, la tarea tiene que avisar a su hora.
 **Recomendaciones aplicadas mientras el dueño responde (2026-11-27):** 1) la tarea de
 entrada nace con fecha; 2) se sigue la maqueta (sin "Descartar" ni filtro de completadas);
 3) las ~600 tareas viejas sin fecha quedan en "Sin fecha" con la nota de la maqueta, sin
-limpieza automática; 4) los filtros de Pendientes siguen la maqueta aprobada de esa pantalla.
+limpieza automática; 4) los filtros de Pendientes siguen la maqueta aprobada de esa pantalla;
+5) la tarea de entrada se completa sola al salir de "Solicitud", y completar una copia
+completa la de la otra coordinadora (sin esto la campanita llegaría a "99+" con leads ya
+atendidos: de 126 tareas de entrada en 60 días se completó 1).
 - **Queda afuera:** avisos al celular (push, WhatsApp, email), limpieza de las 625 tareas
   viejas sin fecha, tareas recurrentes, calendario.
 
@@ -39,16 +42,16 @@ y asignar tareas de otros.
 
 ### Modified Capabilities
 
-Ninguna: la anatomía de la campanita, de Pendientes y del formulario ya está en
-`crm-sistema-diseno` (requisitos "Campanita", "Página de pendientes", "Un solo formulario de
-nueva tarea" y los textos de vencimiento); este change la construye.
+- `crm-sistema-diseno`: "Filtros con nombre" y "Pie de las listas largas" suman la excepción
+  de Pendientes, que sigue su maqueta. La anatomía de la campanita, de Pendientes y del
+  formulario ya está ahí y este change la construye.
 
 ## Impact
 
 - Código: `components/dashboard/Topbar.tsx`, `app/(dashboard)/tasks`, `app/api/tasks`
   (ruta nueva de vencidas y paginado), `lib/supabase/tasks.ts`, `components/tasks/`.
 - `app/(dashboard)/inicio` hoy depende del techo de 50: se ajusta en `crm-inicio`.
-- Sin migración, salvo índice por (assigned_to, status, due_date) si la lectura lo pide.
+- Migración `20261127000003`: trigger que completa las tareas de entrada al salir de Solicitud.
 - Depende de `crm-sistema-diseno`; independiente de la ficha.
 
 ## Pendientes que deja `crm-ficha-y-llamadas`

@@ -41,22 +41,24 @@ cargada entera.
 
 ### Requirement: De quién son las tareas que se ven
 Cada persona SHALL ver en Pendientes sus tareas. Coordinación, admin y dueño MUST poder
-elegir "Mías", una persona o "Todo el equipo". El asesor y el abogado MUST ver solo las
-suyas, también por la red, aunque pidan las de otro.
+elegir "Mías", una persona activa o "Todo el equipo"; el admin y el dueño arrancan en "Todo
+el equipo". El asesor y el abogado MUST ver solo las suyas, también por la API de la
+plataforma, aunque pidan las de otro.
 
 #### Scenario: Coordinación mira a un asesor
 - **WHEN** la coordinadora elige "Tomás" en "De quién"
 - **THEN** ve las tareas de Tomás con su nombre en cada fila, y el título dice "Pendientes de Tomás"
 
 #### Scenario: Asesor pide las de otro por la red
-- **WHEN** un asesor pide por la red las tareas de otra persona o de todo el equipo
+- **WHEN** un asesor pide por la API de la plataforma las tareas de otra persona o de todo el equipo
 - **THEN** recibe solo las suyas
 
 ### Requirement: Tipos de tarea
 Las tareas SHALL mostrarse con uno de cinco tipos: Llamada, Mensaje, Visita,
 Documentación u Otro. El tipo sale del canal de la tarea; las tareas del sistema sin canal
 MUST tomar uno fijo según su clase: la de entrada de un lead es Llamada, la de tasación
-coordinada es Visita, las de documentos y propiedad son Documentación, y el resto, Otro.
+coordinada es Visita, las de documentos y propiedad son Documentación, y el resto (también
+"Actualizar contacto"), Otro.
 
 #### Scenario: Tarea del sistema
 - **WHEN** hay una tarea "Revisar documentacion" del abogado
@@ -85,7 +87,7 @@ Argentina. Coordinación, admin y dueño pueden asignarla a otro; los demás, so
 - **THEN** se lee un error y no se crea nada
 
 #### Scenario: Asignar a otra persona sin permiso
-- **WHEN** un asesor intenta por la red crear una tarea para otra persona
+- **WHEN** un asesor intenta por la API de la plataforma crear una tarea para otra persona
 - **THEN** recibe 403 y no se crea nada
 
 ### Requirement: Completar y deshacer
@@ -98,12 +100,20 @@ dueño. "Descartar" MUST NOT ofrecerse en la pantalla.
 - **THEN** la tarea vuelve a su grupo, pendiente, sin quién la completó
 
 #### Scenario: Ajena
-- **WHEN** un asesor intenta por la red completar o reabrir una tarea de otra persona
+- **WHEN** un asesor intenta por la API de la plataforma completar o reabrir una tarea de otra persona
 - **THEN** recibe 403 y la tarea no cambia
 
 #### Scenario: Reabrir una que no se completó
 - **WHEN** se pide reabrir una tarea pendiente o descartada
 - **THEN** responde 409 y no cambia nada
+
+#### Scenario: Reabrir una que cerró una llamada
+- **WHEN** se pide reabrir una tarea que cerró una llamada registrada
+- **THEN** responde 409: se reabre deshaciendo la llamada
+
+#### Scenario: Copias de la entrada
+- **WHEN** una coordinadora completa la tarea de entrada de un lead
+- **THEN** la copia de la otra coordinadora también queda completada
 
 ### Requirement: Posponer y poner fecha
 Posponer SHALL ofrecer "En 1 hora", "Mañana a las 9:00" (el día siguiente de calendario) y
@@ -123,10 +133,15 @@ pasado. El aviso ofrece "Deshacer", que vuelve a la fecha anterior.
 - **WHEN** se elige hoy a una hora que ya pasó
 - **THEN** se lee "Elegí un día y una hora que todavía no hayan pasado." y no cambia nada
 
+#### Scenario: Deshacer después de otro cambio
+- **WHEN** se pospone una tarea, otra persona la cambia y después se toca "Deshacer"
+- **THEN** se lee "Esa tarea cambió mientras tanto: no se pudo deshacer." y queda el cambio de la otra persona
+
 ### Requirement: La tarea de entrada de un lead tiene fecha
-La tarea que se crea para la coordinación cuando entra un lead SHALL nacer con día y hora:
-el momento del registro si entró en horario hábil (lunes a viernes de 9:00 a 18:00 de
-Argentina) y, si no, el día hábil siguiente a las 9:00. Así suena en la campanita.
+La tarea de entrada de un lead SHALL nacer con día y hora: el registro si entró en horario
+hábil (lunes a viernes, 9:00 a 17:59 de Argentina, sin feriados), ese día a las 9:00 si fue de
+madrugada, y si no, el día hábil siguiente a las 9:00. MUST completarse sola cuando el proceso
+sale de "Solicitud", con el autor de ese cambio.
 
 #### Scenario: En horario
 - **WHEN** un lead se registra un martes a las 15:10
@@ -134,4 +149,16 @@ Argentina) y, si no, el día hábil siguiente a las 9:00. Así suena en la campa
 
 #### Scenario: Fuera de horario
 - **WHEN** un lead se registra un viernes a las 21:00
-- **THEN** su tarea de entrada vence el lunes a las 9:00 y antes de esa hora está en "Próximas"
+- **THEN** su tarea de entrada vence el lunes a las 9:00 y el fin de semana está en "Próximas"
+
+#### Scenario: Madrugada de un día hábil
+- **WHEN** un lead se registra un martes a las 7:30
+- **THEN** su tarea de entrada vence ese martes a las 9:00
+
+#### Scenario: Se coordina o se descarta
+- **WHEN** la coordinadora coordina o descarta el proceso de un lead
+- **THEN** las dos copias de su tarea de entrada quedan completadas y dejan de sonar
+
+#### Scenario: La entrada abre la ficha
+- **WHEN** se toca una tarea de entrada en Pendientes o en la campanita
+- **THEN** se abre la ficha del contacto, donde se registra la llamada
