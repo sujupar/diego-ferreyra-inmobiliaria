@@ -14,8 +14,19 @@ COMMENT ON COLUMN public.deals.stage_changed_by IS
   'Quién hizo el último cambio de etapa (null = el sistema). Lo escribe la app junto con stage; '
   'fn_deals_write_stage_history lo copia a deal_stage_history.changed_by.';
 
--- 2. El historial ahora guarda el autor. Misma firma y mismo trigger que
---    20260520000001 (AFTER INSERT OR UPDATE OF stage): solo se suma changed_by.
+-- 2. El historial ahora guarda el autor y el día de la tasación. Misma firma que
+--    20260520000001; solo se suman changed_by y metadata, y un caso nuevo:
+--
+--    COORDINAR UNA SOLICITUD QUE YA ESTABA EN `scheduled` SIN DÍA. Para la plataforma esa
+--    solicitud es "Solicitud" (regla de etapaCRM) y al ponerle día pasa a "Coordinada",
+--    pero `stage` no cambia y el historial no se enteraba (auditoría, hallazgo 1). Ahora
+--    ese paso también escribe una fila, `scheduled` → `scheduled`. Las métricas que leen
+--    el historial toman la PRIMERA vez que un proceso llega a cada etapa: una fila a
+--    `scheduled` más tardía no les cambia nada.
+--
+--    metadata = { scheduled_date, scheduled_date_antes }: con eso la línea de tiempo sabe
+--    si `scheduled` era Solicitud o Coordinada en ese momento.
+--
 --    auth.uid() gana si hay sesión (no se puede falsificar desde un cliente con sesión);
 --    con service role vale lo que mandó la app. El SELECT contra profiles evita violar la
 --    FK si el perfil se está borrando (patrón de property_visits_log_event).
@@ -26,21 +37,33 @@ SET search_path = public
 AS $$
 DECLARE
   v_autor uuid;
+  v_dia_antes date;
 BEGIN
-  IF (TG_OP = 'INSERT') OR (NEW.stage IS DISTINCT FROM OLD.stage) THEN
+  v_dia_antes := CASE WHEN TG_OP = 'UPDATE' THEN OLD.scheduled_date END;
+  IF (TG_OP = 'INSERT')
+     OR (NEW.stage IS DISTINCT FROM OLD.stage)
+     OR (NEW.stage = 'scheduled' AND OLD.stage = 'scheduled'
+         AND OLD.scheduled_date IS NULL AND NEW.scheduled_date IS NOT NULL) THEN
     SELECT p.id INTO v_autor FROM public.profiles p WHERE p.id = COALESCE(auth.uid(), NEW.stage_changed_by);
-    INSERT INTO deal_stage_history (deal_id, from_stage, to_stage, changed_at, changed_by)
+    INSERT INTO deal_stage_history (deal_id, from_stage, to_stage, changed_at, changed_by, metadata)
     VALUES (
       NEW.id,
       CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE OLD.stage END,
       NEW.stage,
       NOW(),
-      v_autor
+      v_autor,
+      jsonb_build_object('scheduled_date', NEW.scheduled_date, 'scheduled_date_antes', v_dia_antes)
     );
   END IF;
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- El trigger ahora escucha también `scheduled_date` (para el caso nuevo de arriba).
+DROP TRIGGER IF EXISTS trg_deals_write_stage_history ON public.deals;
+CREATE TRIGGER trg_deals_write_stage_history
+  AFTER INSERT OR UPDATE OF stage, scheduled_date ON public.deals
+  FOR EACH ROW EXECUTE FUNCTION public.fn_deals_write_stage_history();
 
 -- 3. Quién completó una tarea (null = el sistema o anterior a este change).
 ALTER TABLE public.tasks

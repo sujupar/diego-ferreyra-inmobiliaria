@@ -10,7 +10,9 @@ import {
   recortarTexto,
   telefonoUtilizable,
   unirYCortar,
+  type FilaHistorial,
   type ItemLinea,
+  type ProcesoParaEtapas,
 } from './linea-de-tiempo'
 
 const nombres = new Map([
@@ -56,9 +58,10 @@ describe('eventosDeRegistro', () => {
 })
 
 describe('nombreEtapaHistorial', () => {
-  it('usa los nombres de la plataforma; scheduled es Coordinada', () => {
+  it('usa los nombres de la plataforma; scheduled es Coordinada solo con día', () => {
     expect(nombreEtapaHistorial('request')).toBe('Solicitud')
     expect(nombreEtapaHistorial('scheduled')).toBe('Coordinada')
+    expect(nombreEtapaHistorial('scheduled', false)).toBe('Solicitud')
     expect(nombreEtapaHistorial('lost')).toBe('Descartado')
     expect(nombreEtapaHistorial('appraisal_sent')).toBe('Entregada')
   })
@@ -68,37 +71,65 @@ describe('nombreEtapaHistorial', () => {
 })
 
 describe('eventosDeEtapa', () => {
-  const h = (o: Partial<{ id: number; deal_id: string; from_stage: string | null; to_stage: string; changed_at: string; changed_by: string | null }>) => ({
+  const h = (o: Partial<FilaHistorial>): FilaHistorial => ({
     id: 1,
     deal_id: 'd1',
     from_stage: 'request',
     to_stage: 'scheduled',
     changed_at: '2026-11-21T10:00:00Z',
     changed_by: null,
+    metadata: { scheduled_date: '2026-11-25', scheduled_date_antes: null },
     ...o,
   })
+  const proc = (o: Partial<ProcesoParaEtapas> = {}) =>
+    new Map([['d1', { created_at: '2026-11-21T10:00:00Z', scheduled_date: null, ...o }]])
 
   it('cambio con autor', () => {
-    const [e] = eventosDeEtapa([h({ changed_by: 'u-paula' })], new Set(), nombres)
+    const [e] = eventosDeEtapa([h({ changed_by: 'u-paula' })], new Set(), proc(), nombres)
     expect(e).toMatchObject({ id: 'etapa:1', clase: 'etapa', titulo: 'Pasó de Solicitud a Coordinada', autor: { id: 'u-paula', nombre: 'Paula' } })
   })
 
   it('sin autor, o con un autor que ya no existe, no inventa un nombre', () => {
-    expect(eventosDeEtapa([h({})], new Set(), nombres)[0].autor).toBeNull()
-    expect(eventosDeEtapa([h({ changed_by: 'u-borrado' })], new Set(), nombres)[0].autor).toBeNull()
+    expect(eventosDeEtapa([h({})], new Set(), proc(), nombres)[0].autor).toBeNull()
+    expect(eventosDeEtapa([h({ changed_by: 'u-borrado' })], new Set(), proc(), nombres)[0].autor).toBeNull()
+  })
+
+  it('coordinar una solicitud que ya estaba en scheduled sin día también cuenta', () => {
+    const [e] = eventosDeEtapa(
+      [h({ from_stage: 'scheduled', to_stage: 'scheduled', metadata: { scheduled_date: '2026-11-25', scheduled_date_antes: null } })],
+      new Set(), proc(), nombres,
+    )
+    expect(e.titulo).toBe('Pasó de Solicitud a Coordinada')
+  })
+
+  it('pasar de request a scheduled sin día no es un cambio visible', () => {
+    expect(eventosDeEtapa([h({ metadata: { scheduled_date: null, scheduled_date_antes: null } })], new Set(), proc(), nombres)).toEqual([])
+  })
+
+  it('una fila vieja sin metadata usa el día de hoy del proceso', () => {
+    expect(eventosDeEtapa([h({ metadata: null })], new Set(), proc({ scheduled_date: '2026-11-25' }), nombres)[0].titulo).toBe('Pasó de Solicitud a Coordinada')
+    expect(eventosDeEtapa([h({ metadata: {} })], new Set(), proc(), nombres)).toEqual([])
   })
 
   it('la apertura se omite si el proceso nació de un registro', () => {
-    expect(eventosDeEtapa([h({ from_stage: null, to_stage: 'request' })], new Set(['d1']), nombres)).toEqual([])
+    expect(eventosDeEtapa([h({ from_stage: null, to_stage: 'request' })], new Set(['d1']), proc(), nombres)).toEqual([])
   })
 
   it('la apertura de un proceso cargado a mano', () => {
-    const [e] = eventosDeEtapa([h({ from_stage: null, to_stage: 'scheduled' })], new Set(), nombres)
-    expect(e.titulo).toBe('Se abrió un proceso en Coordinada')
+    const [e] = eventosDeEtapa([h({ from_stage: null, to_stage: 'scheduled', changed_by: 'u-paula' })], new Set(), proc(), nombres)
+    expect(e).toMatchObject({ titulo: 'Se abrió un proceso en Coordinada', autor: { nombre: 'Paula' } })
+  })
+
+  it('una apertura escrita al cargar datos viejos va en la fecha real del proceso y sin etapa', () => {
+    const [e] = eventosDeEtapa(
+      [h({ from_stage: null, to_stage: 'lost', changed_at: '2026-06-01T10:00:00Z', metadata: null })],
+      new Set(), proc({ created_at: '2025-03-10T12:00:00Z' }), nombres,
+    )
+    expect(e).toMatchObject({ titulo: 'Se abrió un proceso', fecha: '2025-03-10T12:00:00Z', autor: null })
   })
 
   it('un "cambio" a la misma etapa no se muestra', () => {
-    expect(eventosDeEtapa([h({ from_stage: 'lost', to_stage: 'lost' })], new Set(), nombres)).toEqual([])
+    expect(eventosDeEtapa([h({ from_stage: 'lost', to_stage: 'lost' })], new Set(), proc(), nombres)).toEqual([])
   })
 })
 
@@ -145,6 +176,8 @@ describe('eventosDeTareas', () => {
     expect(e.autor).toEqual({ id: 'u-paula', nombre: 'Paula' })
   })
 
+  const COORD = new Set(['u-c1', 'u-c2'])
+
   it('las copias de la coordinación se ven una sola vez', () => {
     const r = eventosDeTareas(
       [
@@ -152,6 +185,7 @@ describe('eventosDeTareas', () => {
         t({ id: 'b', title: 'Contactar a Marcela', assigned_to: 'u-c2', created_at: '2026-11-17T12:00:30Z' }),
       ],
       nombres,
+      COORD,
     )
     expect(r).toHaveLength(1)
     expect(r[0]).toMatchObject({ id: 'tarea:a:creada', detalle: 'Para la coordinación' })
@@ -164,6 +198,31 @@ describe('eventosDeTareas', () => {
         t({ id: 'b', assigned_to: 'u-c2', created_at: '2026-11-17T12:05:00Z' }),
       ],
       nombres,
+      COORD,
+    )
+    expect(r).toHaveLength(2)
+  })
+
+  it('una tarea de un asesor con el mismo título no es una copia de la coordinación', () => {
+    const r = eventosDeTareas(
+      [
+        t({ id: 'a', assigned_to: 'u-c1', created_at: '2026-11-17T12:00:00Z' }),
+        t({ id: 'b', assigned_to: 'u-tomas', created_at: '2026-11-17T12:00:10Z' }),
+      ],
+      nombres,
+      COORD,
+    )
+    expect(r.map((e) => e.detalle)).toEqual([null, 'Para Tomás Agüero'])
+  })
+
+  it('copias de procesos distintos no se juntan', () => {
+    const r = eventosDeTareas(
+      [
+        t({ id: 'a', assigned_to: 'u-c1', deal_id: 'd1' }),
+        t({ id: 'b', assigned_to: 'u-c2', deal_id: 'd2' }),
+      ],
+      nombres,
+      COORD,
     )
     expect(r).toHaveLength(2)
   })
@@ -243,13 +302,21 @@ describe('eventosDeWhatsapp', () => {
     const r = eventosDeWhatsapp(
       [
         m({ id: 'a', direction: 'out', template_name: 'consulta_portal_v2' }),
-        m({ id: 'b', direction: 'out', template_name: 'consulta_sin_enlace_v2' }),
-        m({ id: 'c', direction: 'out', template_name: 'consulta_plano_util' }),
         m({ id: 'd', direction: 'out', status: 'agent_handoff' }),
       ],
       nombres,
     )
     expect(r).toEqual([])
+  })
+
+  it('una plantilla automática marcada como de IA sigue siendo automática', () => {
+    const [e] = eventosDeWhatsapp([m({ direction: 'out', status: 'read', template_name: 'tasacion_llamada_v1', ai_generated: true })], nombres)
+    expect(e.titulo).toBe('Se le envió un WhatsApp automático')
+  })
+
+  it('la respuesta a una consulta (va al interesado) sí se muestra', () => {
+    const [e] = eventosDeWhatsapp([m({ direction: 'out', status: 'read', template_name: 'consulta_sin_enlace_v2' })], nombres)
+    expect(e.titulo).toBe('Se le envió un WhatsApp automático')
   })
 })
 
@@ -274,7 +341,7 @@ describe('eventosDeVideo', () => {
       'Vio el video de la landing de tasación · 62 %',
       'Vio el video de la landing de tasación · 35 %',
       'Vio el video de la landing de la clase · 80 %',
-      'Vio la clase completa · 10 %',
+      'Vio el video de la clase completa · 10 %',
       'Vio un video de la landing · 0 %',
     ])
     expect(r[0]).toMatchObject({ id: 'video:v1', clase: 'video', fecha: '2026-11-20T10:04:00Z', autor: null })

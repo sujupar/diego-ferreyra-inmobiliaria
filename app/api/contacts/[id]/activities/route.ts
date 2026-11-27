@@ -22,7 +22,7 @@ import {
 import type { UserWithProfile } from '@/types/auth.types'
 import { esUuid } from '@/lib/crm/id-valido'
 import { CLASES_EVENTO, unirYCortar, type CursorLinea, type ItemLinea } from '@/lib/crm/linea-de-tiempo'
-import { leerEventosDelSistema } from '@/lib/supabase/linea-de-tiempo'
+import { leerEventosDelSistema, MARGEN_EMPATES } from '@/lib/supabase/linea-de-tiempo'
 
 // Todo corre con service role: esta ruta es la ÚNICA barrera (design.md D4). Un contacto
 // ajeno y uno inexistente reciben la MISMA respuesta, para no confirmar que existe.
@@ -122,10 +122,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     // Una fila de más por fuente dice si hay otra página, sin contar todo.
     const conSistema = filtro === 'todo' || filtro === 'actividad'
     const [filas, llamadas, sistema] = await Promise.all([
-      listarActividades(id, filtro, antes, TAMANO_PAGINA + 1, { inclusivo: cursor !== null }),
+      listarActividades(id, filtro, antes, TAMANO_PAGINA + 1 + (cursor ? MARGEN_EMPATES : 0), { inclusivo: cursor !== null }),
       llamadasNoAnuladasDelContacto(id),
       conSistema
-        ? leerEventosDelSistema(id, cursor, TAMANO_PAGINA).catch((e: unknown) => {
+        ? leerEventosDelSistema(id, cursor, TAMANO_PAGINA, {
+            usuarioId: user.id,
+            // Asesor: lo de los procesos de otro asesor no viaja (spec crm-ficha-contacto).
+            soloPropios: alcance === 'propios',
+          }).catch((e: unknown) => {
             // Una falla general (los nombres, el plazo) es una falla de TODAS las fuentes
             // del sistema; las notas y llamadas se muestran igual.
             console.error('GET /api/contacts/[id]/activities eventos del sistema:', e)

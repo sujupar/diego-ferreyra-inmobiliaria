@@ -61,8 +61,11 @@ async function main(): Promise<void> {
     const idx = await filas<{ indexname: string }>(
       `SELECT indexname FROM pg_indexes WHERE indexname IN ('funnel_lead_submissions_contact_idx','tasks_contact_idx')`)
     ok(idx.length === 2, 'índices de lectura creados')
-    const trg = await filas(`SELECT 1 FROM pg_trigger WHERE tgname='trg_deals_write_stage_history' AND NOT tgisinternal`)
-    ok(trg.length === 1, 'el trigger del historial sigue siendo uno solo')
+    const trg = await filas<{ def: string }>(
+      `SELECT pg_get_triggerdef(oid) def FROM pg_trigger WHERE tgname='trg_deals_write_stage_history' AND NOT tgisinternal`)
+    ok(trg.length === 1 && /UPDATE OF stage, scheduled_date/.test(trg[0].def), 'el trigger del historial es uno solo y escucha stage y scheduled_date')
+    const trgTareas = await filas(`SELECT 1 FROM pg_trigger WHERE tgname='trg_tasks_completed_by_de_la_sesion' AND NOT tgisinternal`)
+    ok(trgTareas.length === 1, 'la guarda de completed_by está')
 
     // ── El trigger, con datos de prueba, dentro de una transacción ─────────────────────
     const [autor] = await filas<{ id: string }>(`SELECT id FROM profiles WHERE is_active ORDER BY created_at LIMIT 1`)
@@ -76,15 +79,33 @@ async function main(): Promise<void> {
          VALUES ($1, $2, 'request', NULL, NULL) RETURNING id`, [contacto.id, NOMBRE_PRUEBA])
       await c.query(`UPDATE deals SET stage='scheduled', stage_changed_by=$2 WHERE id=$1`, [proceso.id, autor.id])
       await c.query(`UPDATE deals SET stage='lost', stage_changed_by=NULL WHERE id=$1`, [proceso.id])
-      const h = await filas<{ from_stage: string | null; to_stage: string; changed_by: string | null }>(
-        `SELECT from_stage, to_stage, changed_by FROM deal_stage_history WHERE deal_id=$1 ORDER BY id`, [proceso.id])
-      ok(h.length === 3, 'tres filas de historial (apertura y dos cambios)')
+      const h = await filas<{ from_stage: string | null; to_stage: string; changed_by: string | null; metadata: Record<string, unknown> }>(
+        `SELECT from_stage, to_stage, changed_by, metadata FROM deal_stage_history WHERE deal_id=$1 ORDER BY id`, [proceso.id])
+      ok(h.length === 3 && h[0].metadata?.scheduled_date === null, 'tres filas de historial (apertura y dos cambios)')
+      ok(h[1].to_stage === 'scheduled', 'el segundo es el cambio a scheduled')
       ok(h[0].changed_by === null, 'la apertura sin autor queda sin autor')
       ok(h[1].changed_by === autor.id, 'el cambio con stage_changed_by guarda el autor')
       ok(h[2].changed_by === null, 'el cambio con stage_changed_by NULL queda sin autor (no hereda el anterior)')
       await c.query(`UPDATE deals SET notes = coalesce(notes,'') || ' ' WHERE id=$1`, [proceso.id])
       ok((await filas(`SELECT 1 FROM deal_stage_history WHERE deal_id=$1`, [proceso.id])).length === 3,
         'un UPDATE sin cambio de etapa no escribe historial')
+      ok(h[1] !== undefined, 'el cambio a scheduled quedó')
+
+      // Hallazgo 1: coordinar una solicitud que ya estaba en scheduled sin día.
+      const [p2] = await filas<{ id: string }>(
+        `INSERT INTO deals (contact_id, property_address, stage, origin, stage_changed_by)
+         VALUES ($1, $2, 'scheduled', NULL, NULL) RETURNING id`, [contacto.id, NOMBRE_PRUEBA])
+      await c.query(`UPDATE deals SET scheduled_date = current_date + 3, stage_changed_by = $2 WHERE id=$1`, [p2.id, autor.id])
+      const h2 = await filas<{ from_stage: string | null; to_stage: string; changed_by: string | null; metadata: Record<string, unknown> }>(
+        `SELECT from_stage, to_stage, changed_by, metadata FROM deal_stage_history WHERE deal_id=$1 ORDER BY id`, [p2.id])
+      ok(h2.length === 2, 'poner el día a una solicitud en scheduled escribe una fila nueva')
+      ok(h2[0].metadata.scheduled_date === null, 'la apertura guarda que no tenía día')
+      ok(h2[1].from_stage === 'scheduled' && h2[1].to_stage === 'scheduled' && h2[1].changed_by === autor.id,
+        'la coordinación queda scheduled → scheduled con su autor')
+      ok(h2[1].metadata.scheduled_date !== null && h2[1].metadata.scheduled_date_antes === null, 'con el día nuevo y sin el anterior')
+      await c.query(`UPDATE deals SET scheduled_date = current_date + 5 WHERE id=$1`, [p2.id])
+      ok((await filas(`SELECT 1 FROM deal_stage_history WHERE deal_id=$1`, [p2.id])).length === 2,
+        'reprogramar (cambiar un día por otro) no escribe historial')
 
       const [tarea] = await filas<{ id: string }>(
         `INSERT INTO tasks (type, title, contact_id, status) VALUES ('follow_up', $1, $2, 'pending') RETURNING id`,
