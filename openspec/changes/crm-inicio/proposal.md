@@ -17,6 +17,16 @@ primera pantalla que ve cada usuario y debería ser su lista de trabajo del día
 - Admin y dueño: lo de coordinación en modo lectura, leads sin primer contacto con su
   antigüedad y el tiempo medio a la primera llamada de la semana, con su cantidad de casos.
 - Se conservan el aviso de conversaciones sin identificar y el acceso a conectar avisos.
+- La ficha se puede abrir con "Registrar llamada" ya abierto (`?registrar=1`), para el
+  botón "Registrar" del Inicio.
+
+**Recomendaciones aplicadas mientras el dueño responde (2026-11-27):** 1) "Para llamar
+ahora" toma las solicitudes desde el 26/11 (inicio del registro de llamadas), igual que
+"Sin primer contacto" del CRM; 2) una sola cola para la coordinación ("la llama la
+coordinación"); 3) "Mis procesos que esperan algo de mí": tasación pasada sin resultado,
+visita de hace 2 días o más sin entregar, entregada hace 5 días o más; 4) horas hábiles de
+9 a 18, las de todo el CRM.
+
 - **Queda afuera:** análisis del negocio (sigue en Métricas), personalización de bloques,
   el Inicio del abogado (sigue yendo a revisión legal).
 
@@ -29,12 +39,13 @@ Roles: coordinador, asesor, admin, dueño.
 
 ### Modified Capabilities
 
-Ninguna.
+Ninguna (el Inicio y el botón "Registrar" ya están en `crm-sistema-diseno`; la entrada a la
+ficha con "Registrar llamada" abierto se especifica en `inicio`).
 
 ## Impact
 
-- Código: `app/(dashboard)/inicio/page.tsx` (reemplazo), `components/inicio/`, una ruta de
-  lectura para la cola de llamadas, `lib/crm/cola-llamadas.ts`.
+- Código: `app/(dashboard)/inicio/page.tsx` (reemplazo), `components/inicio/`, la ruta
+  `GET /api/inicio`, `lib/crm/inicio.ts` (puro) y `lib/supabase/inicio.ts`.
 - Depende de `crm-ficha-y-llamadas` (cola y registro) y `crm-tareas-y-campanita` (tareas por vencimiento).
 - Pendiente que deja `crm-ficha-y-llamadas`: cuando exista el bloque "Sin respuesta tras
   WhatsApp", volver a poner en los avisos de la ficha los textos de la maqueta que lo nombran
