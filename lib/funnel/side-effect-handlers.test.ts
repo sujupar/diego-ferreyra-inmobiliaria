@@ -255,6 +255,23 @@ describe('tarea de coordinación', () => {
   })
 })
 
+describe('tarea de coordinación con fecha (crm-tareas-y-campanita)', () => {
+  it('en horario: vence en el momento del registro, como llamada', async () => {
+    await ejecutarTrabajo('coordinator_task', {
+      funnel: 'tasacion', dealId: 'deal-1', contactId: 'contacto-1', nombre: 'Ana Pérez',
+      registradoEn: '2026-11-24T18:10:00.000Z', // martes 15:10 de Argentina
+    })
+    expect(espias.tareas.at(-1)).toMatchObject({ due_date: '2026-11-24', due_time: '15:10', all_day: false, channel: 'call' })
+  })
+  it('fuera de horario: el día hábil siguiente a las 9:00', async () => {
+    await ejecutarTrabajo('coordinator_task', {
+      funnel: 'clase', dealId: 'deal-1', contactId: 'contacto-1', nombre: 'Ana Pérez',
+      registradoEn: '2026-11-28T00:00:00.000Z', // viernes 21:00 de Argentina
+    })
+    expect(espias.tareas.at(-1)).toMatchObject({ due_date: '2026-11-30', due_time: '09:00', all_day: false })
+  })
+})
+
 describe('email al equipo', () => {
   it('una SOLICITUD de tasación usa su propia pieza, no la de tasación agendada', async () => {
     await ejecutarTrabajo('notify', { funnel: 'tasacion', dealId: 'deal-1' })

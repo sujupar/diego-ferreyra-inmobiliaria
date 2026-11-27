@@ -42,12 +42,22 @@ async function tareaDeCoordinacion(p: Record<string, unknown>): Promise<Resultad
   const map = resolveFunnelMapping(funnel)
   const nombre = requerido(p, 'nombre')
   const { createTaskForRole } = await import('@/lib/supabase/tasks')
+  const { vencimientoDeEntrada } = await import('@/lib/tareas/agenda')
+  // Nace con fecha para sonar en la campanita (crm-tareas-y-campanita, D4): el momento del
+  // registro si entró en horario hábil; si no, el día hábil siguiente a las 9:00. Sin el
+  // dato (trabajos encolados antes del cambio), el momento en que corre el trabajo.
+  const registrado = Date.parse(texto(p, 'registradoEn') ?? '')
+  const vence = vencimientoDeEntrada(Number.isNaN(registrado) ? new Date() : new Date(registrado))
   await createTaskForRole('coordinador', {
     type: 'update_contact',
     title: `${map.placeholderLabel}: ${nombre}`,
     description: `Lead capturado desde la landing de ${funnel === 'clase' ? 'Clase Gratuita' : 'Tasación Directa'}. Completar datos.`,
     deal_id: requerido(p, 'dealId'),
     contact_id: requerido(p, 'contactId'),
+    due_date: vence.fecha,
+    due_time: vence.hora,
+    all_day: false,
+    channel: 'call',
   })
   return 'done'
 }

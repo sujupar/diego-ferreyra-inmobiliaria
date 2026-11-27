@@ -28,6 +28,11 @@ const ENVIO: DatosDelEnvio = {
 }
 
 describe('construirTrabajos', () => {
+  it('la tarea de la coordinación lleva el momento del registro (crm-tareas-y-campanita)', () => {
+    const t = construirTrabajos(ENVIO).find((x) => x.kind === 'coordinator_task')!
+    expect(t.payload.registradoEn).toBe(new Date(ENVIO.eventTimeUnixSeconds * 1000).toISOString())
+  })
+
   it('arma SIEMPRE un aviso por etapa, uno de cada tipo', () => {
     const t = construirTrabajos(ENVIO)
     expect(t).toHaveLength(TIPOS_DE_TRABAJO.length)
