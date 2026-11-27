@@ -120,9 +120,12 @@ function Acciones({ p, lectura }: { p: { contactoId: string | null; procesoId: s
           <Phone aria-hidden className="size-4" /> {telVisible(p.telefono)}
         </a>
       )}
-      <Link href={enlaceFicha(p, true)} aria-label={`Registrar la llamada a ${p.nombre}`} className={cn(BOTON, ALTO, 'border border-border bg-card px-4 hover:bg-accent max-sm:flex-1')}>
-        <Pencil aria-hidden className="size-4" /> Registrar
-      </Link>
+      {/* Sin contacto no hay ficha donde registrar: no se ofrece (revisión de código 10). */}
+      {p.contactoId && (
+        <Link href={enlaceFicha(p, true)} aria-label={`Registrar la llamada a ${p.nombre}`} className={cn(BOTON, ALTO, 'border border-border bg-card px-4 hover:bg-accent max-sm:flex-1')}>
+          <Pencil aria-hidden className="size-4" /> Registrar
+        </Link>
+      )}
     </div>
   )
 }
@@ -246,8 +249,15 @@ function Tareas({ datos, lectura, onCambio, siempre }: { datos: TareasDelDia; le
         label: 'Deshacer',
         onClick: async () => {
           const d = await reabrirTareaPedida(t.id)
-          if (d.ok) toast('Listo, se deshizo.')
-          else toast.error(d.error)
+          if (d.ok) {
+            // Sin esto, la tarea reabierta volvía tachada y sin poder tildarse (revisión de código 4).
+            setHechas((h) => {
+              const n = new Set(h)
+              n.delete(t.id)
+              return n
+            })
+            toast('Listo, se deshizo.')
+          } else toast.error(d.error)
           onCambio()
         },
       },
@@ -547,6 +557,16 @@ export function Inicio({ rolUsuario }: { rolUsuario: string }) {
   return (
     <div className="flex flex-col gap-4">
       {puedeConectarAvisos && <UnidentifiedBanner />}
+      {/* Una recarga que falla no deja datos viejos sin avisar (revisión de código 7). */}
+      {estado === 'error' && (
+        <p role="alert" className="flex items-center gap-2 rounded-md border border-destructive/40 bg-card px-3 py-2 text-sm">
+          <TriangleAlert aria-hidden className="size-4 shrink-0 text-destructive-texto" />
+          <span className="flex-1">No se pudo actualizar: lo que ves puede estar desactualizado.</span>
+          <button type="button" onClick={recargar} className="font-medium text-brand underline underline-offset-2">
+            Reintentar
+          </button>
+        </p>
+      )}
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h1 className="text-2xl font-bold tracking-tight">{r.saludo}</h1>
         <p className="text-sm text-texto-suave">{r.fecha}</p>

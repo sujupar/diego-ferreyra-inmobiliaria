@@ -104,6 +104,16 @@ describe('leerInicio', () => {
     expect(r.bloques.sinRespuesta).toEqual({ ok: true, datos: [] })
   })
 
+  it('las tareas pendientes se leen todas, aunque pasen de 1000 (sin cortes en silencio)', async () => {
+    const contactada = { at: ar('2026-11-30', '10:00').toISOString(), que: 'llamada' as const, resultado: 'no_atendio' as const }
+    m.filas = [fila({ id: 'd1', contactoId: 'c1', nombre: 'Con tarea al final', creadoEn: ar('2026-11-27', '10:00').toISOString(), ultimoContacto: contactada })]
+    const tasks = Array.from({ length: 1500 }, (_, i) => ({ id: `t${String(i).padStart(5, '0')}`, deal_id: `otro${i}`, contact_id: null, status: 'pending' }))
+    tasks.push({ id: 't99999', deal_id: 'd1', contact_id: null, status: 'pending' })
+    usar({ tasks }, { tope: 1000 })
+    const r = (await leerInicio({ id: PAULA, role: 'coordinador', nombre: 'Paula' }, AHORA))!
+    expect(r.bloques.sinProximo).toEqual({ ok: true, datos: [] })
+  })
+
   it('una fuente de la cartera que falló no se muestra como vacía', async () => {
     m.fuenteFalla = true
     usar({})

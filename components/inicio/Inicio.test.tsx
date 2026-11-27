@@ -127,6 +127,28 @@ describe('Inicio', () => {
     expect(JSON.parse(String(pedido.init!.body))).toEqual({ action: 'complete' })
     await toastes.toast.mock.calls[0][1].action.onClick()
     expect(pedidos.filter((p) => p.url === '/api/tasks/t1').map((p) => JSON.parse(String(p.init!.body)).action)).toEqual(['complete', 'reopen'])
+    // Deshecha, la tarea vuelve a poder tildarse.
+    await waitFor(() => expect(screen.getByRole('checkbox', { name: 'Completar: Llamar a Rubén' })).toBeEnabled())
+  })
+
+  it('si una recarga falla, avisa que lo que se ve puede estar desactualizado', async () => {
+    let falla = false
+    red(() => (falla ? null : respuesta('asesor', { tareas: ok({ hoy: [tarea('t1', 'Llamar a Rubén')], manana: [] }), procesos: ok([]), visitas: ok([]) })))
+    const ruta = vi.mocked(fetch)
+    render(<Inicio rolUsuario="asesor" />)
+    await screen.findByText('Llamar a Rubén')
+    falla = true
+    ruta.mockImplementation(async () => new Response('<html>', { status: 504 }))
+    window.dispatchEvent(new Event('tareas:cambio'))
+    expect(await screen.findByText('No se pudo actualizar: lo que ves puede estar desactualizado.')).toBeInTheDocument()
+    expect(screen.getByText('Llamar a Rubén')).toBeInTheDocument()
+  })
+
+  it('sin contacto no se ofrece "Registrar"', async () => {
+    red(() => respuesta('coordinacion', { paraLlamar: ok([llamar({ contactoId: null })]), sinRespuesta: ok([]), sinProximo: ok([]), tareas: ok({ hoy: [], manana: [] }), tasaciones: ok([]), numeros }))
+    render(<Inicio rolUsuario="coordinador" />)
+    expect(await screen.findByRole('link', { name: /^Llamar a Marcela/ })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /^Registrar/ })).toBeNull()
   })
 
   it('si el Inicio entero no carga, dice que falló y se puede reintentar', async () => {

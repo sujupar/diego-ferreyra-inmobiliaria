@@ -26,3 +26,19 @@ Revisión independiente de propuesta, specs, diseño y del código de las tareas
 | 18 | Datos: `deals.origin` y `contact_activities.occurred_at` | Verificados con SELECT de solo lectura (conteos) |
 | 19 | Lectura por id en la URL podía pasarse de largo | Se leen los intentos desde el 26/11 sin lista de ids (tabla chica) |
 | 20 | `tasks.md` sin las tareas de corrección | Actualizado |
+
+## Revisión de código independiente (tarea 4.2)
+
+Sin fugas de datos: el asesor filtra por su id en todas las lecturas; la coordinación recibe solo los bloques de coordinación.
+
+| # | Hallazgo | Qué se hizo |
+|---|---|---|
+| 1–3 | Tareas pendientes, intentos y llamadas de la semana se leían en una sola página: PostgREST corta en 1000 sin avisar | `todas()`: de a 1000 con orden por id, tope 20.000 y error al pasarlo. Prueba con 1.501 tareas |
+| 4 | "Deshacer" dejaba la tarea tachada y sin poder tildarse | Se la saca de las hechas. Prueba |
+| 5 | La lectura de perfiles corría también para el asesor, sin nadie que la esperara | Solo en coordinación y dueño |
+| 6 | Las visitas de hoy dejaban afuera 23:59 | Hasta las 00:00 del día siguiente. `status` nunca es nulo (verificado) |
+| 7 | Una recarga fallida dejaba datos viejos sin avisar | Aviso "No se pudo actualizar" con "Reintentar". Prueba |
+| 8 | Llamadas sin proceso no cuentan | Verificado: la ficha guarda el proceso activo de la persona; sin proceso no hay nada que contar |
+| 9 | "Tasaciones" se escondía vacía sin estar en la spec | Agregado a la spec |
+| 10 | "Registrar" sin contacto no abría el formulario | Sin contacto no se ofrece. Prueba |
+| 11 | `?registrar=1` volvía a abrir el formulario al recargar | Se saca de la dirección al abrirlo. Prueba |

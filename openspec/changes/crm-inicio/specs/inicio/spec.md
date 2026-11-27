@@ -105,7 +105,7 @@ ninguna tarea, el bloque no se muestra.
 
 ### Requirement: Tasaciones de hoy y mañana y números del día
 "Tasaciones · hoy y mañana" SHALL listar las tasaciones coordinadas para hoy y mañana, sin
-colegas, con hora, dirección, persona y asesor. "Hoy, hasta las H:MM" SHALL mostrar
+colegas, con hora, dirección, persona y asesor (vacío, no se muestra). "Hoy, hasta las H:MM" SHALL mostrar
 "Solicitudes nuevas" (del embudo de tasación, de hoy), "Llamadas hechas" (llamadas de hoy sin
 anular, por la hora en que ocurrieron) y "Agendadas" (de esas, con "Agendó").
 

@@ -23,7 +23,7 @@ misma sesión. Se trabaja en `~/Dev/crm-cartera`.
 
 ## 4. Verificación
 - [ ] 4.1 Suite, `tsc` de toda la app, `eslint`, `next build` local
-- [ ] 4.2 Revisión de código independiente
+- [x] 4.2 Revisión de código independiente
 - [ ] 4.3 QA en la vista previa a 390, 1024 y 1280 px como coordinación, asesor y dueño, con datos `[TEST]` (una solicitud que espera, una con llamada vencida, una sin respuesta tras WhatsApp, una tasación de mañana, una visita de hoy, procesos del asesor), "Registrar" abre la ficha con el formulario, tilde y "Deshacer", permisos por la red, tiempos, 0 errores de consola
 
 ## 5. Cierre

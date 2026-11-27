@@ -143,8 +143,11 @@ describe('SinAcceso', () => {
 describe('FichaContacto: "Registrar" del Inicio (crm-inicio)', () => {
   it('con abrirLlamada arranca con "Registrar llamada" abierto y el foco en "No atendió"', async () => {
     redNormal()
+    window.history.replaceState(null, '', `/contacts/${CONTACTO}?registrar=1&volver=%2Fcrm`)
     render(<FichaContacto contactoId={CONTACTO} rol="coordinador" usuarioId="u-1" abrirEditor={false} abrirLlamada reloj={reloj} />)
     await waitFor(() => expect(document.activeElement?.textContent ?? '').toContain('No atendió'))
+    // Se saca `registrar` de la dirección (al recargar no se vuelve a abrir) y se conserva lo demás.
+    expect(window.location.search).toBe('?volver=%2Fcrm')
   })
   it('sin abrirLlamada no se abre nada', async () => {
     redNormal()
