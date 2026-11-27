@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event'
 import type { ExternalToast } from 'sonner'
 import type { BloqueCadencia } from '@/lib/supabase/cadencia'
 import { FichaContacto } from './FichaContacto'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba, lineaDePrueba } from './datos-prueba'
 import { pedidosA, simularRed } from './red-prueba'
 
 vi.mock('next/link', () => ({
@@ -53,7 +53,7 @@ const llamada = (resultado: 'no_atendio' | 'no_interesa' = 'no_atendio', id = 'a
 function montar(extra: Parameters<typeof simularRed>[0] = {}, ficha = fichaDePrueba()) {
   const red = simularRed({
     [`${BASE}/ficha`]: { body: ficha },
-    [`${BASE}/activities`]: { body: { actividades: [actividadDePrueba()], hay_mas: false } },
+    [`${BASE}/activities`]: { body: { items: lineaDePrueba([actividadDePrueba()]), hay_mas: false } },
     [`${BASE}/tasks`]: { body: { tareas: [tareaDePrueba()], total: 1 } },
     ...extra,
   })

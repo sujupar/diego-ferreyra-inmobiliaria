@@ -1,18 +1,20 @@
 'use client'
 
-import { Clock, Phone, Plus, StickyNote } from 'lucide-react'
+import { Clock, Phone, Plus, StickyNote, TriangleAlert } from 'lucide-react'
 import type { ActividadDeFicha } from '@/lib/crm/tipos'
 import { cn } from '@/lib/utils'
 import { EstadoCarga, EstadoError, EstadoVacio } from '../ui/EstadoBloque'
 import { FiltroPastilla } from '../ui/FiltroPastilla'
 import { ALTO_CONTROL } from '../ui/medidas'
 import { ItemActividad } from './ItemActividad'
+import { ItemEvento } from './ItemEvento'
 import { Tarjeta } from './Tarjeta'
 import type { BloqueActividad, FiltroActividad } from './use-ficha'
 
 // La actividad de la persona (maqueta "Línea de tiempo"): filtros, lista, "Ver más" y los
 // vacíos de cada filtro con su acción. Los cuatro filtros son los de la maqueta (D5);
-// "Actividad" es lo que no es llamada ni nota (en este change, el WhatsApp marcado).
+// "Actividad" es lo que no es llamada ni nota: el WhatsApp marcado y los eventos del
+// sistema (crm-linea-de-tiempo).
 
 const FILTROS: { valor: FiltroActividad; etiqueta: string }[] = [
   { valor: 'todo', etiqueta: 'Todo' },
@@ -90,6 +92,19 @@ export function Actividad({
   return (
     <Tarjeta titulo="Línea de tiempo" data-bloque="actividad">
       <FiltroPastilla etiqueta="Filtrar la línea de tiempo" opciones={FILTROS} valor={bloque.filtro} onCambiar={onFiltrar} />
+      {bloque.estado === 'ok' && bloque.fuentesConError.length > 0 && (
+        // Una fuente del sistema rota no tapa a las demás (crm-linea-de-tiempo): se avisa
+        // arriba de la lista, nunca se muestra como "no pasó nada".
+        <div role="alert" data-aviso="fuentes" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted px-3 py-2 text-[13px]">
+          <span className="flex items-center gap-2">
+            <TriangleAlert aria-hidden className="size-4 shrink-0 text-destructive-texto" />
+            Parte de la historia no se pudo cargar
+          </span>
+          <button type="button" className={BOTON_SECUNDARIO} onClick={onReintentar}>
+            Reintentar
+          </button>
+        </div>
+      )}
       {bloque.estado === 'error' ? (
         <EstadoError onReintentar={onReintentar} />
       ) : bloque.estado === 'cargando' ? (
@@ -99,18 +114,22 @@ export function Actividad({
       ) : (
         <>
           <ul className="flex min-w-0 flex-col">
-            {bloque.items.map((a) => (
-              <ItemActividad
-                key={a.id}
-                ref={a.id === nuevoId ? refNuevo : undefined}
-                actividad={a}
-                ahora={ahora}
-                nuevo={a.id === nuevoId}
-                contactoId={contactoId}
-                onEditada={onEditada}
-                onAnular={onAnular}
-              />
-            ))}
+            {bloque.items.map((i) =>
+              i.tipo === 'evento' ? (
+                <ItemEvento key={i.evento.id} evento={i.evento} ahora={ahora} />
+              ) : (
+                <ItemActividad
+                  key={i.actividad.id}
+                  ref={i.actividad.id === nuevoId ? refNuevo : undefined}
+                  actividad={i.actividad}
+                  ahora={ahora}
+                  nuevo={i.actividad.id === nuevoId}
+                  contactoId={contactoId}
+                  onEditada={onEditada}
+                  onAnular={onAnular}
+                />
+              ),
+            )}
           </ul>
           {bloque.errorMas && (
             <p role="alert" className="text-center text-xs text-destructive-texto">

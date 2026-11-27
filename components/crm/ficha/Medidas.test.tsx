@@ -14,7 +14,7 @@ import { BotonMas } from './BotonMas'
 import { FichaPestanas } from './FichaPestanas'
 import { FormLlamada } from './FormLlamada'
 import { FormNota } from './FormNota'
-import { actividadDePrueba, fichaDePrueba } from './datos-prueba'
+import { actividadDePrueba, fichaDePrueba, lineaDePrueba } from './datos-prueba'
 
 vi.mock('next/link', () => ({
   default: ({ href, children, ...p }: { href: string; children: React.ReactNode }) => (
@@ -46,7 +46,7 @@ describe('44 px en todo lo tocable', () => {
   it('filtros, menú "⋯" y "Ver más" de la actividad', () => {
     render(
       <Actividad
-        bloque={{ estado: 'ok', items: [actividadDePrueba()], hayMas: true, filtro: 'todo', cargandoMas: false, errorMas: null }}
+        bloque={{ estado: 'ok', items: lineaDePrueba([actividadDePrueba()]), hayMas: true, fuentesConError: [], filtro: 'todo', cargandoMas: false, errorMas: null }}
         contactoId="c-1"
         ahora={ahora}
         nuevoId={null}

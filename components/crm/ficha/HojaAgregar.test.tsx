@@ -5,7 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FichaContacto } from './FichaContacto'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba, lineaDePrueba } from './datos-prueba'
 import { pedidosA, simularRed } from './red-prueba'
 
 vi.mock('next/link', () => ({
@@ -26,7 +26,7 @@ function montar() {
   let guardada = false
   const red = simularRed({
     [`${BASE}/ficha`]: { body: fichaDePrueba() },
-    [`${BASE}/activities`]: () => ({ body: { actividades: guardada ? [llamada, actividadDePrueba()] : [actividadDePrueba()], hay_mas: false } }),
+    [`${BASE}/activities`]: () => ({ body: { items: lineaDePrueba(guardada ? [llamada, actividadDePrueba()] : [actividadDePrueba()]), hay_mas: false } }),
     [`${BASE}/tasks`]: { body: { tareas: [tareaDePrueba()], total: 1 } },
     [`POST ${BASE}/activities`]: () => (
       (guardada = true),

@@ -9,7 +9,7 @@ import { FichaCabecera } from './FichaCabecera'
 import { FichaContacto } from './FichaContacto'
 import { FichaDatos } from './FichaDatos'
 import { LateralTareas } from './LateralTareas'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba, lineaDePrueba } from './datos-prueba'
 import { pedidosA, simularRed } from './red-prueba'
 
 vi.mock('next/link', () => ({
@@ -282,7 +282,7 @@ describe('Procesos: "Deshacer" fijo del perdido', () => {
     let primera = true
     const red = simularRed({
       [`${BASE}/ficha`]: () => ({ body: descartado(en5) }),
-      [`${BASE}/activities`]: { body: { actividades: [], hay_mas: false } },
+      [`${BASE}/activities`]: { body: { items: lineaDePrueba([]), hay_mas: false } },
       [`${BASE}/tasks`]: { body: { tareas: [], total: 0 } },
       'POST /api/deals/d-1/undo-lost': () =>
         primera
@@ -354,7 +354,7 @@ describe('Tareas', () => {
     let tareas = [tareaDePrueba()]
     const red = simularRed({
       [`${BASE}/ficha`]: { body: fichaDePrueba() },
-      [`${BASE}/activities`]: { body: { actividades: [actividadDePrueba()], hay_mas: false } },
+      [`${BASE}/activities`]: { body: { items: lineaDePrueba([actividadDePrueba()]), hay_mas: false } },
       [`${BASE}/tasks`]: () => ({ body: { tareas, total: tareas.length } }),
       'PUT /api/tasks/t-1': () => {
         tareas = tareas.filter((t) => t.id !== 't-1')

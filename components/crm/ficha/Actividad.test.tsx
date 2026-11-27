@@ -6,7 +6,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Actividad } from './Actividad'
 import { ItemActividad } from './ItemActividad'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba, lineaDePrueba } from './datos-prueba'
 import { pedidosA, simularRed } from './red-prueba'
 import { toast } from 'sonner'
 import { FichaContacto } from './FichaContacto'
@@ -31,6 +31,7 @@ const bloque = (c: Partial<BloqueActividad> = {}): BloqueActividad => ({
   estado: 'ok',
   items: [],
   hayMas: false,
+  fuentesConError: [],
   filtro: 'todo',
   cargandoMas: false,
   errorMas: null,
@@ -77,7 +78,7 @@ describe('Actividad: vacíos por filtro', () => {
     expect(p.onFiltrar).toHaveBeenCalledWith('llamadas')
   })
   it('"Ver más" aparece con hay_mas y lo pide', async () => {
-    const p = dibujarActividad(bloque({ items: [actividadDePrueba()], hayMas: true }))
+    const p = dibujarActividad(bloque({ items: lineaDePrueba([actividadDePrueba()]), hayMas: true }))
     await u().click(screen.getByRole('button', { name: 'Ver más' }))
     expect(p.onVerMas).toHaveBeenCalled()
   })
@@ -89,8 +90,8 @@ describe('Actividad en la ficha: filtro y "Ver más" van al servidor', () => {
       [`${BASE}/ficha`]: { body: fichaDePrueba() },
       [`${BASE}/activities`]: (url) =>
         url.includes('antes=')
-          ? { body: { actividades: [actividadDePrueba({ id: 'viejo', body: 'Registro viejo', occurred_at: '2026-10-01T13:00:00Z' })], hay_mas: false } }
-          : { body: { actividades: [actividadDePrueba()], hay_mas: true } },
+          ? { body: { items: lineaDePrueba([actividadDePrueba({ id: 'viejo', body: 'Registro viejo', occurred_at: '2026-10-01T13:00:00Z' })]), hay_mas: false } }
+          : { body: { items: lineaDePrueba([actividadDePrueba()]), hay_mas: true } },
       [`${BASE}/tasks`]: { body: { tareas: [tareaDePrueba()], total: 1 } },
     })
     render(<FichaContacto contactoId={CONTACTO} rol="coordinador" usuarioId="u-1" abrirEditor={false} reloj={() => ahora} />)
@@ -100,6 +101,8 @@ describe('Actividad en la ficha: filtro y "Ver más" van al servidor', () => {
     expect(screen.getByText('Prefiere que la llamen a la tarde')).toBeInTheDocument()
     const conAntes = pedidosA(red, '/activities').find(([url]) => String(url).includes('antes='))
     expect(String(conAntes?.[0])).toContain(`antes=${encodeURIComponent('2026-11-24T13:15:00Z')}`)
+    // El cursor completo lleva también la clave del último (crm-linea-de-tiempo D4).
+    expect(String(conAntes?.[0])).toContain(`antes_id=${encodeURIComponent(`actividad:${actividadDePrueba().id}`)}`)
     await usr.click(screen.getByRole('button', { name: 'Notas' }))
     await waitFor(() => expect(pedidosA(red, '/activities').some(([url]) => String(url).includes('filtro=notas'))).toBe(true))
   })
@@ -282,7 +285,7 @@ describe('Anular en la ficha cuando fallan las tareas (revisión 12.1)', () => {
     const llamada = actividadDePrueba({ id: 'a-7', kind: 'call', call_outcome: 'no_atendio', body: null, intento: 1, titulo: 'Llamada 1 · No atendió', puede_editar: false })
     const red = simularRed({
       [`${BASE}/ficha`]: { body: fichaDePrueba() },
-      [`${BASE}/activities`]: () => ({ body: { actividades: anulada ? [] : [llamada], hay_mas: false } }),
+      [`${BASE}/activities`]: () => ({ body: { items: lineaDePrueba(anulada ? [] : [llamada]), hay_mas: false } }),
       [`${BASE}/tasks`]: { body: { tareas: [tareaDePrueba()], total: 1 } },
       [`PATCH ${BASE}/activities/a-7`]: () => {
         anulada = true
@@ -307,5 +310,62 @@ describe('Anular en la ficha cuando fallan las tareas (revisión 12.1)', () => {
     expect(opciones?.action?.label).toBe('Reintentar')
     opciones?.action?.onClick()
     await waitFor(() => expect(pedidosA(red, '/activities/a-7', 'PATCH')).toHaveLength(2))
+  })
+})
+
+describe('Línea de tiempo: eventos del sistema (crm-linea-de-tiempo)', () => {
+  const evento = (c: Record<string, unknown> = {}) => ({
+    tipo: 'evento' as const,
+    evento: {
+      id: 'etapa:1',
+      clase: 'etapa' as const,
+      titulo: 'Pasó de Solicitud a Coordinada',
+      detalle: null,
+      autor: { id: 'u-p', nombre: 'Paula' },
+      fecha: '2026-11-24T13:15:00Z',
+      ...c,
+    },
+  })
+
+  it('un evento se ve con título, detalle, autor y fecha, sin menú "⋯"', () => {
+    dibujarActividad(bloque({ items: [evento({ detalle: 'Anuncio de Meta · AD04 - VID08' })] }))
+    expect(screen.getByText('Pasó de Solicitud a Coordinada')).toBeTruthy()
+    expect(screen.getByText('Anuncio de Meta · AD04 - VID08')).toBeTruthy()
+    expect(screen.getByText('Paula')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Más acciones' })).toBeNull()
+  })
+
+  it('tocar el renglón alterna la fecha exacta', async () => {
+    dibujarActividad(bloque({ items: [evento()] }))
+    const fila = document.querySelector('[data-evento="etapa:1"]') as HTMLElement
+    const antes = fila.querySelector('time')!.textContent
+    await u().click(fila.querySelector('[data-titulo]')!)
+    expect(fila.querySelector('time')!.textContent).not.toBe(antes)
+  })
+
+  it('sin autor no inventa un nombre', () => {
+    dibujarActividad(bloque({ items: [evento({ autor: null })] }))
+    expect(screen.queryByText('Paula')).toBeNull()
+  })
+
+  it('un WhatsApp que no se pudo enviar se marca', () => {
+    dibujarActividad(bloque({ items: [evento({ id: 'whatsapp:1', clase: 'whatsapp', titulo: 'Se le envió un WhatsApp automático · no se pudo enviar', fallido: true })] }))
+    expect(document.querySelector('[data-evento="whatsapp:1"] [data-titulo]')!.className).toContain('text-destructive-texto')
+  })
+
+  it('eventos y actividades conviven en la lista, en el orden recibido', () => {
+    dibujarActividad(bloque({ items: [evento(), ...lineaDePrueba([actividadDePrueba()])] }))
+    const filas = [...document.querySelectorAll('li')]
+    expect(filas[0].getAttribute('data-evento')).toBe('etapa:1')
+    expect(filas[1].getAttribute('data-actividad')).toBe(actividadDePrueba().id)
+  })
+
+  it('una fuente rota se avisa arriba con "Reintentar", sin tapar la lista', async () => {
+    const onReintentar = vi.fn()
+    dibujarActividad(bloque({ items: [evento()], fuentesConError: ['whatsapp'] }), { onReintentar })
+    expect(screen.getByText('Parte de la historia no se pudo cargar')).toBeTruthy()
+    expect(screen.getByText('Pasó de Solicitud a Coordinada')).toBeTruthy()
+    await u().click(screen.getByRole('button', { name: 'Reintentar' }))
+    expect(onReintentar).toHaveBeenCalled()
   })
 })

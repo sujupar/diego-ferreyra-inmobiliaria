@@ -1,5 +1,6 @@
 // Datos y simulador de red para las pruebas de la ficha (no es código de la app).
 import type { FichaContacto } from '@/lib/crm/ficha'
+import type { ItemLinea } from '@/lib/crm/linea-de-tiempo'
 import type { ActividadDeFicha } from '@/lib/crm/tipos'
 import type { TareaDeFicha } from '@/lib/supabase/tasks'
 
@@ -96,4 +97,9 @@ export function tareaDePrueba(c: Partial<TareaDeFicha> = {}): TareaDeFicha {
     status: 'pending',
     ...c,
   }
+}
+
+/** La respuesta de la actividad trae `items` (crm-linea-de-tiempo): las actividades van envueltas. */
+export function lineaDePrueba(actividades: ActividadDeFicha[]): ItemLinea[] {
+  return actividades.map((actividad) => ({ tipo: 'actividad', actividad }))
 }

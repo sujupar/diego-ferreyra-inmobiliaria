@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event'
 import { FichaContacto } from './FichaContacto'
 import { FormLlamada } from './FormLlamada'
 import { FormNota } from './FormNota'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba, lineaDePrueba } from './datos-prueba'
 import { pedidosA, simularRed } from './red-prueba'
 import type { BloqueCadencia } from '@/lib/supabase/cadencia'
 
@@ -284,7 +284,7 @@ describe('Composer dentro de la ficha', () => {
   function red(extra: Parameters<typeof simularRed>[0] = {}) {
     return simularRed({
       [`${BASE}/ficha`]: { body: fichaDePrueba() },
-      [`${BASE}/activities`]: { body: { actividades: [actividadDePrueba()], hay_mas: false } },
+      [`${BASE}/activities`]: { body: { items: lineaDePrueba([actividadDePrueba()]), hay_mas: false } },
       [`${BASE}/tasks`]: { body: { tareas: [tareaDePrueba()], total: 1 } },
       ...extra,
     })
@@ -333,7 +333,7 @@ describe('Composer dentro de la ficha', () => {
     const nueva = actividadDePrueba({ id: 'n-2', body: 'Llamar después de las 10', occurred_at: '2026-11-25T13:00:00Z' })
     let guardada = false
     red({
-      [`${BASE}/activities`]: () => ({ body: { actividades: guardada ? [nueva, actividadDePrueba()] : [actividadDePrueba()], hay_mas: false } }),
+      [`${BASE}/activities`]: () => ({ body: { items: lineaDePrueba(guardada ? [nueva, actividadDePrueba()] : [actividadDePrueba()]), hay_mas: false } }),
       [POST]: () => ((guardada = true), { status: 201, body: { actividad: nueva, cadencia: null, pendiente: false } }),
     })
     ficha()

@@ -84,7 +84,7 @@ function Ficha({ conAviso, items = actividades }: { conAviso: boolean; items?: t
           <Composer contactoId="c-1" pestana="nota" onPestana={nada} onNotaGuardada={nada} onLlamadaGuardada={nada} />
           <div aria-live="polite">{conAviso && <AvisoGuardado aviso={aviso} onAccion={nada} onCerrar={nada} />}</div>
           <Actividad
-            bloque={{ estado: 'ok', items, hayMas: false, filtro: 'todo', cargandoMas: false, errorMas: null }}
+            bloque={{ estado: 'ok', items: items.map((actividad) => ({ tipo: 'actividad' as const, actividad })), hayMas: false, fuentesConError: [], filtro: 'todo', cargandoMas: false, errorMas: null }}
             contactoId="c-1"
             ahora={ahora}
             nuevoId={null}
