@@ -5,6 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FichaContacto } from './FichaContacto'
+import { HojaAgregar } from './HojaAgregar'
 import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba, lineaDePrueba } from './datos-prueba'
 import { pedidosA, simularRed } from './red-prueba'
 
@@ -58,6 +59,11 @@ const abrir = async (usr: ReturnType<typeof userEvent.setup>) => {
 }
 
 describe('HojaAgregar', () => {
+  it('abierta directo en "Registrar llamada" (el Registrar del Inicio en el celular) deja el foco en "No atendió"', async () => {
+    render(<HojaAgregar abierta vistaAlAbrir="llamada" onAbierta={() => {}} contactoId={CONTACTO} onNotaGuardada={() => {}} onLlamadaGuardada={() => {}} reloj={() => ahora} />)
+    await waitFor(() => expect(document.activeElement?.textContent ?? '').toContain('No atendió'))
+  })
+
   it('abre en "Agregar"; entra a "Registrar llamada" con el foco en "No atendió"; "Volver" regresa al menú', async () => {
     montar()
     const usr = userEvent.setup()
