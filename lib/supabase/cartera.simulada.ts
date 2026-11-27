@@ -67,7 +67,7 @@ function leerSelect(select: string): { planas: string[]; embebidas: { alias: str
   return { planas, embebidas }
 }
 
-const TABLA_DE_FK: Record<string, string> = { contact_id: 'contacts' }
+const TABLA_DE_FK: Record<string, string> = { contact_id: 'contacts', deal_id: 'deals' }
 
 function comparar(a: unknown, b: unknown): number {
   if (a == null && b == null) return 0
