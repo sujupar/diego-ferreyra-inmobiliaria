@@ -77,12 +77,12 @@ export function eventosDeRegistro(
 // ── Etapas ───────────────────────────────────────────────────────────
 
 /**
- * El nombre de una etapa del historial. `scheduled` se lee "Coordinada": el día de la
- * tasación en ese momento no se conoce por evento. Una etapa desconocida se muestra cruda
- * antes que esconder el cambio.
+ * El nombre de una etapa del historial. `scheduled` es "Coordinada" solo si ya tenía día;
+ * sin día es "Solicitud" (la regla de siempre, `etapaCRM`). Una etapa desconocida se
+ * muestra cruda antes que esconder el cambio.
  */
-export function nombreEtapaHistorial(stage: string): string {
-  if (stage === 'scheduled') return NOMBRE_ETAPA.coordinada
+export function nombreEtapaHistorial(stage: string, conDia = true): string {
+  if (stage === 'scheduled') return conDia ? NOMBRE_ETAPA.coordinada : NOMBRE_ETAPA.solicitud
   const etapa = etapaCRM({ stage, scheduled_date: null })
   // `etapaCRM` cae en Solicitud para lo que no conoce: acá eso sería mentir.
   if (etapa === 'solicitud' && stage !== 'request') return stage
@@ -96,25 +96,61 @@ export interface FilaHistorial {
   to_stage: string
   changed_at: string
   changed_by: string | null
+  /**
+   * Desde crm-linea-de-tiempo el trigger guarda `scheduled_date` (el día después del cambio)
+   * y `scheduled_date_antes`. Las filas viejas no lo tienen.
+   */
+  metadata?: Record<string, unknown> | null
+}
+
+export interface ProcesoParaEtapas {
+  created_at: string
+  /** El día de la tasación hoy: para las filas viejas, la mejor pista de si `scheduled` era Coordinada. */
+  scheduled_date: string | null
+}
+
+/** Una apertura cuya fecha se aleja más que esto de la creación del proceso se cargó después. */
+const DESFASE_APERTURA_MS = 24 * 60 * 60 * 1000
+
+function conDia(meta: FilaHistorial['metadata'], clave: string, proceso: ProcesoParaEtapas | undefined): boolean {
+  if (meta && clave in meta) return meta[clave] != null
+  return !!proceso?.scheduled_date
 }
 
 export function eventosDeEtapa(
   filas: readonly FilaHistorial[],
   procesosConRegistro: ReadonlySet<string>,
+  procesos: ReadonlyMap<string, ProcesoParaEtapas>,
   nombres: Nombres,
 ): EventoSistema[] {
   const r: EventoSistema[] = []
   for (const f of filas) {
-    let titulo: string
+    const proceso = procesos.get(f.deal_id)
+    const autor = autorDe(f.changed_by, nombres)
     if (f.from_stage === null) {
       // La apertura de un proceso del embudo ya figura como "Se registró".
       if (procesosConRegistro.has(f.deal_id)) continue
-      titulo = `Se abrió un proceso en ${nombreEtapaHistorial(f.to_stage)}`
-    } else {
-      if (f.from_stage === f.to_stage) continue
-      titulo = `Pasó de ${nombreEtapaHistorial(f.from_stage)} a ${nombreEtapaHistorial(f.to_stage)}`
+      // 654 aperturas son anteriores al historial y se escribieron al cargar los datos:
+      // su fecha y su etapa no son las del día en que se abrió. Va la fecha real del
+      // proceso y, si no coincide, sin etapa.
+      const real = proceso?.created_at ?? f.changed_at
+      const confiable = Math.abs(Date.parse(f.changed_at) - Date.parse(real)) <= DESFASE_APERTURA_MS
+      const etapa = nombreEtapaHistorial(f.to_stage, conDia(f.metadata, 'scheduled_date', proceso))
+      r.push({
+        id: `etapa:${f.id}`,
+        clase: 'etapa',
+        titulo: confiable ? `Se abrió un proceso en ${etapa}` : 'Se abrió un proceso',
+        detalle: null,
+        autor: confiable ? autor : null,
+        fecha: real,
+      })
+      continue
     }
-    r.push({ id: `etapa:${f.id}`, clase: 'etapa', titulo, detalle: null, autor: autorDe(f.changed_by, nombres), fecha: f.changed_at })
+    const desde = nombreEtapaHistorial(f.from_stage, conDia(f.metadata, 'scheduled_date_antes', proceso))
+    const hasta = nombreEtapaHistorial(f.to_stage, conDia(f.metadata, 'scheduled_date', proceso))
+    // `request` → `scheduled` sin día sigue siendo Solicitud: no hay nada que contar.
+    if (desde === hasta) continue
+    r.push({ id: `etapa:${f.id}`, clase: 'etapa', titulo: `Pasó de ${desde} a ${hasta}`, detalle: null, autor, fecha: f.changed_at })
   }
   return r
 }
@@ -123,8 +159,10 @@ export function eventosDeEtapa(
 
 export interface FilaTarea {
   id: string
+  type?: string
   title: string
   status: string
+  deal_id?: string | null
   assigned_to: string | null
   created_at: string
   created_by?: string | null
@@ -133,22 +171,37 @@ export interface FilaTarea {
   source_activity_id: string | null
 }
 
-/** La misma ventana que `colapsarCopiasDeCoordinacion` (cartera): copias creadas a ≤60 s. */
+/** La misma regla que `colapsarCopiasDeCoordinacion` (cartera): copias creadas a ≤60 s. */
 const VENTANA_COPIAS_MS = 60_000
 
-export function eventosDeTareas(filas: readonly FilaTarea[], nombres: Nombres): EventoSistema[] {
+/**
+ * `coordinacion`: los ids de quienes tienen rol de coordinación. Una copia es una tarea
+ * del mismo tipo, título y proceso, asignada a OTRO coordinador, creada a ≤60 s de la
+ * primera: lo que hace `createTaskForRole`. Una tarea de un asesor con el mismo título no
+ * es una copia.
+ */
+export function eventosDeTareas(
+  filas: readonly FilaTarea[],
+  nombres: Nombres,
+  coordinacion: ReadonlySet<string> = new Set(),
+): EventoSistema[] {
   const r: EventoSistema[] = []
-  // Copias: mismo título, distinto asignado, creadas a ≤60 s de la primera del racimo.
   const ordenadas = [...filas].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id))
   const racimos: { primera: FilaTarea; asignados: Set<string | null> }[] = []
+  const esCoord = (t: FilaTarea) => !!t.assigned_to && coordinacion.has(t.assigned_to)
   for (const t of ordenadas) {
     if (t.source_activity_id) continue // ya figura en la llamada que la creó
-    const racimo = racimos.find(
-      (x) =>
-        x.primera.title === t.title &&
-        !x.asignados.has(t.assigned_to) &&
-        Date.parse(t.created_at) - Date.parse(x.primera.created_at) <= VENTANA_COPIAS_MS,
-    )
+    const racimo = esCoord(t)
+      ? racimos.find(
+          (x) =>
+            esCoord(x.primera) &&
+            x.primera.title === t.title &&
+            (x.primera.type ?? null) === (t.type ?? null) &&
+            (x.primera.deal_id ?? null) === (t.deal_id ?? null) &&
+            !x.asignados.has(t.assigned_to) &&
+            Date.parse(t.created_at) - Date.parse(x.primera.created_at) <= VENTANA_COPIAS_MS,
+        )
+      : undefined
     if (racimo) racimo.asignados.add(t.assigned_to)
     else racimos.push({ primera: t, asignados: new Set([t.assigned_to]) })
   }
@@ -205,8 +258,13 @@ export function recortarTexto(texto: string | null | undefined, max: number): st
 
 export const LARGO_DETALLE_WHATSAPP = 140
 
-/** Avisos al equipo con datos de OTROS interesados: nunca en la ficha de nadie. */
-const PLANTILLAS_INTERNAS = ['consulta_portal', 'consulta_sin_enlace', 'consulta_plano']
+/**
+ * Avisos al equipo con datos de OTROS interesados: nunca en la ficha de nadie. Las
+ * respuestas a una consulta (`consulta_sin_enlace`, `consulta_plano`, `consulta_v2`…) van
+ * al interesado: si es un contacto, son parte de su historia. Lo que reciben los
+ * teléfonos del equipo se corta antes, por teléfono.
+ */
+const PLANTILLAS_INTERNAS = ['consulta_portal']
 
 export interface FilaWhatsapp {
   id: string
@@ -234,7 +292,8 @@ export function eventosDeWhatsapp(filas: readonly FilaWhatsapp[], nombres: Nombr
     else if (m.sent_by) {
       titulo = 'Se le envió un WhatsApp'
       autor = autorDe(m.sent_by, nombres)
-    } else if (m.ai_generated) titulo = 'Le respondió el asistente por WhatsApp'
+    } else if (m.template_name) titulo = 'Se le envió un WhatsApp automático' // 79 plantillas llevan ai_generated
+    else if (m.ai_generated) titulo = 'Le respondió el asistente por WhatsApp'
     else titulo = 'Se le envió un WhatsApp automático'
     const fallido = m.direction !== 'in' && m.status === 'failed'
     r.push({
@@ -261,7 +320,7 @@ export interface FilaVideo {
 }
 
 function queVideo(clave: string): string {
-  if (clave === 'clase-completa') return 'Vio la clase completa'
+  if (clave === 'clase-completa') return 'Vio el video de la clase completa'
   const pagina = (VIDEO_KEYS as Record<string, { pagina?: string } | undefined>)[clave]?.pagina
   if (pagina === 'tasacion' || pagina === 'tasacion-neta') return 'Vio el video de la landing de tasación'
   if (pagina === 'clase') return 'Vio el video de la landing de la clase'

@@ -3,7 +3,7 @@
 // en lugar de `createClient` de supabase-js.
 //
 // Imita lo que importa para la seguridad y la paginación: aplica DE VERDAD los filtros que
-// pide la consulta (eq, neq, in, is, not, or, gte, lte, like, limit), devuelve solo las columnas pedidas, ordena y
+// pide la consulta (eq, neq, in, is, not, or, gt/lt, gte, lte, like, limit), devuelve solo las columnas pedidas, ordena y
 // corta en 1000 filas por respuesta como la API real. Así una prueba que busca en la
 // respuesta datos de otro asesor se pone en rojo si el servicio deja de filtrar en la base
 // Y en el armado; una base falsa que devolviera todo escondería un filtro olvidado.
@@ -39,13 +39,18 @@ function valor(f: Fila, col: string): unknown {
 
 /** `a.eq.x`, `a.is.null`, `a.not.is.null` separados por coma (lo que usa el servicio). */
 function filtroOr(expr: string): Filtro {
-  const partes = expr.split(',').map((p) => p.trim())
+  // Las comas dentro de `in.(a,b)` no separan condiciones: se protegen antes de partir.
+  const partes = expr.replace(/\(([^)]*)\)/g, (_m, x: string) => `(${x.replace(/,/g, '|')})`).split(',').map((p) => p.trim())
   const unos: Filtro[] = partes.map((p) => {
     const [col, ...resto] = p.split('.')
     const op = resto.join('.')
     if (op === 'is.null') return (f) => valor(f, col) == null
     if (op === 'not.is.null') return (f) => valor(f, col) != null
     if (op.startsWith('eq.')) return (f) => String(valor(f, col)) === op.slice(3)
+    if (op.startsWith('in.(') && op.endsWith(')')) {
+      const vs = op.slice(4, -1).split('|')
+      return (f) => vs.includes(String(valor(f, col)))
+    }
     throw new Error(`base simulada: no sé leer "${p}" dentro de or()`)
   })
   return (f) => unos.some((u) => u(f))
@@ -150,6 +155,11 @@ export function baseSimulada(tablas: Record<string, Fila[]>, opciones: OpcionesB
         filtros.push(filtroOr(expr))
         return q
       },
+      lt(col: string, v: string) {
+        registro.filtros.push(`lt:${col}=${v}`)
+        filtros.push((f) => Date.parse(String(valor(f, col))) < Date.parse(v))
+        return q
+      },
       lte(col: string, v: string) {
         registro.filtros.push(`lte:${col}=${v}`)
         filtros.push((f) => Date.parse(String(valor(f, col))) <= Date.parse(v))
@@ -160,15 +170,11 @@ export function baseSimulada(tablas: Record<string, Fila[]>, opciones: OpcionesB
         filtros.push((f) => valor(f, col) !== v)
         return q
       },
-      /** Solo `%texto` y `texto%` (lo que usa el servicio). */
+      /** LIKE de Postgres: `%` es cualquier tramo y `_` un carácter. */
       like(col: string, patron: string) {
         registro.filtros.push(`like:${col}=${patron}`)
-        const cuerpo = patron.replace(/^%|%$/g, '')
-        if (cuerpo.includes('%') || cuerpo.includes('_')) throw new Error(`base simulada: like "${patron}" no implementado`)
-        filtros.push((f) => {
-          const x = String(valor(f, col) ?? '')
-          return patron.startsWith('%') && patron.endsWith('%') ? x.includes(cuerpo) : patron.startsWith('%') ? x.endsWith(cuerpo) : x.startsWith(cuerpo)
-        })
+        const re = new RegExp(`^${patron.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*').replace(/_/g, '.')}$`, 's')
+        filtros.push((f) => re.test(String(valor(f, col) ?? '')))
         return q
       },
       limit(n: number) {

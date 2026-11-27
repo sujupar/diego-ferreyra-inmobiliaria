@@ -32,7 +32,7 @@ vi.mock('@/lib/supabase/actividades', () => ({
   tareasCreadasPor: m.tareasCreadasPor,
 }))
 
-vi.mock('@/lib/supabase/linea-de-tiempo', () => ({ leerEventosDelSistema: m.leerEventosDelSistema }))
+vi.mock('@/lib/supabase/linea-de-tiempo', () => ({ leerEventosDelSistema: m.leerEventosDelSistema, MARGEN_EMPATES: 20 }))
 
 import { GET } from './route'
 // Next solo deja exportar los métodos desde un route.ts: el tamaño va escrito acá.
@@ -227,6 +227,12 @@ describe('GET — línea de tiempo completa (crm-linea-de-tiempo)', () => {
     expect(m.leerEventosDelSistema).toHaveBeenCalledTimes(1)
   })
 
+  it('a un asesor le pide solo lo de sus procesos', async () => {
+    como('asesor', 'asesor-1')
+    await get()
+    expect(m.leerEventosDelSistema).toHaveBeenCalledWith(expect.any(String), null, 50, { usuarioId: 'asesor-1', soloPropios: true })
+  })
+
   it('un contacto que no se puede ver no lee eventos del sistema', async () => {
     como('asesor')
     m.canAccessContact.mockResolvedValue(false)
@@ -258,8 +264,8 @@ describe('GET — línea de tiempo completa (crm-linea-de-tiempo)', () => {
     m.leerEventosDelSistema.mockResolvedValue({ eventos: [evento('etapa:9', f), evento('etapa:1', f)], fuentesConError: [] })
     // Ya se mostró `etapa:9` (la clave mayor con esa fecha): siguen `etapa:1` y la actividad.
     const body = await (await get(`?antes=${f}&antes_id=etapa:9`)).json()
-    expect(m.listarActividades).toHaveBeenCalledWith(expect.any(String), 'todo', f, 51, { inclusivo: true })
-    expect(m.leerEventosDelSistema).toHaveBeenCalledWith(expect.any(String), { fecha: f, id: 'etapa:9' }, 50)
+    expect(m.listarActividades).toHaveBeenCalledWith(expect.any(String), 'todo', f, 71, { inclusivo: true })
+    expect(m.leerEventosDelSistema).toHaveBeenCalledWith(expect.any(String), { fecha: f, id: 'etapa:9' }, 50, { usuarioId: 'coord-1', soloPropios: false })
     expect(body.items.map((i: Item) => (i.tipo === 'evento' ? i.evento.id : i.actividad.id))).toEqual(['etapa:1', 'n1'])
   })
 

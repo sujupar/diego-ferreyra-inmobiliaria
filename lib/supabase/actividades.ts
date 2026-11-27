@@ -185,7 +185,9 @@ export async function listarActividades(
     .eq('contact_id', contactId)
     .is('voided_at', null)
     .in('kind', TIPOS_POR_FILTRO[filtro])
-  if (antes) query = opciones.inclusivo ? query.lte('occurred_at', antes) : query.lt('occurred_at', antes)
+  // Inclusivo = hasta el milisegundo del cursor INCLUSIVE: la base guarda microsegundos,
+  // así que va con `<` al milisegundo siguiente (crm-linea-de-tiempo, auditoría hallazgo 2).
+  if (antes) query = query.lt('occurred_at', opciones.inclusivo ? new Date(Date.parse(antes) + 1).toISOString() : antes)
   const { data, error } = await query
     .order('occurred_at', { ascending: false })
     .order('created_at', { ascending: false })
