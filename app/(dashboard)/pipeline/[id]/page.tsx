@@ -15,14 +15,18 @@ import {
   Edit2, Send, Mic, MicOff, Square, UserCog, Clock, Megaphone, ExternalLink, Layers
 } from 'lucide-react'
 
-type FollowUpChannel = 'call' | 'email' | 'message'
+// Sin "Correo": los tipos de tarea de la maqueta no lo tienen (crm-tareas-y-campanita).
+type FollowUpChannel = 'call' | 'message'
 const CHANNEL_LABEL: Record<FollowUpChannel, string> = {
   call: 'Llamada',
-  email: 'Correo',
   message: 'Mensaje',
 }
-const todayIsoDate = () => new Date().toISOString().slice(0, 10)
+// Hoy en Argentina: con UTC, de 21 a 24 h no se podía agendar para hoy.
+const todayIsoDate = () => enArgentina(new Date()).fecha
 import { ContactEditor } from '@/components/contacts/ContactEditor'
+import { enArgentina } from '@/lib/crm/horario-laboral'
+import { MAX_TITULO } from '@/lib/tasks/validate-task-input'
+import { avisarCambioTareas } from '@/components/tareas/acciones'
 import { modoDeVisita } from '@/lib/pipeline/visita-datos'
 import { faltantesDelProceso, camposFaltantes, exigeDatosParaMover, esRespuestaDatosDelCliente } from '@/lib/deals/proceso-manual'
 import { CompletarDatosCliente } from '@/components/deals/CompletarDatosCliente'
@@ -286,7 +290,7 @@ export default function DealDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'follow_up',
-          title: `Seguimiento ${channelLabel.toLowerCase()}: ${contactName}`,
+          title: `Seguimiento ${channelLabel.toLowerCase()}: ${contactName}`.slice(0, MAX_TITULO),
           description: followupNotes.trim(),
           deal_id: id,
           channel: followupChannel,
@@ -301,6 +305,7 @@ export default function DealDetailPage() {
         setAdvancing(false)
         return
       }
+      avisarCambioTareas() // la campanita
 
       // Preserve historial en notes
       const header = `--- Seguimiento ${channelLabel} (${dateLabel} ${timeLabel}) ---`
@@ -776,9 +781,9 @@ export default function DealDetailPage() {
             {/* Canal */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Canal</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['call', 'email', 'message'] as FollowUpChannel[]).map(c => {
-                  const ChannelIcon = c === 'call' ? Phone : c === 'email' ? Mail : MessageSquare
+              <div className="grid grid-cols-2 gap-2">
+                {(['call', 'message'] as FollowUpChannel[]).map(c => {
+                  const ChannelIcon = c === 'call' ? Phone : MessageSquare
                   const active = followupChannel === c
                   return (
                     <button
