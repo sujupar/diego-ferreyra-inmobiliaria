@@ -89,11 +89,16 @@ export function FilaProceso({
       <span
         aria-hidden
         className={cn(
-          'col-start-1 row-span-6 row-start-1 inline-flex size-9 items-center justify-center rounded-full bg-brand-soft text-[13px] font-semibold text-brand @min-[44rem]/lista:row-span-1',
+          // `grid-row` completo (inicio + extensión) en las dos medidas: con `row-span-1` en la
+          // tabla, Tailwind v4 escribía `span 1 / span 1` y pisaba el `row-start-1`; el avatar
+          // perdía su lugar y las columnas se corrían una (QA 9.3, 2026-11-27).
+          'col-start-1 [grid-row:1/span_6] inline-flex size-9 items-center justify-center rounded-full bg-brand-soft text-[13px] font-semibold text-brand @min-[44rem]/lista:[grid-row:1/2]',
+          // Con "Seleccionar" activo, cada fila muestra su casilla (spec "Seleccionar para eliminar").
+          seleccion && !seleccion.marcada && 'border-2 border-border bg-card text-transparent',
           seleccion?.marcada && 'bg-brand text-brand-foreground',
         )}
       >
-        {seleccion?.marcada ? <Check className="size-4" /> : iniciales(fila.nombre)}
+        {seleccion?.marcada ? <Check className="size-4" /> : seleccion ? null : iniciales(fila.nombre)}
       </span>
 
       <span className={cn(CELDA, 'flex flex-col gap-px')}>

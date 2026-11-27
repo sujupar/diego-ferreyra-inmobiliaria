@@ -258,14 +258,14 @@ export function HojaFiltros({
           <button
             type="button"
             onClick={() => aplicar({ ...SIN_FILTROS, q: filtros.q })}
-            className={cn('rounded-md px-4 text-sm font-medium text-texto-suave hover:bg-accent hover:text-foreground', ALTO_CONTROL_LISTA)}
+            className={cn('rounded-md border border-border bg-card px-4 text-sm font-medium text-foreground shadow-sm hover:bg-accent', ALTO_CONTROL_LISTA)}
           >
             Limpiar filtros
           </button>
           <button
             type="button"
             onClick={() => onAbierta(false)}
-            className={cn('rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90', ALTO_CONTROL_LISTA)}
+            className={cn('rounded-md bg-brand px-4 text-sm font-medium text-brand-foreground hover:bg-brand/90', ALTO_CONTROL_LISTA)}
           >
             Ver resultados
           </button>

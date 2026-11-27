@@ -297,6 +297,14 @@ describe('armarFilasCartera — de quién son las tareas que cuentan', () => {
   })
 })
 
+describe('quitarNombreDelTitulo con dos puntos (QA 9.3)', () => {
+  it('saca el nombre de los títulos automáticos "X: Nombre"', () => {
+    expect(quitarNombreDelTitulo('Seguimiento mensaje: EDUARDO STANIC', 'Eduardo Stanic')).toBe('Seguimiento mensaje')
+    expect(quitarNombreDelTitulo('Nuevo lead (Embudo): Sofía Lanús', 'Sofia Lanus')).toBe('Nuevo lead (Embudo)')
+    expect(quitarNombreDelTitulo('Nota: llamar a otro', 'Sofía Lanús')).toBe('Nota: llamar a otro')
+  })
+})
+
 describe('copias de una tarea de la coordinación (createTaskForRole)', () => {
   it('el racimo no se encadena: una pendiente a 100 s de la primera no se anula por una cerrada en el medio (B7)', () => {
     const base = Date.parse('2026-11-26T15:00:00.000Z')

@@ -134,7 +134,8 @@ function sinMarcas(s: string): string {
 }
 
 /**
- * "Llamada 2 a Sofía Lanús" → "Llamada 2". Compara sin tildes y sin mayúsculas, y sin
+ * "Llamada 2 a Sofía Lanús" → "Llamada 2"; "Seguimiento mensaje: Sofía Lanús" → "Seguimiento
+ * mensaje". Compara sin tildes y sin mayúsculas, y sin
  * expresiones regulares (un nombre con `(` o `*` no rompe nada). Trabaja sobre el título en
  * NFC: así cada letra con tilde ocupa un lugar y el corte cae donde corresponde aunque el
  * título o el nombre llegaran descompuestos (macOS). Si el nombre no está al final, el
@@ -145,7 +146,8 @@ export function quitarNombreDelTitulo(titulo: string, nombre: string): string {
   if (!n) return titulo
   const original = titulo.normalize('NFC')
   const plano = sinMarcas(original)
-  for (const nexo of [' a ', ' con ', ' de ']) {
+  // `': '` por los títulos automáticos "Seguimiento mensaje: EDUARDO STANIC" (QA 9.3: 385 tareas así).
+  for (const nexo of [' a ', ' con ', ' de ', ': ']) {
     const sufijo = nexo + n
     if (plano.endsWith(sufijo)) return original.slice(0, plano.length - sufijo.length).trim()
   }
