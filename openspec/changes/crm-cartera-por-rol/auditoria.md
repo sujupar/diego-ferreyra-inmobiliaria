@@ -327,3 +327,27 @@ valida `ver_como`), H3, H4, H5 y H8 cumplen. Resultado: **No conforme** (1 MEDIA
 Además (10.2): `scripts/apply-crm-cartera-pg.ts` vuelto a correr — aplicada y verificada, 900
 ids en 3,8 ms, 0 filas de prueba; `git diff --name-only origin/main...HEAD` lista solo archivos
 de este change, `CLAUDE.md` y la propuesta de `crm-inicio`; rama al día con `origin/main`.
+
+Después del Auditor 3 se aplicó además la recomendación de B3 y B4 (f93555b2): "Sin proceso
+tuyo" en los Contactos del asesor y la cabecera "Cierre / próximo paso" (Diferencias 21 y 22).
+vitest 2260, `tsc`, `eslint` y `openspec validate --strict` sin errores.
+
+## Auditoría de cierre — Auditor 4 (2026-11-27)
+
+Agente nuevo, solo lectura sobre f93555b2. A3-1..A3-6 bien hechos; cifras del PR contrastadas.
+"Sin proceso tuyo" solo con alcance propio (asesor) y sin revelar nada del proceso ajeno. Sin
+hallazgos de permisos ni de seguridad. Resultado: **No conforme** (1 MEDIA de proceso).
+
+| # | Nivel | Hallazgo | Qué se hizo |
+|---|---|---|---|
+| A4-1 | MEDIA | Tres commits con cambios de pantalla (f6c24cfc, de320bcd, f93555b2) sin re-QA en la vista previa. | Aplicado: re-QA en la vista previa de f93555b2 con los datos de la receta. Contactos del asesor a 1280 y 390: texto "…o lo lleva otro asesor.", cabecera "Cierre / próximo paso", tarjeta que rotula "Cierre" por fila. Contactos de la coordinación: texto de siempre. `/crm` con una búsqueda sin resultados: no dice "Nada urgente". Consola sin errores. "Ver como" tras un "Reintentar" depende de una primera carga fallida del servidor, que no se puede provocar desde el navegador: lo cubren dos tests de componente que fallan sin el arreglo. Después: `borrar` y `verificar`, con 0 filas. |
+| A4-2 | BAJA | Los escenarios de Contactos y D5 seguían diciendo "Sin proceso" para el asesor sin ningún proceso. | Aplicado: "Sin proceso" (para el asesor, "Sin proceso tuyo"); escenario nuevo ampliado; D5 corregido. |
+| A4-3 | BAJA | "Abiertos y cerrados" decía "Cierre" para toda lista. | Aplicado: salvedad de Contactos. |
+| A4-4 | BAJA | Cuatro frases inexactas en el PR. | Aplicado: corregidas en el cuerpo del PR. |
+| A4-5 | BAJA | `auditoria.md` no registraba f93555b2. | Aplicado (párrafo de arriba). |
+| A4-6 | BAJA | 10.5 decía "dieciséis diferencias"; `CLAUDE.md` omitía `perfiles` en el tope. | Aplicado. |
+
+**Cierre de la auditoría del código (11.4):** cuatro rondas. Ningún auditor encontró problemas
+de permisos ni de seguridad. Todos los hallazgos MEDIA quedaron corregidos y verificados: M1 y
+M2 de código, H1 de spec, A3-1 y A4-1 de proceso. Los BAJA están aplicados, salvo B7(b), que
+queda aceptado como riesgo latente. `openspec validate --strict`: válido.

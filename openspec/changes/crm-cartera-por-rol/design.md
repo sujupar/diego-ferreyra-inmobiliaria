@@ -559,7 +559,7 @@ export function armarFilasContactos(e: {...}): FilaContacto[]
 ```
 `procesoDeContacto(procesos, quienMira)`: para un asesor, **solo entre los procesos a su
 nombre** (si no tiene ninguno —ve al contacto por estar asignado, por haberlo creado o por una
-tasación—, `null`, "Sin proceso" en la fila); para los demás, entre todos. Dentro de esos, el
+tasación—, `null`, "Sin proceso tuyo" en la fila, Diferencia 21); para los demás, entre todos. Dentro de esos, el
 abierto más reciente (incluido Comprador); si no hay, el cerrado más reciente; sin procesos,
 `null`. Sin esto, la fila de un asesor traía el proceso más nuevo de otro asesor (48 personas
 tienen más de uno abierto), lo mismo que la ficha oculta con `dealsOcultos`
