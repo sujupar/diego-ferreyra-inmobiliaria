@@ -147,3 +147,9 @@ export function resumenDeGrupos(n: Record<GrupoTarea, number>): string {
   if (n.sin_fecha) partes.push(`${n.sin_fecha} sin fecha`)
   return partes.length > 0 ? partes.join(' · ') : 'Nada pendiente'
 }
+
+/**
+ * Desde cuándo suenan las tareas en la campanita (spec "Las vencidas antes de este cambio no
+ * suenan"): el día en que se publicó crm-tareas-y-campanita. Se fija al mergear.
+ */
+export const INICIO_AVISOS = new Date('2026-11-28T00:00:00-03:00')
