@@ -69,16 +69,39 @@ export function cuandoEs(fecha: string, hora: string, ahora: Date): string {
 export type EstadoVencimiento = 'vencida' | 'hoy' | 'proxima' | 'sinfecha'
 
 /**
+ * Opciones de la fila de la cartera (crm-cartera-por-rol, D5); la ficha no las pasa y sus
+ * textos no cambian.
+ * - `todoElDia`: sin hora se dice "Hoy, todo el día" / "Mañana, todo el día" (tasación sin
+ *   hora, tarea `all_day`) en vez de "Hoy" a secas.
+ * - `espera`: la primera llamada de un lead que entró en horario laboral vence en el
+ *   momento del registro (D3); vencida, se dice cuánto espera desde ese momento ("Espera
+ *   hace 28 min") en vez de "Vencida hace…". Quién la marca así lo decide `proximoPaso`.
+ */
+export interface OpcionesVencimiento {
+  todoElDia?: boolean
+  espera?: { registradoEn: string }
+}
+
+/**
  * Texto del vencimiento de una tarea. Si está vencida o no lo decide `vencimientoDeTarea`
  * (la misma regla que usa el resto de la ficha); acá solo se arma el texto.
  */
 export function textoVencimiento(
   t: { due_date: string | null; due_time: string | null },
   ahora: Date,
+  opciones: OpcionesVencimiento = {},
 ): { texto: string; estado: EstadoVencimiento } {
   if (!t.due_date) return { texto: 'Sin fecha', estado: 'sinfecha' }
   const v = vencimientoDeTarea(t, ahora)
   const hora = t.due_time ? horaCorta(t.due_time) : null
+  const sinHora = (palabra: string) => (opciones.todoElDia ? `${palabra}, todo el día` : palabra)
+  if (v.vencida && opciones.espera) {
+    const desde = aInstante(opciones.espera.registradoEn)
+    if (desde) {
+      const min = (ahora.getTime() - desde.getTime()) / 60_000
+      return { texto: `Espera hace ${duracion(Math.max(1, min))}`, estado: 'vencida' }
+    }
+  }
   if (v.vencida) {
     const dias = v.dias ?? 0
     if (dias > 0) return { texto: `Vencida hace ${dias} ${dias === 1 ? 'día' : 'días'}`, estado: 'vencida' }
@@ -93,13 +116,43 @@ export function textoVencimiento(
     return { texto: min >= 60 ? `Vencida hace ${Math.floor(min / 60)} h` : `Vencida hace ${Math.max(1, min)} min`, estado: 'vencida' }
   }
   const hoy = enArgentina(ahora).fecha
-  if (t.due_date === hoy) return { texto: hora ? `Hoy ${hora}` : 'Hoy', estado: 'hoy' }
+  if (t.due_date === hoy) return { texto: hora ? `Hoy ${hora}` : sinHora('Hoy'), estado: 'hoy' }
   let dias: number
   try {
     dias = diasDeCalendarioEntre(ahora, instanteDesdeAR(t.due_date, '12:00'))
   } catch {
     return { texto: t.due_date, estado: 'proxima' }
   }
-  if (dias === 1) return { texto: hora ? `Mañana ${hora}` : 'Mañana', estado: 'proxima' }
-  return { texto: hora ? `${diaCorto(t.due_date)}, ${hora}` : diaCorto(t.due_date), estado: 'proxima' }
+  if (dias === 1) return { texto: hora ? `Mañana ${hora}` : sinHora('Mañana'), estado: 'proxima' }
+  return { texto: hora ? `${diaCorto(t.due_date)}, ${hora}` : sinHora(diaCorto(t.due_date)), estado: 'proxima' }
+}
+
+/**
+ * Tiempo relativo de la fila de la cartera (spec "Último contacto", "Formato del tiempo").
+ * Igual que `fechaRelativa` hasta los 6 días; desde los 7, siempre "hace N días" (la ficha
+ * pasa a la fecha: en la lista se compara cuánto hace, y "12 nov" obliga a hacer la
+ * cuenta). Un instante futuro (relojes desfasados) es "recién".
+ */
+export function haceCuanto(at: string, ahora: Date): string {
+  const d = aInstante(at)
+  if (!d) return ''
+  if (d.getTime() > ahora.getTime()) return 'recién'
+  const dias = diasDeCalendarioEntre(d, ahora)
+  if (dias < 7) return fechaRelativa(d, ahora)
+  return `hace ${dias} días`
+}
+
+/** '28 min' | '16 h 20 min' | '2 días 18 h' (con días, sin minutos). Negativo → '0 min'. */
+export function duracion(minutos: number): string {
+  const m = Math.max(0, Math.floor(minutos))
+  if (m < 60) return `${m} min`
+  if (m < 1440) {
+    const h = Math.floor(m / 60)
+    const resto = m % 60
+    return resto ? `${h} h ${resto} min` : `${h} h`
+  }
+  const dias = Math.floor(m / 1440)
+  const h = Math.floor((m % 1440) / 60)
+  const textoDias = `${dias} ${dias === 1 ? 'día' : 'días'}`
+  return h ? `${textoDias} ${h} h` : textoDias
 }
