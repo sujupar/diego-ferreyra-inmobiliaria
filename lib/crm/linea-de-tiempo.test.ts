@@ -383,8 +383,22 @@ describe('unirYCortar', () => {
   })
 
   it('con piso: lo anterior a lo más viejo leído de una fuente cortada espera, y hay más', () => {
-    const r = unirYCortar([[ev('a', '2026-11-22T10:00:00Z'), ev('b', '2026-11-20T10:00:00Z')], [ev('c', '2026-11-18T10:00:00Z')]], null, 50, '2026-11-20T10:00:00Z')
+    const r = unirYCortar([[ev('a', '2026-11-22T10:00:00Z'), ev('b', '2026-11-21T10:00:00Z')], [ev('c', '2026-11-18T10:00:00Z')]], null, 50, '2026-11-20T10:00:00Z')
     expect(r.items.map(claveDe)).toEqual(['a', 'b'])
+    expect(r.hayMas).toBe(true)
+  })
+
+  it('con piso: el milisegundo del piso entero espera si hay algo más nuevo', () => {
+    const f = '2026-11-20T10:00:00.000Z'
+    const r = unirYCortar([[ev('a', '2026-11-22T10:00:00Z'), ev('b', f)], [ev('c', f)]], null, 50, f)
+    expect(r.items.map(claveDe)).toEqual(['a'])
+    expect(r.hayMas).toBe(true)
+  })
+
+  it('con piso y nada más nuevo, el milisegundo del piso se muestra (si no, no avanzaría nunca)', () => {
+    const f = '2026-11-20T10:00:00.000Z'
+    const r = unirYCortar([[ev('b', f), ev('c', f)]], null, 50, f)
+    expect(r.items.map(claveDe)).toEqual(['c', 'b'])
     expect(r.hayMas).toBe(true)
   })
 

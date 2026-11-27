@@ -56,6 +56,8 @@ export function useFicha(contactoId: string) {
   // más" viejo (revisión de código de crm-linea-de-tiempo, hallazgo 4).
   const version = useRef({ ficha: 0, actividad: 0, mas: 0, tareas: 0 })
   const filtroActual = useRef<FiltroActividad>('todo')
+  /** Hay una página 1 en camino: "Ver más" espera a que llegue. */
+  const primeraPendiente = useRef(false)
   const base = `/api/contacts/${encodeURIComponent(contactoId)}`
 
   const traerFicha = useCallback(async () => {
@@ -79,8 +81,11 @@ export function useFicha(contactoId: string) {
 
   const pedirActividad = useCallback(
     async (filtro: FiltroActividad, antes: { fecha: string; id: string } | null) => {
+      // Cargar la página 1 invalida todo "Ver más" en curso: su cursor salió de la lista vieja
+      // y, sumado a la nueva, saltearía un renglón (auditoría de cierre, hallazgo 1).
       const v = antes ? version.current.actividad : ++version.current.actividad
-      const vMas = antes ? ++version.current.mas : version.current.mas
+      const vMas = ++version.current.mas
+      if (!antes) primeraPendiente.current = true
       const vigente = () => v === version.current.actividad && (!antes || vMas === version.current.mas)
       const params = new URLSearchParams({ filtro })
       if (antes) {
@@ -92,6 +97,7 @@ export function useFicha(contactoId: string) {
           await fetch(`${base}/activities?${params.toString()}`, { cache: 'no-store' }),
         )
         if (!vigente()) return
+        if (!antes) primeraPendiente.current = false
         if (r.ok) {
           setActividad((a) => ({
             ...a,
@@ -115,6 +121,7 @@ export function useFicha(contactoId: string) {
       } catch (err) {
         console.error('[ficha] no se pudo pedir la actividad', err)
         if (!vigente()) return
+        if (!antes) primeraPendiente.current = false
         setActividad((a) =>
           antes ? { ...a, cargandoMas: false, errorMas: 'No se pudo cargar. Probá de nuevo.' } : { ...a, estado: 'error', cargandoMas: false },
         )
@@ -129,6 +136,8 @@ export function useFicha(contactoId: string) {
       filtroActual.current = f
       setActividad((a) => ({
         ...a,
+        cargandoMas: false,
+        errorMas: null,
         filtro: f,
         // Cambiar de filtro muestra la carga; recargar el mismo deja la lista a la vista.
         estado: a.filtro === f && a.estado === 'ok' ? 'ok' : 'cargando',
@@ -142,7 +151,7 @@ export function useFicha(contactoId: string) {
 
   const verMas = useCallback(() => {
     const ultimo = actividad.items[actividad.items.length - 1]
-    if (!ultimo || actividad.cargandoMas) return
+    if (!ultimo || actividad.cargandoMas || primeraPendiente.current) return
     setActividad((a) => ({ ...a, cargandoMas: true, errorMas: null }))
     void pedirActividad(actividad.filtro, { fecha: fechaItem(ultimo), id: claveItem(ultimo) })
   }, [actividad, pedirActividad])

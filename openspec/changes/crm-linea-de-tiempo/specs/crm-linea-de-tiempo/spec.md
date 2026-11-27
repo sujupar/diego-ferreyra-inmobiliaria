@@ -186,7 +186,7 @@ solo al contacto asignadas a otra persona: la misma regla que los bloques "Proce
 
 #### Scenario: Contacto con un proceso de otro asesor
 - **WHEN** un asesor abre la ficha de un contacto que tiene un proceso a su nombre y otro, con su registro y sus tareas, a nombre de otro asesor
-- **THEN** ve los cambios de etapa, el registro y las tareas de su proceso, los WhatsApp y el video de la persona, y nada del otro proceso; el pedido por la red tampoco lo trae
+- **THEN** ve los cambios de etapa, el registro y las tareas de su proceso, los WhatsApp y el video de la persona, y del otro proceso solo una tarea asignada a él mismo (como en el bloque "Tareas"); el pedido por la red tampoco trae lo demás
 
 #### Scenario: La coordinación ve todo
 - **WHEN** una coordinadora abre esa misma ficha
