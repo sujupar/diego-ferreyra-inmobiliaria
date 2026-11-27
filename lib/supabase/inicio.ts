@@ -41,6 +41,25 @@ async function filas<T>(q: PromiseLike<Res<unknown>>, que: string): Promise<T[]>
   if (error) throw new Error(`${que}: ${error.message}`)
   return (data ?? []) as T[]
 }
+/**
+ * Lee TODAS las filas, de a 1000 con orden fijo (PostgREST corta cada respuesta en 1000 sin
+ * avisar: revisión de código 1-3). Pasado el tope, error: nunca datos cortados en silencio.
+ */
+const PAGINA = 1000
+export const TOPE_LECTURA = 20_000
+interface Paginable {
+  order(columna: string, o?: { ascending?: boolean }): { range(desde: number, hasta: number): PromiseLike<Res<unknown>> }
+}
+async function todas<T>(armar: () => Paginable, que: string): Promise<T[]> {
+  const r: T[] = []
+  for (let desde = 0; ; desde += PAGINA) {
+    const pagina = await filas<T>(armar().order('id', { ascending: true }).range(desde, desde + PAGINA - 1), que)
+    r.push(...pagina)
+    if (pagina.length < PAGINA) return r
+    if (r.length >= TOPE_LECTURA) throw new Error(`${que}: más de ${TOPE_LECTURA} filas`)
+  }
+}
+
 async function contar(q: PromiseLike<Res<unknown>>, que: string): Promise<number> {
   const { count, error } = await q
   if (error) throw new Error(`${que}: ${error.message}`)
@@ -102,6 +121,8 @@ export async function leerInicio(
   const db = getAdmin()
   const hoy = enArgentina(ahora).fecha
   const inicioHoy = instanteDesdeAR(hoy, '00:00').toISOString()
+  // 00:00 del día siguiente en Argentina (revisión de código 6: con 23:59 quedaba afuera el último minuto).
+  const manana0 = instanteDesdeAR(enArgentina(new Date(instanteDesdeAR(hoy, '12:00').getTime() + 86_400_000)).fecha, '00:00').toISOString()
 
   // La cartera. La coordinación y el dueño necesitan TODOS los procesos y las tareas de
   // TODAS las coordinadoras (la cola es una sola: auditoría de artefactos 1), así que se lee
@@ -116,22 +137,25 @@ export async function leerInicio(
     }
     return r.datos.filas
   })
-  const perfilesP = filas<{ id: string; role: string; is_active: boolean | null }>(
-    db.from('profiles').select('id, role, is_active').eq('is_active', true),
-    'perfiles',
-  )
-  const coordinacionP = perfilesP.then((ps) => ps.filter((p) => p.role === 'coordinador').map((p) => p.id))
+  // La cartera la consumen todos los roles; si nadie la espera (no pasa), no queda un
+  // rechazo suelto que tumbe la función.
+  carteraP.catch(() => {})
 
   const bloques: Record<string, Promise<Bloque<unknown>>> = {}
 
   if (rol === 'coordinacion' || rol === 'dueno') {
+    // Los perfiles se leen solo acá: en el asesor no los usa nadie (revisión de código 5).
+    const coordinacionP = filas<{ id: string; role: string }>(
+      db.from('profiles').select('id, role').eq('is_active', true).eq('role', 'coordinador'),
+      'perfiles',
+    ).then((ps) => ps.map((p) => p.id))
     const tareasCoordP = coordinacionP.then((c) =>
       c.length === 0 ? null : leerAgenda({ asignados: c, tipo: null, sinFechaDesde: 0 }, ahora),
     )
     // Llamadas y WhatsApp desde el inicio del registro (la tabla es chica): dan "Llamada N"
     // y la racha de cada proceso, sin una lista de ids en la URL.
-    const intentosP = filas<IntentoDeCadencia & { deal_id: string | null }>(
-      db.from('contact_activities').select('id, deal_id, kind, call_outcome, occurred_at, created_at, voided_at')
+    const intentosP = todas<IntentoDeCadencia & { deal_id: string | null }>(
+      () => db.from('contact_activities').select('id, deal_id, kind, call_outcome, occurred_at, created_at, voided_at')
         .in('kind', ['call', 'whatsapp_sent']).is('voided_at', null)
         .gte('occurred_at', instanteDesdeAR(INICIO_REGISTRO_CONTACTOS, '00:00').toISOString()),
       'intentos',
@@ -150,8 +174,8 @@ export async function leerInicio(
     // se agendaron solo con el contacto, desde la ficha: auditoría de artefactos 2).
     const sinTareaP = Promise.all([
       carteraP,
-      filas<{ deal_id: string | null; contact_id: string | null }>(
-        db.from('tasks').select('deal_id, contact_id').eq('status', 'pending').range(0, 4999),
+      todas<{ deal_id: string | null; contact_id: string | null }>(
+        () => db.from('tasks').select('deal_id, contact_id').eq('status', 'pending'),
         'tareas pendientes',
       ),
       intentosP,
@@ -197,13 +221,13 @@ export async function leerInicio(
       bloques.tiempoMedio = bloque(
         (async () => {
           const desde = inicioDeCohorte(ahora).toISOString()
-          const leads = await filas<{ id: string; created_at: string }>(
-            db.from('deals').select('id, created_at').gte('created_at', desde).eq('origin', 'embudo'),
+          const leads = await todas<{ id: string; created_at: string }>(
+            () => db.from('deals').select('id, created_at').gte('created_at', desde).eq('origin', 'embudo'),
             'leads de la semana',
           )
           if (leads.length === 0) return tiempoMedio([])
-          const llamadas = await filas<{ deal_id: string; occurred_at: string }>(
-            db.from('contact_activities').select('deal_id, occurred_at').eq('kind', 'call').is('voided_at', null).gte('occurred_at', desde),
+          const llamadas = await todas<{ deal_id: string; occurred_at: string }>(
+            () => db.from('contact_activities').select('id, deal_id, occurred_at').eq('kind', 'call').is('voided_at', null).gte('occurred_at', desde),
             'primeras llamadas',
           )
           const primera = new Map<string, string>()
@@ -241,7 +265,7 @@ export async function leerInicio(
         filas<{ id: string; scheduled_at: string; client_name: string | null; status: string; propiedad: { address: string | null } | null }>(
           db.from('property_visits').select('id, scheduled_at, client_name, status, propiedad:property_id(address)')
             .eq('advisor_id', usuario.id).gte('scheduled_at', inicioHoy)
-            .lt('scheduled_at', instanteDesdeAR(hoy, '23:59').toISOString()).neq('status', 'cancelled'),
+            .lt('scheduled_at', manana0).neq('status', 'cancelled'),
           'visitas de hoy',
         ),
         carteraP,

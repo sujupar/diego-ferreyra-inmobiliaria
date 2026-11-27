@@ -354,6 +354,12 @@ export function FichaContacto({
     if (!abrirLlamada || llamadaAbierta.current || ficha.estado !== 'ok') return
     llamadaAbierta.current = true
     abrirFormulario('llamada')
+    // Se saca `registrar` de la dirección: al recargar la ficha no se vuelve a abrir (revisión de código 11).
+    const url = new URL(window.location.href)
+    if (url.searchParams.has('registrar')) {
+      url.searchParams.delete('registrar')
+      window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al llegar, una vez
   }, [abrirLlamada, ficha.estado])
 
