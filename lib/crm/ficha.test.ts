@@ -302,9 +302,31 @@ describe('armarFicha — último contacto', () => {
     )
     expect(f.ultimoContacto.texto).toBe('Último contacto: ayer')
   })
-  it('solicitud sin ningún contacto → "Sin contacto todavía" con alerta', () => {
-    const f = ficha(datos({ procesos: [proceso({ id: 'd-1' })] }))
+  // Desde crm-cartera-por-rol (Diferencia 16): la cabecera y la fila de la lista dicen lo
+  // mismo de una solicitud anterior al registro de llamadas (INICIO_REGISTRO_CONTACTOS).
+  const DESPUES_DEL_REGISTRO = new Date('2026-11-27T15:00:00.000Z')
+  const fichaDespues = (d: DatosFicha) =>
+    armarFicha({ datos: d, cambiosAPerdido: new Map(), nombres: NOMBRES, usuario: COORD, ahora: DESPUES_DEL_REGISTRO })
+
+  it('solicitud nueva (desde el registro) sin ningún contacto → "Sin contacto todavía" con alerta', () => {
+    const f = fichaDespues(datos({ procesos: [proceso({ id: 'd-1', created_at: '2026-11-26T15:00:00.000Z' })] }))
     expect(f.ultimoContacto).toMatchObject({ texto: 'Sin contacto todavía', alerta: true, en: null })
+  })
+  it('solicitud anterior al registro sin ningún contacto → "Sin contacto registrado", sin alerta', () => {
+    const f = ficha(datos({ procesos: [proceso({ id: 'd-1' })] }))
+    expect(f.ultimoContacto).toEqual({ texto: 'Sin contacto registrado', dias: null, alerta: false, en: null })
+  })
+  it('las 23:30 de Argentina del día anterior al registro (ya el día de inicio en UTC) → anterior', () => {
+    const f = fichaDespues(datos({ procesos: [proceso({ id: 'd-1', created_at: '2026-11-26T02:30:00.000Z' })] }))
+    expect(f.ultimoContacto.texto).toBe('Sin contacto registrado')
+  })
+  it('una solicitud anterior al registro CON un contacto anotado dice el contacto', () => {
+    const f = ficha(datos({ procesos: [proceso({ id: 'd-1' })], ultimoIntentoEn: '2026-11-24T15:00:00.000Z' }))
+    expect(f.ultimoContacto.texto).toBe('Último contacto: ayer')
+  })
+  it('sin proceso abierto (todos cerrados) sigue "Sin contacto todavía", sin alerta', () => {
+    const f = ficha(datos({ procesos: [proceso({ id: 'd-1', stage: 'lost' })] }))
+    expect(f.ultimoContacto).toMatchObject({ texto: 'Sin contacto todavía', alerta: false })
   })
 })
 
