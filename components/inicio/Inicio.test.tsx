@@ -5,7 +5,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import '@testing-library/jest-dom/vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { Inicio } from './Inicio'
+import { Inicio, iniciales, telVisible } from './Inicio'
 
 const toastes = vi.hoisted(() => ({ toast: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast: Object.assign(toastes.toast, { error: toastes.error }) }))
@@ -43,6 +43,20 @@ afterEach(() => {
 })
 
 const bloques = (c: HTMLElement) => [...c.querySelectorAll('[data-bloque]')].map((x) => x.getAttribute('data-bloque'))
+
+describe('formato', () => {
+  it('teléfono legible aunque esté guardado con prefijo internacional', () => {
+    expect(telVisible('1155550142')).toBe('11 5555-0142')
+    expect(telVisible('+5491167653458')).toBe('11 6765-3458')
+    expect(telVisible('5491167653458')).toBe('11 6765-3458')
+    expect(telVisible('+34 600 123 456')).toBe('+34 600 123 456')
+  })
+  it('iniciales con letras, sin signos', () => {
+    expect(iniciales('[TEST] Inicio QA Espera')).toBe('TI')
+    expect(iniciales('Marcela Ibáñez')).toBe('MI')
+    expect(iniciales('Ñandú')).toBe('Ñ')
+  })
+})
 
 describe('Inicio', () => {
   it('coordinación: cola, sin respuesta, sin próximo paso; después tareas, tasaciones y números (en ese orden del DOM)', async () => {
@@ -102,6 +116,16 @@ describe('Inicio', () => {
     expect(screen.getAllByText('Solo lectura').length).toBeGreaterThan(0)
     expect(screen.getByText(/Pocos casos\./)).toBeInTheDocument()
     expect(screen.getByText(/Otro 1 todavía sin llamar no entra en el promedio/)).toBeInTheDocument()
+  })
+
+  it('dueño: sin promedio todavía, igual cuenta los leads que siguen sin llamar', async () => {
+    red(() => respuesta('dueno', {
+      leadsSinContacto: ok([]), tiempoMedio: ok({ n: 0, sinLlamar: 2, reloj: null, habiles: null, pocos: true }),
+      paraLlamar: ok([]), sinRespuesta: ok([]), sinProximo: ok([]), tareas: ok({ hoy: [], manana: [] }), tasaciones: ok([]), numeros,
+    }, 'Inicio · vista del dueño'))
+    render(<Inicio rolUsuario="dueno" />)
+    expect(await screen.findByText('Todavía sin datos esta semana')).toBeInTheDocument()
+    expect(screen.getByText(/2 leads de esta semana siguen sin llamar\./)).toBeInTheDocument()
   })
 
   it('asesor: tareas, procesos y visitas; sin cartel de avisos; "Todo al día" si no hay tareas', async () => {
