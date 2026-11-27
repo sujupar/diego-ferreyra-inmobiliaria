@@ -836,7 +836,9 @@ decide. Se le nombran al dueño al abrir el PR (tarea 1.4).
     contacto todavía" con alerta roja. Para que digan lo mismo, la ficha tiene que usar
     `anteriorAlRegistro` (lo agrega este change al mismo módulo) en su cabecera: es un
     cambio de `crm-ficha-y-llamadas` que se le pide en la tarea 1.2; si no se hace, se le
-    nombra al dueño como diferencia.
+    nombra al dueño como diferencia. **Resuelta en este change (tarea 1.2(c), 2026-11-26):**
+    `armarFicha` (`lib/crm/ficha.ts`) dice "Sin contacto registrado", sin alerta, cuando no
+    hay contacto anotado y el proceso activo es anterior al registro; ficha y lista coinciden.
 
 ## Risks / Trade-offs
 
