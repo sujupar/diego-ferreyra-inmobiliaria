@@ -27,7 +27,7 @@ Cada video que la persona empezó a reproducir, vinculado a su contacto, SHALL m
 como "Vio el video {de cuál} · {porcentaje} %", con el porcentaje más alto alcanzado, en la
 fecha en que abrió la página del video por primera vez. El video de bienvenida SHALL
 nombrarse "el video de bienvenida" y SHALL llevar como detalle los minutos vistos sobre el
-total ("8:30 de 13:30"). Un video que solo cargó sin reproducirse MUST NOT aparecer.
+total ("8:30 de 13:30"), contados como tramos distintos reproducidos. Un video que solo cargó sin reproducirse MUST NOT aparecer.
 
 #### Scenario: Video de la landing
 - **WHEN** la persona reprodujo el video de la landing de tasación hasta el 62 %

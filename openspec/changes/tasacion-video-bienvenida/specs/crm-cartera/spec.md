@@ -7,17 +7,17 @@ En las filas de procesos abiertos en etapa Solicitud, la cartera SHALL mostrar, 
 nombre, una marca de cómo está el video de bienvenida de esa persona:
 - "▶ Vio {N} %" si tocó play;
 - "Abrió el video" si abrió el enlace sin tocar play;
-- "No abrió el video" en gris si tiene enlace y nunca lo abrió.
+- "No abrió el video" si tiene enlace marcado como enviado y nunca lo abrió.
 
-Una persona sin enlace MUST NOT llevar marca. La marca MUST NOT usar rojo ni ámbar, que en
-las filas quedan para lo vencido y lo de hoy.
+Una persona sin enlace enviado MUST NOT llevar marca. La marca va en gris neutro, sin rojo
+ni ámbar.
 
 #### Scenario: Vio el video
 - **WHEN** la coordinadora mira la fila de Ana, que vio el 63 % del video
 - **THEN** debajo del nombre se lee "▶ Vio 63 %"
 
 #### Scenario: No lo abrió
-- **WHEN** Mario tiene enlace y no lo abrió
+- **WHEN** Mario tiene el enlace enviado y no lo abrió
 - **THEN** la fila dice "No abrió el video" en gris
 
 #### Scenario: Sin enlace
@@ -28,18 +28,23 @@ las filas quedan para lo vencido y lo de hoy.
 - **WHEN** el proceso de Ana pasa a Coordinada
 - **THEN** su fila ya no lleva la marca
 
-### Requirement: Detalle de la marca de video
-Al pasar el mouse sobre la marca, o al mantenerla apretada en el celular, SHALL verse
-"{minutos} de {total} · abrió {N} veces".
-
-#### Scenario: Detalle
-- **WHEN** la coordinadora pasa el mouse sobre "▶ Vio 63 %" de Ana, que abrió 2 veces
-- **THEN** se lee "8:30 de 13:30 · abrió 2 veces"
-
 #### Scenario: Celular
 - **WHEN** la coordinadora mira la cartera a 390 px
-- **THEN** la marca entra en el renglón del nombre o en el siguiente, sin cortarse con puntos suspensivos
+- **THEN** la marca entra en el renglón de debajo del nombre, sin cortarse con puntos suspensivos
+
+### Requirement: La marca no rompe la cartera
+La lectura de la marca SHALL hacerse en un solo pedido para todos los contactos de la
+lista, con los ids en el cuerpo del pedido. Si esa lectura falla, la cartera MUST mostrarse
+igual, sin marcas. Cada uno MUST recibir datos de video solo de los procesos que ya ve.
+
+#### Scenario: Falla la lectura del video
+- **WHEN** la lectura de la marca devuelve un error
+- **THEN** la cartera se ve completa y ninguna fila lleva marca
 
 #### Scenario: Lo que cada uno puede ver
 - **WHEN** un asesor mira su vista
 - **THEN** ve la marca solo en filas de procesos que ya ve hoy, y la red no le trae datos de video de otros contactos
+
+#### Scenario: Muchas solicitudes
+- **WHEN** la coordinación tiene 150 solicitudes abiertas
+- **THEN** la marca se carga en un solo pedido y la cartera no da error

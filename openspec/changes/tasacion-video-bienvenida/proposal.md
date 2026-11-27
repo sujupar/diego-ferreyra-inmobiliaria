@@ -33,7 +33,7 @@ estudian la asistencia a llamadas coinciden en tres cosas:
   el enlace en un botón para el celular y en el texto para WhatsApp de computadora, donde
   los botones de plantilla no abren nada.
 - **Enlace personal por contacto:** un código corto e imposible de adivinar
-  (`inmobiliariadiegoferreyra.com/video/<código>`) que identifica a la persona sin pedirle
+  (`inmodf.com.ar/t/<código>`, dominio corto de la plataforma) que identifica a la persona sin pedirle
   nada. Un contacto que se registra varias veces conserva el mismo enlace.
 - **Página del video** (pública, para celular primero): titular con el nombre de la
   persona, subtítulo y el video. Sin formulario, sin otras propiedades, sin otra oferta.
@@ -51,7 +51,7 @@ estudian la asistencia a llamadas coinciden en tres cosas:
 - **Ficha:** "Enlace del video" con "Copiar", y "Crear enlace del video" para quien se
   registró antes del cambio, para que Paula lo mande a mano (decisión 4).
 - **Dónde se ve:**
-  - en la línea de tiempo de la ficha ("Abrió el video de bienvenida", "Vio el video de
+  - en la línea de tiempo de la ficha ("Abrió el enlace del video de bienvenida", "Vio el video de
     bienvenida · 64 %");
   - en la cartera de Paula, una marca en la fila para saber, antes de llamar, si la
     persona vio el video;
@@ -123,5 +123,15 @@ estudian la asistencia a llamadas coinciden en tres cosas:
 4. **Las 9 personas de las últimas dos semanas que no atendieron:** recomiendo NO
    mandarles nada automático. Si querés, Paula les manda el enlace a mano desde la ficha
    (cada contacto tiene su enlace copiable).
-5. **Dominio del enlace:** recomiendo `inmobiliariadiegoferreyra.com/video/<código>`, el
+5. **Dominio del enlace** (reemplazada por el ajuste de abajo): recomiendo `inmobiliariadiegoferreyra.com/video/<código>`, el
    de las landings públicas, y no `inmodf.com.ar`, que es el de la plataforma interna.
+
+**Ajustes del dueño sobre la maqueta (2026-11-27):**
+
+- Se elige la versión con el caso (B). La sobria queda solo si Meta no aprueba la B como
+  Utilidad, y si las dos salen Marketing sigue `tasacion_llamada_v1`.
+- El enlace usa el dominio corto de la plataforma, `inmodf.com.ar/t/<código>`, para que no se
+  salga del mensaje. La página se sirve directo en esa dirección, sin redirección intermedia.
+- No se muestra cuánto dura el video.
+- "Qué pasa ahora" aparece recién a los 30 segundos de video reproducido.
+- Arriba va el logo de Diego centrado, y el titular y el subtítulo van centrados.
