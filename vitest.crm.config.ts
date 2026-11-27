@@ -1,6 +1,7 @@
 // Config ACOTADA: la raíz rastrea el proyecto entero en iCloud y tarda minutos
 // (ver CLAUDE.md § "Correr las pruebas en esta Mac"). Solo lo que toca el trabajo
-// de "procesos manuales en el CRM" y el change `crm-ficha-y-llamadas` (design.md D10).
+// de "procesos manuales en el CRM", el change `crm-ficha-y-llamadas` (design.md D10) y
+// `crm-cartera-por-rol` (design.md D12; `components/crm/**` ya cubre `components/crm/cartera`).
 // Los globs evitan `[id]` y `(dashboard)`: picomatch los lee como clase de
 // caracteres y grupo, y el archivo nunca matchea. Por eso van con `*`.
 import { defineConfig } from 'vitest/config'
@@ -35,6 +36,11 @@ export default defineConfig({
       'app/*/crm/**/*.test.tsx',
       'app/*/pipeline/**/*.test.tsx',
       'app/*/tasks/**/*.test.tsx',
+      // crm-cartera-por-rol (design.md D9 y D12)
+      'app/api/crm/**/*.test.ts',
+      'lib/nav/**/*.test.ts',
+      'lib/supabase/cartera*.test.ts',
+      'lib/supabase/rpc-paginado*.test.ts',
     ],
     exclude: ['**/node_modules/**', '.next', '.netlify', '**/.claude/worktrees/**'],
   },
