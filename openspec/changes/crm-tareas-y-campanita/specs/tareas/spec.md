@@ -138,7 +138,7 @@ pasado. El aviso ofrece "Deshacer", que vuelve a la fecha anterior.
 - **THEN** se lee "Esa tarea cambió mientras tanto: no se pudo deshacer." y queda el cambio de la otra persona
 
 ### Requirement: La tarea de entrada de un lead tiene fecha
-La tarea de entrada de un lead SHALL nacer con día y hora: el registro si entró en horario
+La tarea de entrada de una solicitud de tasación SHALL nacer con día y hora: el registro si entró en horario
 hábil (lunes a viernes, 9:00 a 17:59 de Argentina, sin feriados), ese día a las 9:00 si fue de
 madrugada, y si no, el día hábil siguiente a las 9:00. MUST completarse sola cuando el proceso
 sale de "Solicitud", con el autor de ese cambio.
@@ -158,6 +158,14 @@ sale de "Solicitud", con el autor de ese cambio.
 #### Scenario: Se coordina o se descarta
 - **WHEN** la coordinadora coordina o descarta el proceso de un lead
 - **THEN** las dos copias de su tarea de entrada quedan completadas y dejan de sonar
+
+#### Scenario: Deshacer perdido
+- **WHEN** la coordinadora descarta una solicitud y toca "Deshacer"
+- **THEN** las tareas de entrada que se completaron solas vuelven a pendientes; las que alguien había completado antes, no
+
+#### Scenario: Clase gratuita
+- **WHEN** alguien se registra a la clase gratuita
+- **THEN** su tarea para la coordinación nace sin fecha, como antes, y no suena
 
 #### Scenario: La entrada abre la ficha
 - **WHEN** se toca una tarea de entrada en Pendientes o en la campanita
