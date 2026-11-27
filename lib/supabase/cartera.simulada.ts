@@ -67,7 +67,7 @@ function leerSelect(select: string): { planas: string[]; embebidas: { alias: str
   return { planas, embebidas }
 }
 
-const TABLA_DE_FK: Record<string, string> = { contact_id: 'contacts', deal_id: 'deals' }
+const TABLA_DE_FK: Record<string, string> = { contact_id: 'contacts', deal_id: 'deals', property_id: 'properties' }
 
 function comparar(a: unknown, b: unknown): number {
   if (a == null && b == null) return 0
@@ -88,7 +88,8 @@ export function baseSimulada(tablas: Record<string, Fila[]>, opciones: OpcionesB
     let rango: [number, number] | null = null
     let senal: AbortSignal | null = null
 
-    const ejecutar = (): Promise<{ data: Fila[] | null; error: { message: string } | null }> => {
+    let conteo: { head: boolean } | null = null
+    const ejecutar = (): Promise<{ data: Fila[] | null; error: { message: string } | null; count?: number }> => {
       if (rango) registro.rangos.push(rango)
       if (opciones.colgar?.includes(tabla)) return new Promise(() => {})
       if (senal?.aborted) return Promise.resolve({ data: null, error: { message: 'AbortError' } })
@@ -101,6 +102,11 @@ export function baseSimulada(tablas: Record<string, Fila[]>, opciones: OpcionesB
         }
         return 0
       })
+      // `{ count: 'exact', head: true }`: el total filtrado, sin filas.
+      if (conteo) {
+        const total = filas.length
+        if (conteo.head) return Promise.resolve({ data: null, error: null, count: total })
+      }
       const [desde, hasta] = rango ?? [0, filas.length - 1]
       filas = filas.slice(desde, Math.min(hasta + 1, desde + tope))
       const { planas, embebidas } = leerSelect(select)
@@ -124,9 +130,10 @@ export function baseSimulada(tablas: Record<string, Fila[]>, opciones: OpcionesB
     }
 
     const q = {
-      select(cols: string) {
+      select(cols: string, o?: { count?: string; head?: boolean }) {
         registro.select = cols
         select = cols
+        if (o?.count) conteo = { head: !!o.head }
         return q
       },
       eq(col: string, v: unknown) {
@@ -146,6 +153,11 @@ export function baseSimulada(tablas: Record<string, Fila[]>, opciones: OpcionesB
       },
       not(col: string, op: string, v: unknown) {
         registro.filtros.push(`not:${col}.${op}=${String(v)}`)
+        if (op === 'in' && typeof v === 'string' && v.startsWith('(') && v.endsWith(')')) {
+          const vs = v.slice(1, -1).split(',')
+          filtros.push((f) => !vs.includes(String(valor(f, col))))
+          return q
+        }
         if (op !== 'is' || v !== null) throw new Error(`base simulada: not(${col}, ${op}) no implementado`)
         filtros.push((f) => valor(f, col) != null)
         return q
@@ -200,7 +212,7 @@ export function baseSimulada(tablas: Record<string, Fila[]>, opciones: OpcionesB
         senal = s
         return q
       },
-      then<A, B>(ok?: (v: { data: Fila[] | null; error: { message: string } | null }) => A, mal?: (e: unknown) => B) {
+      then<A, B>(ok?: (v: { data: Fila[] | null; error: { message: string } | null; count?: number }) => A, mal?: (e: unknown) => B) {
         return ejecutar().then(ok, mal)
       },
     }
