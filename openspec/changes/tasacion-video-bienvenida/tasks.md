@@ -21,8 +21,8 @@
 ## 1. Preparación
 
 - [x] 1.1 Propuesta con las cinco decisiones del dueño ("ok a las 5", 2026-11-27)
-- [ ] 1.2 Specs y diseño; `openspec validate tasacion-video-bienvenida --strict` pasa
-- [ ] 1.3 Maqueta de la página y del mensaje, aprobada por el dueño
+- [x] 1.2 Specs y diseño; `openspec validate tasacion-video-bienvenida --strict` pasa
+- [ ] 1.3 Maqueta de la página y del mensaje (https://claude.ai/artifact/PDHCvmUmoyQvjXqPfJiTxX), aprobada por el dueño
 - [ ] 1.4 Auditoría de los artefactos por un revisor independiente; hallazgos corregidos en `auditoria.md`
 - [ ] 1.5 Pre-flight de choques (skill `anticipating-implementation-conflicts`); anotarlo en el PR
 - [ ] 1.6 Abrir el PR en borrador
