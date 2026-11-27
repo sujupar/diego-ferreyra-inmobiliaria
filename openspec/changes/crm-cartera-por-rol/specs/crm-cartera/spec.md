@@ -503,9 +503,8 @@ Cada lista SHALL abrir en los abiertos y tener el selector "Abiertos N" / "Cerra
 Contactos, "Con proceso abierto N" / "Sin proceso abierto N"). El total SHALL aparecer en
 ese selector y en el pie de la lista, en ningún otro lugar, y respetar los filtros puestos
 salvo la etapa. Los cerrados SHALL ir
-en una sola lista, del cierre más reciente al más viejo, con la columna "Cierre" en lugar de
-"Próximo paso" (en Contactos, "Cierre / próximo paso": ese segmento mezcla cerrados y personas
-sin proceso).
+en una sola lista, del cierre más reciente al más viejo, con la columna "Cierre" (en
+Contactos, "Cierre / próximo paso").
 
 #### Scenario: Pasar a cerrados
 - **WHEN** el dueño toca "Cerrados"
