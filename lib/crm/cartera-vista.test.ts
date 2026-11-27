@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { procesoEnVista, vistaPara, type Vista } from './cartera-vista'
+import { etiquetaMiVista, opcionesVerComo, procesoEnVista, vistaPara, type Vista } from './cartera-vista'
 import type { EtapaCRM } from './etapas'
 
 const PERFILES = [
@@ -153,5 +153,33 @@ describe('procesoEnVista — dueño', () => {
     expect(procesoEnVista(p('seguimiento'), DUENO)).toBe(true)
     expect(procesoEnVista(p('captada', 'asesor-2'), DUENO)).toBe(true)
     expect(procesoEnVista(p('descartado', 'asesor-1'), DUENO)).toBe(true)
+  })
+})
+
+describe('opcionesVerComo — las personas del selector (6.3)', () => {
+  it('coordinadores y asesores ACTIVOS, por nombre, con "· coordinación" o "· asesor"', () => {
+    const perfiles = new Map([
+      ['a1', { nombre: 'Tomás Agüero', role: 'asesor', activo: true }],
+      ['c1', { nombre: 'Paula Pandolfo', role: 'coordinador', activo: true }],
+      ['a2', { nombre: 'Ángela Baja', role: 'asesor', activo: false }],
+      ['d1', { nombre: 'Diego', role: 'dueno', activo: true }],
+      ['l1', { nombre: 'Abogada', role: 'abogado', activo: true }],
+      ['f1', { nombre: 'Florencia Ledesma', role: 'asesor', activo: true }],
+    ])
+    expect(opcionesVerComo(perfiles)).toEqual([
+      { id: 'f1', etiqueta: 'Florencia Ledesma · asesor' },
+      { id: 'c1', etiqueta: 'Paula Pandolfo · coordinación' },
+      { id: 'a1', etiqueta: 'Tomás Agüero · asesor' },
+    ])
+  })
+  it('sin nadie, una lista vacía', () => {
+    expect(opcionesVerComo(new Map())).toEqual([])
+  })
+})
+
+describe('etiquetaMiVista', () => {
+  it('"Mi vista (dueño)" o "Mi vista (admin)"', () => {
+    expect(etiquetaMiVista('dueno')).toBe('Mi vista (dueño)')
+    expect(etiquetaMiVista('admin')).toBe('Mi vista (admin)')
   })
 })
