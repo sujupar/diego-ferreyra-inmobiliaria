@@ -71,7 +71,8 @@ export function metaDeGrupo(clave: ClaveGrupo, tipo: TipoVista): MetaGrupo {
 export const TEXTO_ERROR_ULTIMO = 'No se pudo cargar el último contacto de cada persona.'
 export const TEXTO_ERROR_TAREAS = 'No se pudieron cargar las tareas.'
 export const TEXTO_TOPE = 'Se muestran los 3.000 más recientes: hay más procesos de los que esta pantalla puede traer.'
-export const TEXTO_TOPE_CONTACTOS = 'Se muestran las 3.000 más recientes: hay más personas de las que esta pantalla puede traer.'
+// En Contactos el corte puede ser de personas, de procesos o de tasaciones: el texto no afirma cuál (H6).
+export const TEXTO_TOPE_CONTACTOS = 'Esta lista quedó incompleta: hay más personas o procesos de los que esta pantalla puede traer.'
 export const TEXTO_PERSONA_INVALIDA = 'Esa persona no tiene una vista del CRM.'
 
 /** "No se aplicó Etapa: ese valor no es válido." (spec "Valor inventado en la dirección"). */

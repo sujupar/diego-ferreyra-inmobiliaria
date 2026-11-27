@@ -487,6 +487,15 @@ vencimiento SHALL leerse en hora de Argentina y decirse con texto e ícono, adem
 - **WHEN** la tarea más próxima de una solicitud es una llamada y la persona no tiene ningún contacto registrado
 - **THEN** el próximo paso se llama "Primera llamada"
 
+
+### Requirement: Próximo paso en la vista de la coordinación
+En la vista de la coordinación, la tasación que ya pasó sin resultado (trabajo del asesor)
+SHALL ser el próximo paso solo si la coordinadora no tiene ninguna tarea pendiente en el
+proceso; si tiene alguna, el próximo paso SHALL ser la primera de sus tareas.
+
+#### Scenario: Llamada vencida de la coordinación con la tasación del asesor también vencida
+- **WHEN** la coordinadora tiene una llamada vencida ayer en una Coordinada cuya tasación con Tomás Agüero era hace 3 días
+- **THEN** el próximo paso de esa fila es su llamada, con "Vencida hace 1 día", y el proceso aparece en su grupo "Llamada o mensaje vencido"
 ### Requirement: Abiertos y cerrados
 Cada lista SHALL abrir en los abiertos y tener el selector "Abiertos N" / "Cerrados N" (en
 Contactos, "Con proceso abierto N" / "Sin proceso abierto N"). El total SHALL aparecer en

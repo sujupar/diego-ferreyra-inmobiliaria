@@ -298,9 +298,9 @@ export function VistaCartera(p: PropsVistaCartera) {
     filtros.seg === 'abiertos' &&
     filtradas.length > 0 &&
     fuentesOk &&
-    // Con una etapa o lo trabado elegidos, lo urgente puede estar fuera del filtro (B6).
-    !filtros.etapa &&
-    !filtros.trabado &&
+    // Con cualquier filtro puesto (también búsqueda, origen, asesor o fechas), lo urgente
+    // puede estar fuera de lo que se ve: no se afirma "nada urgente" (B6, H3).
+    !hayFiltros(filtros) &&
     !grupos.some((g) => g.clave === 'sin-contacto' || g.clave === 'vencidas')
   const volverA = p.volver
   // La clave reinicia la paginación y la selección cuando cambia lo que se mira.
@@ -404,7 +404,7 @@ export interface PropsCarteraCRM {
   avisoInicial: string | null
 }
 
-export function CarteraCRM({ inicial, rol, opcionesVerComo, avisoInicial }: PropsCarteraCRM) {
+export function CarteraCRM({ inicial, rol, opcionesVerComo: opcionesIniciales, avisoInicial }: PropsCarteraCRM) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [datos, setDatos] = useState<DatosCartera | null>(inicial)
@@ -414,6 +414,9 @@ export function CarteraCRM({ inicial, rol, opcionesVerComo, avisoInicial }: Prop
   const ultimaCarga = useRef(0)
   const pedidos = usePedidosVersionados()
   const esDueno = rol === 'admin' || rol === 'dueno'
+  // Si la primera carga falló, las opciones llegaron vacías: se reemplazan con las de la
+  // primera respuesta buena, así el selector no queda sin personas tras "Reintentar" (H2).
+  const [opcionesVerComo, setOpcionesVerComo] = useState(opcionesIniciales)
 
   // Las listas que valen para la vista que se está mirando. Sin datos (falló la lectura) se
   // aceptan las etapas posibles del rol y el asesor que trae la dirección: los filtros
@@ -426,7 +429,12 @@ export function CarteraCRM({ inicial, rol, opcionesVerComo, avisoInicial }: Prop
     etapas: etapasDeLaVista(tipo, datos ? contarTodas(datos.filas) : TODAS),
     // Sin datos (falló la primera carga) las opciones no llegaron: alcanza con que `ver` sea
     // un uuid, así "Reintentar" vuelve a pedir a la misma persona (el servidor la valida). B2.
-    verComo: esDueno ? (datos ? (opcionesVerComo ?? []).map((o) => o.id) : undefined) : [],
+    // Y la persona que se está mirando siempre vale, aunque las opciones no hayan llegado (H2).
+    verComo: esDueno
+      ? datos
+        ? [...(opcionesVerComo ?? []).map((o) => o.id), ...(datos.vista.mirando && datos.vista.persona ? [datos.vista.persona.id] : [])]
+        : undefined
+      : [],
   })
   const { filtros, aplicados, aplicar } = useFiltrosUrl({ defectos: DEFECTOS, normalizar: normalizarCartera, soloNavegador: true })
 
@@ -452,6 +460,13 @@ export function CarteraCRM({ inicial, rol, opcionesVerComo, avisoInicial }: Prop
         if (!pedidos.vigente(gen)) return
         if (r.ok) {
           setDatos(r.data)
+          // Mirando a alguien la respuesta no trae opciones: al menos queda esa persona, como
+          // hace la página al abrir (crm/page.tsx).
+          const persona = r.data.vista.mirando ? r.data.vista.persona : null
+          const nuevas =
+            r.data.opcionesVerComo ??
+            (persona ? [{ id: persona.id, etiqueta: `${persona.nombre} · ${persona.rol === 'coordinador' ? 'coordinación' : 'asesor'}` }] : null)
+          if (esDueno && nuevas && nuevas.length > 0) setOpcionesVerComo((antes) => (antes && antes.length > 0 ? antes : nuevas))
           setEstado('listo')
           ultimaCarga.current = Date.now()
           if (!r.data.vista.mirando) propia.current = r.data
@@ -474,7 +489,7 @@ export function CarteraCRM({ inicial, rol, opcionesVerComo, avisoInicial }: Prop
         if (!silencioso) setEstado('error')
       }
     },
-    [aplicar, pedidos],
+    [aplicar, esDueno, pedidos],
   )
 
   // Volver a la pestaña después de 5 minutos refresca la lista sin el esqueleto (la que hay

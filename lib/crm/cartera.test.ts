@@ -302,6 +302,7 @@ describe('quitarNombreDelTitulo con dos puntos (QA 9.3)', () => {
     expect(quitarNombreDelTitulo('Seguimiento mensaje: EDUARDO STANIC', 'Eduardo Stanic')).toBe('Seguimiento mensaje')
     expect(quitarNombreDelTitulo('Nuevo lead (Embudo): Sofía Lanús', 'Sofia Lanus')).toBe('Nuevo lead (Embudo)')
     expect(quitarNombreDelTitulo('Nota: llamar a otro', 'Sofía Lanús')).toBe('Nota: llamar a otro')
+    expect(quitarNombreDelTitulo(': Ana', 'Ana')).toBe(': Ana')
   })
 })
 
@@ -310,8 +311,16 @@ describe('copias de una tarea de la coordinación (createTaskForRole)', () => {
     const base = Date.parse('2026-11-26T15:00:00.000Z')
     const en = (s: number) => new Date(base + s * 1000).toISOString()
     const t = (id: string, s: number, status?: string) => ({ ...tarea({ deal_id: 'd-x', id }), created_at: en(s), ...(status ? { status } : {}) }) as TareaLeida
-    const salida = colapsarCopiasDeCoordinacion([t('p1', 100)], [t('c1', 0, 'completed'), t('c2', 50, 'completed')], () => true)
-    expect(salida.map((x) => x.tarea.id)).toEqual(['p1'])
+    expect(colapsarCopiasDeCoordinacion([t('p1', 100)], [t('c1', 0, 'completed'), t('c2', 50, 'completed')], () => true)).toEqual([])
+    expect(colapsarCopiasDeCoordinacion([t('p1', 100)], [t('c1', 0, 'completed')], () => true).map((x) => x.tarea.id)).toEqual(['p1'])
+  })
+  it('regla por pares (H4): cada pendiente se anula por una cerrada a ±60 s de ella', () => {
+    const base = Date.parse('2026-11-26T15:00:00.000Z')
+    const en = (s: number) => new Date(base + s * 1000).toISOString()
+    const t = (id: string, s: number, status?: string) => ({ ...tarea({ deal_id: 'd-x', id }), created_at: en(s), ...(status ? { status } : {}) }) as TareaLeida
+    expect(colapsarCopiasDeCoordinacion([t('a', 0), t('b', 70)], [t('c', 40, 'completed')], () => true)).toEqual([])
+    const dos = colapsarCopiasDeCoordinacion([t('a', 0), t('b', 0.5), t('z', 200)], [], () => true)
+    expect(dos.map((x) => [x.tarea.id, x.copias])).toEqual([['a', 2], ['z', 1]])
   })
   const base = { deal_id: 'd-x', type: 'update_contact', title: 'Contactar a Sofía Lanús', due_date: null, due_time: null, channel: null }
   const d = () => proceso({ id: 'd-x', created_at: '2025-10-01T12:00:00Z' })
