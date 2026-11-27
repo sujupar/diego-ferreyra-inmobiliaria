@@ -79,7 +79,6 @@ export function NuevaTarea({
   useEffect(() => {
     if (!abierta) return
     const p = proximaHoraEnPunto(reloj())
-    /* eslint-disable react-hooks/set-state-in-effect -- reinicio del formulario al abrirse */
     setTitulo('')
     setTipo('otro')
     setDia(p.fecha)
@@ -87,7 +86,6 @@ export function NuevaTarea({
     setTodoElDia(false)
     setAsignado('')
     setError(null)
-    /* eslint-enable react-hooks/set-state-in-effect */
     fetch('/api/auth/me')
       .then((r) => r.json())
       .then((j: { id?: string; role?: string; full_name?: string; profile?: { full_name?: string } }) => {
