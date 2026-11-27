@@ -17,6 +17,9 @@
 /** Lo mínimo de supabase-js que se usa acá (así la prueba le pasa un cliente falso). */
 interface ConsultaRpc {
   order(columna: string): ConsultaRpc
+  // Opcional en el tipo para que los clientes falsos de siempre sigan sirviendo; el de
+  // supabase-js lo tiene. Solo se llama si quien pide manda `senal`.
+  abortSignal?(senal: AbortSignal): ConsultaRpc
   range(desde: number, hasta: number): PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>
 }
 export interface ClienteRpc {
@@ -37,7 +40,10 @@ export async function rpcPaginado<T>(
   fn: string,
   args: Record<string, unknown>,
   orden: readonly string[],
-  opciones: { maxPaginas?: number } = {},
+  // `senal`: un plazo COMPARTIDO por quien llama (la cartera del CRM tiene uno solo de 15 s
+  // para todas sus lecturas). Un techo por página sumaría: tres páginas más otras lecturas
+  // pasaban el límite de Netlify.
+  opciones: { maxPaginas?: number; senal?: AbortSignal } = {},
 ): Promise<ResultadoRpc<T>> {
   if (orden.length === 0) throw new Error(`rpcPaginado(${fn}): falta el orden; paginar sin orden fijo repite o saltea filas`)
   const maxPaginas = opciones.maxPaginas ?? 20 // 20.000 filas: muy por encima de cualquier rango real
@@ -46,6 +52,10 @@ export async function rpcPaginado<T>(
   for (let pagina = 0; pagina < maxPaginas; pagina++) {
     let consulta = client.rpc(fn, args)
     for (const columna of orden) consulta = consulta.order(columna)
+    if (opciones.senal) {
+      if (!consulta.abortSignal) throw new Error(`rpcPaginado(${fn}): el cliente no acepta una señal de corte`)
+      consulta = consulta.abortSignal(opciones.senal)
+    }
     const desde = pagina * PAGINA
     const { data, error } = await consulta.range(desde, desde + PAGINA - 1)
     if (error) return { filas, truncado: false, error: error.message }
