@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   SIN_MOVIMIENTO_DIAS,
+  agrupar,
   armarFilasCartera,
   colapsarCopiasDeCoordinacion,
   proximoPaso,
@@ -297,6 +298,13 @@ describe('armarFilasCartera — de quién son las tareas que cuentan', () => {
 })
 
 describe('copias de una tarea de la coordinación (createTaskForRole)', () => {
+  it('el racimo no se encadena: una pendiente a 100 s de la primera no se anula por una cerrada en el medio (B7)', () => {
+    const base = Date.parse('2026-11-26T15:00:00.000Z')
+    const en = (s: number) => new Date(base + s * 1000).toISOString()
+    const t = (id: string, s: number, status?: string) => ({ ...tarea({ deal_id: 'd-x', id }), created_at: en(s), ...(status ? { status } : {}) }) as TareaLeida
+    const salida = colapsarCopiasDeCoordinacion([t('p1', 100)], [t('c1', 0, 'completed'), t('c2', 50, 'completed')], () => true)
+    expect(salida.map((x) => x.tarea.id)).toEqual(['p1'])
+  })
   const base = { deal_id: 'd-x', type: 'update_contact', title: 'Contactar a Sofía Lanús', due_date: null, due_time: null, channel: null }
   const d = () => proceso({ id: 'd-x', created_at: '2025-10-01T12:00:00Z' })
   it('dos copias pendientes cuentan una vez, con "· coordinación"', () => {
@@ -567,6 +575,27 @@ describe('proximoPaso y la fila — tasación', () => {
   it('para la coordinación la tasación pasada dice de quién es (· asesor)', () => {
     const f = una(armar({ vista: COORD, procesos: [coordinada('2026-11-29', '11:00')] }))
     expect(paso(f)).toMatchObject({ titulo: 'Cargar el resultado de la tasación', quien: { id: 'asesor-1', nombre: 'Tomás Agüero' } })
+  })
+  it('para la coordinación, su tarea vencida gana a la tasación vencida del asesor (auditoría M1)', () => {
+    const f = una(
+      armar({
+        vista: COORD,
+        procesos: [coordinada('2026-11-24', '11:00')],
+        tareas: [tarea({ deal_id: 'd-t', title: 'Volver a llamar a Sofía Lanús', due_date: '2026-11-26', due_time: '10:00' })],
+      }),
+    )
+    expect(paso(f)).toMatchObject({ clase: 'tarea', titulo: 'Volver a llamar' })
+    expect(agrupar([f], COORD, AHORA).map((g) => g.clave)).toEqual(['vencidas'])
+  })
+  it('para el asesor, la tasación vencida sigue compitiendo con sus tareas por fecha', () => {
+    const f = una(
+      armar({
+        vista: ASESOR,
+        procesos: [coordinada('2026-11-24', '11:00')],
+        tareas: [tarea({ deal_id: 'd-t', assigned_to: 'asesor-1', title: 'Mandar fotos', due_date: '2026-11-26', due_time: '10:00' })],
+      }),
+    )
+    expect(paso(f)).toMatchObject({ clase: 'tasacion', titulo: 'Cargar el resultado de la tasación' })
   })
   it('para el dueño la tasación no repite el asesor de la columna', () => {
     const f = una(armar({ vista: DUENO, procesos: [coordinada('2026-11-29', '11:00')] }))

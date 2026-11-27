@@ -2647,6 +2647,72 @@ SELECT policyname, cmd FROM pg_policies WHERE tablename = 'contact_activities'; 
 SELECT tgname FROM pg_trigger WHERE tgname = 'trg_tasks_columnas_cadencia_solo_servidor';
 ```
 
+## CRM — Cartera por rol: `/crm` y `/contacts` según quién mira (PR #96, 2026-11-27)
+
+Change `openspec/changes/crm-cartera-por-rol/` (proposal, maqueta aprobada, design D1–D12 +
+"Diferencias con lo aprobado" + Risks, tasks, `auditoria.md`). Reemplaza la pantalla vieja de
+`/crm` (tarjetas + Kanban) y la lista de `/contacts`.
+
+- **Cada rol ve lo suyo, y lo decide el SERVIDOR:** coordinación → Solicitud, Coordinada y No
+  realizada abiertos + Descartado sin asesor (sin clases gratuitas); asesor → sus procesos
+  (`assigned_to`); admin y dueño → todo, más "Lo que está trabado" (sin movimiento = `SIN_MOVIMIENTO_DIAS` = 14 días;
+  un proceso sin asesor cuenta como trabado). La regla vive en `vistaPara` + `procesoEnVista`
+  (`lib/crm/cartera-vista.ts`); la ruta y la página llaman al MISMO servicio
+  (`cargarCartera` / `cargarContactos`, `lib/supabase/cartera.ts`), así no hay dos lecturas
+  que puedan divergir.
+- **`FilaCartera` se arma en el servidor y se filtra en memoria:** `armarFilasCartera` (puro)
+  entrega una fila por proceso con el próximo paso ya elegido para la persona de la vista y el
+  último contacto ya resuelto; los dos segmentos (abiertos y cerrados) viajan juntos. El
+  navegador filtra, agrupa, ordena y pagina con `lib/crm/cartera.ts` — ninguna ruta recibe
+  filtros, así no hay parámetro que ensanche el alcance. Solo vuelven a pedir datos
+  "Reintentar", "Ver como" y volver a la pestaña tras 5 minutos.
+- **Lectura:** dos tandas en paralelo con un SOLO plazo de 15 s para todo
+  (`PLAZO_LECTURA_MS`; un techo por lectura sumaba más que los ~26 s de Netlify), paginadas de
+  a 1000 con tope `TOPE_FILAS = 3000` por fuente → `truncado: true` y aviso en pantalla. Si
+  falla la lectura de procesos, error con "Reintentar"; si fallan tareas o último contacto, las
+  filas salen igual con `'error'` en ese dato (nunca un vacío que parezca "no hay"). Medido en
+  la base: 984 procesos en 2,4 ms; el tiempo lo pone la red.
+- **Último contacto = función `crm_ultimos_contactos(p_contactos uuid[])`** (migración
+  `20261127000001_crm_cartera.sql`, aplicada con `scripts/apply-crm-cartera-pg.ts`): una fila
+  por persona con la llamada / WhatsApp marcado / visita (`deals.visited_at`) más nueva. Va por
+  RPC con los ids en el CUERPO porque 900 ids en la dirección revientan el tamaño del pedido
+  (`UND_ERR_HEADERS_OVERFLOW`, ver "Buscar texto en Postgres").
+- **`INICIO_REGISTRO_CONTACTOS = '2026-11-26'`** (`lib/crm/ultimo-contacto.ts`): el día que
+  empezó a existir el registro de llamadas (`anteriorAlRegistro`, por DÍA de Argentina). Un
+  proceso que entró ANTES y no tiene contactos dice "Sin contacto registrado" en vez de "Sin
+  contacto todavía", y su último contacto suma "· antes del registro de llamadas"
+  (`lib/crm/cartera-pantalla.ts`): antes de esa fecha las llamadas no se anotaban, y afirmar
+  que nadie la llamó sería falso. Tampoco cuenta como "sin primer contacto" en lo trabado.
+- **Copias de tareas de coordinación:** `createTaskForRole` crea una copia por coordinadora;
+  si una ya la completó, la otra copia no debe salir como pendiente. Se lee la "lectura (d)"
+  (completadas con `created_at` ≥ la copia pendiente más vieja **menos 60 s**) y se consideran
+  copias las de ≤ 60 s de diferencia, SIN truncar al minuto (12:00:59,9 y 12:01:00,1 son
+  copias). Vale igual en `/contacts`.
+- **"Ver como" es solo lectura:** admin y dueño eligen una persona activa (coordinación o
+  asesor) y ven SUS filas y SUS tareas (`?ver=<uuid>` / `ver_como`). Sin "Seleccionar" ni
+  "Lo que está trabado", y abrir una ficha usa los permisos de quien mira: no hay suplantación.
+  Un asesor con `ver_como` → 403 en la ruta; en la página, el `ver` se ignora y arma su vista.
+- **`?volver=`:** cada fila enlaza a `/contacts/<id>?volver=<dirección actual>`; la ficha
+  dibuja "‹ Volver al CRM / a Contactos" con `enlaceVolver` (solo caminos internos de `/crm` y
+  `/contacts`, nunca un dominio ajeno) y el menú marca la sección de origen
+  (`seccionDeOrigen` en `lib/nav/`). No se usa `router.back()`: en otra pestaña no habría a
+  dónde volver.
+- **Rutas viejas que quedaron sin pantalla (NO borradas, las cubren tests y scripts):**
+  `GET /api/deals` (sus contadores por etapa cortan en 1000 filas) y `GET /api/contacts`
+  (corta en 200 y al asesor solo le filtraba por `assigned_to`). Las pantallas usan
+  `/api/crm/cartera` y `/api/crm/contactos`. Un marcador con los parámetros viejos de `/crm`
+  (`origin`, `from`/`to`) se traduce con `redirect` (`traducirParametrosViejos`).
+- **Celular:** un solo árbol con *container queries* sobre la lista (tabla desde 44rem de
+  contenedor, tarjeta debajo), 44 px tocables y 16 px en campos con `pointer: coarse`. La
+  barra inferior del celular NO se tocó (decisión del dueño).
+- **Detección:** si la lista avisa "se muestran los más recientes", correr
+  `select count(*) from deals;` contra el tope de 3000: llegó la hora de paginar por vista en
+  el servidor, detrás de la misma forma de `FilaCartera`. Si en Contactos aparece una tarea de
+  coordinación que alguien ya hizo, mirar la lectura (d) y la ventana de 60 s.
+- **Pruebas:** `npx vitest run -c vitest.crm.config.ts`; tipos con `tsconfig.crm.json`. Receta
+  de datos de QA: `scripts/_qa-cartera-datos.ts crear|borrar|verificar` (base de producción,
+  solo `[TEST] Cartera QA <n>`).
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.

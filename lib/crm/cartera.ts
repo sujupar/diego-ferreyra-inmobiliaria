@@ -249,8 +249,10 @@ export function colapsarCopiasDeCoordinacion<T extends TareaLeida>(
       racimo = []
     }
     for (const x of g) {
-      const ultimo = racimo[racimo.length - 1]
-      if (ultimo && Date.parse(x.t.created_at) - Date.parse(ultimo.t.created_at) > COPIAS_MS) cerrarRacimo()
+      // Contra la PRIMERA del racimo, no la última: encadenando, un racimo podía abarcar más
+      // de 60 s entre sus extremos y anular una copia que no lo era (auditoría, B7).
+      const primera = racimo[0]
+      if (primera && Date.parse(x.t.created_at) - Date.parse(primera.t.created_at) > COPIAS_MS) cerrarRacimo()
       racimo.push(x)
     }
     cerrarRacimo()
@@ -276,6 +278,13 @@ export function proximoPaso(e: {
   registradoEn: string
   nombrePersona: string
   ahora: Date
+  /**
+   * Vista de la coordinación: la tasación ya pasada es trabajo del asesor ("Cargar el
+   * resultado"), así que solo es el próximo paso si ella no tiene ninguna tarea en el proceso.
+   * Si compitiera por fecha, una llamada vencida suya quedaría escondida fuera de "Llamada o
+   * mensaje vencido" (auditoría del código, M1). Una tasación futura sigue compitiendo.
+   */
+  tasacionVencidaSoloSinTareas?: boolean
 }): ProximoPaso | null {
   const candidatos: (ProximoPaso & { creado: string })[] = []
   const primeraLlamada = e.etapa === 'solicitud' && !e.hayContactos
@@ -302,11 +311,13 @@ export function proximoPaso(e: {
     })
   }
 
+  const vencida = (v: { due_date: string; due_time: string | null; all_day: boolean }) => vencimientoDeTarea(v, e.ahora).vencida
   if (e.tasacion) {
     const vence = { due_date: e.tasacion.fecha, due_time: e.tasacion.hora, all_day: !e.tasacion.hora }
-    candidatos.push({
+    const cede = e.tasacionVencidaSoloSinTareas === true && candidatos.length > 0 && vencida(vence)
+    if (!cede) candidatos.push({
       clase: 'tasacion',
-      titulo: vencimientoDeTarea(vence, e.ahora).vencida ? 'Cargar el resultado de la tasación' : 'Tasación',
+      titulo: vencida(vence) ? 'Cargar el resultado de la tasación' : 'Tasación',
       vence,
       quien: e.quienTasacion,
       espera: null,
@@ -436,6 +447,7 @@ export function armarFilasCartera(e: {
           registradoEn: p.created_at,
           nombrePersona: nombre,
           ahora,
+          tasacionVencidaSoloSinTareas: vista.tipo === 'coordinacion',
         })
       }
     }
