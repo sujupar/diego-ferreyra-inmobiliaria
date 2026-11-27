@@ -245,7 +245,7 @@ export function colapsarCopiasDeCoordinacion<T extends TareaLeida>(
     if (g) g.push({ t, pendiente: null }) // sin pendientes en el grupo, no hay nada que anular
   }
   for (const g of grupos.values()) {
-    // Regla por PARES (D3): una pendiente se anula si hay una cerrada a 60 s o menos de ELLA;
+    // Regla por PARES (D3, ajustada por las auditorías): una pendiente se anula si hay una cerrada a 60 s o menos de ELLA;
     // las pendientes que quedan se cuentan juntas si están a 60 s o menos de la primera del
     // racimo. Ni encadenar ni anclar el racimo con cerradas adentro (auditorías, B7 y H4).
     const instante = (x: { t: TareaLeida }) => Date.parse(x.t.created_at)

@@ -329,6 +329,33 @@ describe('errores', () => {
     expect(direccion().get('ver')).toBe(FLORENCIA.id)
   })
 
+  it('tras quedar con una sola persona, volver a "Mi vista" trae la lista completa del selector (A3-2)', async () => {
+    irA(`ver=${FLORENCIA.id}`)
+    const mirando = datosPrueba({
+      vista: { tipo: 'asesor', persona: { id: FLORENCIA.id, nombre: FLORENCIA.nombre, rol: 'asesor' }, mirando: true },
+      opcionesVerComo: null,
+      asesores: null,
+      filas: [filaPrueba({ id: 'f-1', nombre: 'Lucía Prado', etapa: 'seguimiento', proximo: pasoPrueba('2026-12-05', '10:00') })],
+    })
+    const todas = [
+      { id: TOMAS.id, etiqueta: `${TOMAS.nombre} · asesor` },
+      { id: FLORENCIA.id, etiqueta: `${FLORENCIA.nombre} · asesor` },
+    ]
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        new Response(JSON.stringify(url.includes('ver_como') ? mirando : { ...carteraDueno(), opcionesVerComo: todas }), { status: 200 }),
+      ),
+    )
+    montar(null, { rol: 'dueno', opciones: [] })
+    await userEvent.click(screen.getByRole('button', { name: 'Reintentar' }))
+    await waitFor(() => expect(screen.getByText('Lucía Prado')).toBeInTheDocument())
+    await userEvent.selectOptions(screen.getByLabelText('Ver como'), '')
+    await waitFor(() => expect(screen.getByText('Persona 000')).toBeInTheDocument())
+    const opciones = within(screen.getByLabelText('Ver como')).getAllByRole('option').map((o) => o.textContent)
+    expect(opciones).toContain(`${TOMAS.nombre} · asesor`)
+  })
+
   it('falla solo el último contacto: aviso, "No se pudo cargar" y sin "Sin primer contacto"', () => {
     const d = carteraCoordinacion()
     montar({ ...d, fuentes: { ultimoContacto: 'error', tareas: 'ok' }, filas: d.filas.map((f) => ({ ...f, ultimoContacto: 'error' as const })) }, { rol: 'coordinador' })

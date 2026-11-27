@@ -308,3 +308,22 @@ correctas. Sin hallazgos de permisos ni de seguridad. Resultado: **No conforme**
 | H9 | BAJA | Faltaban las diferencias que marcó el QA, tests de B2/B6 y el registro del re-QA. | Aplicado: Diferencias 18–20, tests de H2/H3 (cubren B2/B6) y la sección de QA de arriba. |
 
 Después: vitest 2258 en verde, `tsc` y `eslint` sin errores, `openspec validate --strict` válido.
+
+## Auditoría de cierre — Auditor 3 (2026-11-27)
+
+Agente nuevo, solo lectura sobre f6c24cfc: verificó H1–H9 contra el código. Sin hallazgos de
+permisos ni de seguridad; H1 (código), H2 (un no dueño no puede tener opciones; el servidor
+valida `ver_como`), H3, H4, H5 y H8 cumplen. Resultado: **No conforme** (1 MEDIA de proceso).
+
+| # | Nivel | Hallazgo | Qué se hizo |
+|---|---|---|---|
+| A3-1 | MEDIA | El cuerpo del PR seguía siendo el del borrador: sin Diferencias, pre-flight, grep de D9, respuestas a 9.1, QA, mediciones ni preguntas al dueño, aunque las tareas las daban por anotadas. | Aplicado: cuerpo del PR completo (ver PR #96). |
+| A3-2 | BAJA | Tras un "Reintentar" mirando a alguien, el selector se quedaba con una sola persona aunque después llegara la lista completa. | Aplicado: la lista completa gana siempre; si no llega, se suma la persona mirada. Test: volver a "Mi vista" lista a todos. |
+| A3-3 | BAJA | El requisito "Próximo paso" seguía sin salvedad; el nuevo decía "ninguna tarea" (el código mira solo las que cuentan); espaciado. | Aplicado: salvedad con remisión, "ninguna de las tareas que cuentan para el próximo paso", espaciado. |
+| A3-4 | BAJA | Nombre de un test contradictorio; D3 no describía la regla por pares; D3 seguía diciendo que (d) avisa `truncado`. | Aplicado: test renombrado; D3 con la regla por pares y con "cortada = error + `console.warn`". |
+| A3-5 | BAJA | El aviso de Contactos nombraba "personas o procesos" aunque el corte pudiera ser de tasaciones o perfiles. | Aplicado: "hay más datos de los que esta pantalla puede traer". |
+| A3-6 | BAJA | 11.3 sin marcar. | Aplicado. |
+
+Además (10.2): `scripts/apply-crm-cartera-pg.ts` vuelto a correr — aplicada y verificada, 900
+ids en 3,8 ms, 0 filas de prueba; `git diff --name-only origin/main...HEAD` lista solo archivos
+de este change, `CLAUDE.md` y la propuesta de `crm-inicio`; rama al día con `origin/main`.

@@ -307,7 +307,7 @@ describe('quitarNombreDelTitulo con dos puntos (QA 9.3)', () => {
 })
 
 describe('copias de una tarea de la coordinación (createTaskForRole)', () => {
-  it('el racimo no se encadena: una pendiente a 100 s de la primera no se anula por una cerrada en el medio (B7)', () => {
+  it('regla por pares: la pendiente se anula por la cerrada a ≤60 s de ella, no por la del extremo (B7, H4)', () => {
     const base = Date.parse('2026-11-26T15:00:00.000Z')
     const en = (s: number) => new Date(base + s * 1000).toISOString()
     const t = (id: string, s: number, status?: string) => ({ ...tarea({ deal_id: 'd-x', id }), created_at: en(s), ...(status ? { status } : {}) }) as TareaLeida
