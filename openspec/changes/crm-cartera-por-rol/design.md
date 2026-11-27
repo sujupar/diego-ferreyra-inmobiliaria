@@ -863,6 +863,13 @@ decide. Se le nombran al dueño al abrir el PR (tarea 1.4).
     campanita llega con `crm-tareas-y-campanita`.
 20. **La casilla de "Seleccionar" es redonda** (ocupa el lugar del avatar), no el cuadrado del
     `<input type="checkbox">` de la pantalla vieja.
+21. **"Sin proceso tuyo" en los Contactos del asesor** (auditoría B3, recomendación al dueño
+    aplicada mientras responde): una persona visible para él cuyo proceso lleva otro asesor ya
+    no dice "Sin proceso" (falso); el texto del segmento admite "o lo lleva otro asesor" sin
+    decir de quién es cuál, para no revelar lo que la ficha oculta (`dealsOcultos`).
+22. **"Cierre / próximo paso" en la cabecera de "Sin proceso abierto" de Contactos**
+    (auditoría B4): ese segmento mezcla procesos cerrados y personas sin proceso; la tarjeta
+    del celular rotula fila por fila ("Cierre" o "Próximo paso").
 
 ## Risks / Trade-offs
 

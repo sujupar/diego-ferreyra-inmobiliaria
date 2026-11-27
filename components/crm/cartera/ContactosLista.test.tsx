@@ -74,6 +74,14 @@ describe('Contactos por rol', () => {
     expect(screen.getByText('Descartado hace 5 días')).toBeInTheDocument()
   })
 
+  it('asesor: "Sin proceso tuyo", el texto que lo admite y la cabecera "Cierre / próximo paso" (B3, B4)', async () => {
+    render(<ContactosLista inicial={datos()} propios={true} />)
+    await userEvent.click(screen.getByRole('button', { name: /^Sin proceso abierto/ }))
+    expect(screen.getByText('Su proceso se cerró (captado o descartado), nunca tuvo uno o lo lleva otro asesor.')).toBeInTheDocument()
+    expect(screen.getByText('Sin proceso tuyo')).toBeInTheDocument()
+    expect(document.querySelector('[data-cabecera-filas]')).toHaveTextContent('Cierre / próximo paso')
+  })
+
   it('toda la fila abre la ficha con la vuelta a Contactos, y debajo va el teléfono', () => {
     render(<ContactosLista inicial={datos()} propios={false} />)
     const bruno = screen.getByRole('link', { name: 'Abrir la ficha de Bruno Pinto' })

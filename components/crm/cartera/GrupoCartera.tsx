@@ -23,6 +23,7 @@ export function GrupoCartera({
   ahora,
   extra,
   seleccion,
+  sinProcesoTexto,
 }: {
   clave: string
   meta: MetaGrupo
@@ -37,6 +38,7 @@ export function GrupoCartera({
   /** "Seleccionar" y "Ordenar por", en la cabecera de la lista del dueño y de Contactos. */
   extra?: React.ReactNode
   seleccion?: { marcadas: ReadonlySet<string>; alAlternar: (id: string) => void }
+  sinProcesoTexto?: string
 }) {
   const aLaVista = filas.slice(0, visibles)
   return (
@@ -71,6 +73,7 @@ export function GrupoCartera({
                 conTasacion={meta.conTasacion}
                 volver={volver}
                 ahora={ahora}
+                sinProcesoTexto={sinProcesoTexto}
                 seleccion={seleccion ? { marcada: seleccion.marcadas.has(f.id), alAlternar: () => seleccion.alAlternar(f.id) } : undefined}
               />
             </li>
