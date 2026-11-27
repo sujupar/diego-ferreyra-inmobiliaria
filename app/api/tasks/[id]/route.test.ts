@@ -200,6 +200,8 @@ describe('PUT /api/tasks/[id] — reabrir y posponer (crm-tareas-y-campanita)', 
   })
   it('el "Deshacer" con una hora imposible → 400, nunca 500', async () => {
     expect((await put({ action: 'posponer', deshacer: true, due_date: '2026-11-20', due_time: '10:75' })).status).toBe(400)
+    expect((await put({ action: 'posponer', deshacer: true, due_date: null, due_time: null, desde_fecha: 'ayer', desde_hora: '09:00' })).status).toBe(400)
+    expect((await put({ action: 'posponer', deshacer: true, due_date: null, due_time: null, desde_fecha: '2026-11-20', desde_hora: '9' })).status).toBe(400)
     expect(m.posponerTarea).not.toHaveBeenCalled()
   })
   it('posponer una que ya no está pendiente → 409', async () => {

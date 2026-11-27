@@ -23,9 +23,9 @@ function IconoTarea({ t }: { t: TareaDeFicha }) {
   return <Icono aria-hidden className="mt-[0.1875rem] size-3.5 shrink-0 text-texto-suave" />
 }
 
-function Vence({ t, ahora }: { t: TareaDeFicha; ahora: Date }) {
+function Vence({ t, ahora, altas }: { t: TareaDeFicha; ahora: Date; altas?: ReadonlyMap<string, string> }) {
   // La tarea de entrada que espera desde el registro dice "Espera hace…" (crm-tareas-y-campanita).
-  const espera = esperaDesde(t)
+  const espera = esperaDesde(t, (t.deal_id && altas?.get(t.deal_id)) || null)
   const v = textoVencimiento(t, ahora, { todoElDia: !t.due_time, ...(espera ? { espera: { registradoEn: espera } } : {}) })
   const Icono = v.estado === 'vencida' ? TriangleAlert : v.estado === 'sinfecha' ? Calendar : Clock
   return (
@@ -54,6 +54,7 @@ export function LateralTareas({
   onCompletada,
   avisar,
   avisarCompletada,
+  altas,
 }: {
   contactoId: string
   nombre: string | null
@@ -66,6 +67,8 @@ export function LateralTareas({
   avisar: (texto: string, error?: boolean) => void
   /** "Tarea completada" con "Deshacer" (reabre y vuelve a pedir las tareas). */
   avisarCompletada?: (deshacer: () => void) => void
+  /** Alta de cada proceso del contacto (id → creado): el registro real, para "Espera hace…". */
+  altas?: ReadonlyMap<string, string>
 }) {
   const [completando, setCompletando] = useState<string | null>(null)
   const completar = async (t: TareaDeFicha) => {
@@ -149,7 +152,7 @@ export function LateralTareas({
                   <span className="min-w-0">{t.title}</span>
                 </p>
                 <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-texto-suave">
-                  <Vence t={t} ahora={ahora} />
+                  <Vence t={t} ahora={ahora} altas={altas} />
                   {t.assigned_name && <span>{t.assigned_name}</span>}
                 </p>
               </div>

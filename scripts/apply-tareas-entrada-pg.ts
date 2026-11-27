@@ -56,11 +56,14 @@ async function main(): Promise<void> {
 
       // 1. request → lost: se cierran las dos copias nuevas, no la vieja sin canal.
       const d1 = await proceso('request', null)
+      // Una completada a mano ANTES de descartar no se reabre al deshacer.
+      const manual = await tarea(d1, 'call', (await filas<{ id: string }>(`SELECT id FROM profiles WHERE is_active AND id <> ALL($1::uuid[]) ORDER BY created_at LIMIT 1`, [[autor.id, otro.id]]))[0].id, `${NOMBRE} entrada`)
+      await c.query(`UPDATE tasks SET status='completed', completed_at = now() - interval '1 hour' WHERE id=$1`, [manual])
       const a = await tarea(d1, 'call', autor.id)
       const b = await tarea(d1, 'call', otro.id)
       const dv = await proceso('request', null)
       const vieja = await tarea(dv, null, autor.id, `${NOMBRE} vieja`)
-      await c.query(`UPDATE deals SET stage='lost', stage_changed_by=$2 WHERE id=$1`, [d1, autor.id])
+      await c.query(`UPDATE deals SET stage='lost', stage_changed_by=$2, stage_changed_at=now() WHERE id=$1`, [d1, autor.id])
       await c.query(`UPDATE deals SET stage='lost' WHERE id=$1`, [dv])
       const [ea, eb, ev] = [await estado(a), await estado(b), await estado(vieja)]
       ok(ea.status === 'completed' && eb.status === 'completed', 'salir de Solicitud completa las dos copias')
@@ -71,6 +74,13 @@ async function main(): Promise<void> {
       await c.query(`UPDATE deals SET stage='request' WHERE id=$1`, [d1])
       ok((await estado(a)).status === 'pending' && (await estado(b)).status === 'pending', 'volver a Solicitud las reabre')
       ok((await estado(a)).completed_by === null, 'sin quién la completó')
+      ok((await estado(manual)).status === 'completed', 'la que alguien completó a mano antes de descartar no se reabre')
+      // Borrarle el día a una coordinada NO reabre nada (solo "Deshacer perdido").
+      const d5 = await proceso('scheduled', '2030-01-01')
+      const t5 = await tarea(d5, 'call', autor.id)
+      await c.query(`UPDATE tasks SET status='completed', completed_at=now() WHERE id=$1`, [t5])
+      await c.query(`UPDATE deals SET scheduled_date = NULL WHERE id=$1`, [d5])
+      ok((await estado(t5)).status === 'completed', 'borrar el día no reabre la entrada')
 
       // 2. scheduled sin día → con día (coordinar) también cierra.
       const d2 = await proceso('scheduled', null)

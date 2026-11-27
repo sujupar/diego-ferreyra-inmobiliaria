@@ -9,7 +9,11 @@ const m = vi.hoisted(() => ({
 vi.mock('@/lib/auth/require-role', () => ({
   requireAuth: vi.fn(async () => ({ id: m.estado.id, profile: { id: m.estado.id, role: m.estado.role } })),
 }))
-vi.mock('@/lib/supabase/agenda-tareas', () => ({ leerAgenda: m.leerAgenda, leerAvisos: m.leerAvisos, leerPersonas: async () => [{ id: 'u-x', nombre: 'X' }] }))
+vi.mock('@/lib/supabase/agenda-tareas', () => ({
+  leerAgenda: m.leerAgenda,
+  leerAvisos: m.leerAvisos,
+  leerPersonas: async () => [{ id: 'u-x', nombre: 'X' }, { id: '00000000-0000-4000-8000-0000000000b2', nombre: 'Otro' }],
+}))
 
 import { GET as agenda } from './route'
 import { GET as avisos } from '../avisos/route'
@@ -42,8 +46,12 @@ describe('GET /api/tasks/agenda', () => {
     await pedir()
     expect(m.leerAgenda.mock.calls.map((c) => c[0].asignados)).toEqual(['todos', 'todos', ['u-coord']])
   })
+  it('una persona que no está activa da la lista vacía', async () => {
+    await pedir('?de=00000000-0000-4000-8000-0000000000c9')
+    expect(m.leerAgenda.mock.calls[0][0].asignados).toEqual(['00000000-0000-0000-0000-000000000000'])
+  })
   it('la lista de personas viaja solo a quien puede elegir', async () => {
-    expect((await (await pedir()).json()).personas).toEqual([{ id: 'u-x', nombre: 'X' }])
+    expect((await (await pedir()).json()).personas).toHaveLength(2)
     como('asesor')
     expect((await (await pedir()).json()).personas).toBeNull()
   })

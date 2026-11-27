@@ -265,10 +265,19 @@ describe('tarea de coordinación con fecha (crm-tareas-y-campanita)', () => {
   })
   it('fuera de horario: el día hábil siguiente a las 9:00', async () => {
     await ejecutarTrabajo('coordinator_task', {
-      funnel: 'clase', dealId: 'deal-1', contactId: 'contacto-1', nombre: 'Ana Pérez',
+      funnel: 'tasacion', dealId: 'deal-1', contactId: 'contacto-1', nombre: 'Ana Pérez',
       registradoEn: '2026-11-28T00:00:00.000Z', // viernes 21:00 de Argentina
     })
     expect(espias.tareas.at(-1)).toMatchObject({ due_date: '2026-11-30', due_time: '09:00', all_day: false })
+  })
+  it('la clase gratuita no: nace sin fecha y sin canal (no suena)', async () => {
+    await ejecutarTrabajo('coordinator_task', {
+      funnel: 'clase', dealId: 'deal-1', contactId: 'contacto-1', nombre: 'Ana Pérez',
+      registradoEn: '2026-11-24T18:10:00.000Z',
+    })
+    const t = espias.tareas.at(-1) as Record<string, unknown>
+    expect(t.due_date).toBeUndefined()
+    expect(t.channel).toBeUndefined()
   })
 })
 
