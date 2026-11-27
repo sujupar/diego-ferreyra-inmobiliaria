@@ -35,6 +35,7 @@ export default defineConfig({
       'app/api/appraisals/*/contact/**/*.test.ts',
       'app/api/tasks/**/*.test.ts',
       'components/crm/**/*.test.tsx',
+      'components/tareas/**/*.test.tsx',
       'components/contacts/**/*.test.tsx',
       'app/*/contacts/**/*.test.tsx',
       'app/*/crm/**/*.test.tsx',
