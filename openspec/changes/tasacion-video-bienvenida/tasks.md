@@ -49,11 +49,11 @@
 
 - [x] 4.1 `FunnelClickToPlayVideo` acepta `anonId` y `onSegundosReproducidos` (sin contar saltos); sin las props, igual que hoy (test)
 - [x] 4.2 `VIDEO_KEYS` con `bienvenida-tasacion-v1` y `nombreEnLinea`; `video-keys.test.ts` en verde
-- [ ] 4.3 `lib/video-bienvenida/contenido.ts`, `mostrar-bloque.ts` (puro, con tests) y `app/t/[codigo]/page.tsx` (logo centrado, sin duración, bloque a los 30 s, no indexa, `no-referrer`, sin Píxel, título sin nombre, código inexistente → no encontrado)
-- [ ] 4.4 `POST /api/public/video/[codigo]` con marca por pestaña; `/t/` pública en `middleware.ts` (test)
-- [ ] 4.5 `app/t/paula.vcf/route.ts`
-- [ ] 4.7 Test de JS: filas con embudo nulo no entran en `/embudos`; `video-keys.test.ts` recorre también `app/t/`
-- [ ] 4.8 Medición apagada con sesión de la plataforma y aviso "Vista del equipo" (test)
+- [x] 4.3 `lib/video-bienvenida/contenido.ts`, `mostrar-bloque.ts` (puro, con tests) y `app/t/[codigo]/page.tsx` (logo centrado, sin duración, bloque a los 30 s, no indexa, `no-referrer`, sin Píxel, título sin nombre, código inexistente → no encontrado)
+- [x] 4.4 `POST /api/public/video/[codigo]` con marca por pestaña; `/t/` pública en `middleware.ts` (test)
+- [x] 4.5 `app/t/paula.vcf/route.ts`
+- [x] 4.7 Filas con embudo nulo no entran en `/embudos` (verificado contra la base en `apply-video-bienvenida-pg.ts`: caen en "otro"); `video-keys.test.ts` recorre también `app/t/`
+- [x] 4.8 Medición apagada con sesión de la plataforma y aviso "Vista del equipo" (test)
 - [ ] 4.9 Respaldo tardío: `lib/video-bienvenida/respaldo.ts` (puro, con tests), RPC `tomar_respaldo` y el webhook de estados (test con aviso repetido)
 - [ ] 4.6 Video a 720p con `faststart` y póster subidos (TUS) a `funnel-media/bienvenida/`; responde 206 a un pedido por rango
 - [ ] 4.10 QA del `.vcf` en iOS y en Android (navegador dentro de WhatsApp)

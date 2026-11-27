@@ -87,6 +87,11 @@ async function main() {
     const { rows: [vv] } = await c.query(`SELECT contact_id FROM video_view_state WHERE anon_id='bv:ooooHq2mXb'`)
     ok(vv.contact_id === null || vv.contact_id === contacto.id, 'la fila de video no queda en otro contacto')
 
+    // /embudos: la vista del video de bienvenida (embudo nulo) cae en 'otro', que el panel no muestra.
+    const { rows: est } = await c.query(
+      `SELECT funnel FROM public.funnel_video_stats(now() - interval '1 day', now() + interval '1 day') WHERE video_key = 'bienvenida-tasacion-v1'`)
+    ok(est.length > 0 && est.every((r) => r.funnel === 'otro'), 'en /embudos el video de bienvenida queda en "otro" (fuera de tasación y clase)')
+
     // Lo que ve alguien sin sesión (rol anon de la API).
     await c.query('SAVEPOINT anon')
     await c.query('SET LOCAL ROLE anon')

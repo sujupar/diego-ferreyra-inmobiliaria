@@ -26,6 +26,15 @@ beforeEach(() => {
     if (init?.body) enviados.push(JSON.parse(init.body))
     return new Response('{}')
   }))
+  // El flush final usa sendBeacon: en happy-dom saldría de verdad contra localhost.
+  Object.defineProperty(navigator, 'sendBeacon', {
+    configurable: true,
+    value: (_url: string, data: Blob) => {
+      void data.text().then((t) => enviados.push(JSON.parse(t)))
+      return true
+    },
+  })
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(async () => {})
   cont = document.createElement('div')
   document.body.appendChild(cont)
   root = createRoot(cont)
@@ -35,6 +44,7 @@ afterEach(() => {
   act(() => root.unmount())
   cont.remove()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 function video(): HTMLVideoElement {
