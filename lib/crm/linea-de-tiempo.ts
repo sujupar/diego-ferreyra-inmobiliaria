@@ -324,3 +324,26 @@ export function unirYCortar<A extends ActividadMinima>(
   todos.sort(comparar)
   return { items: todos.slice(0, limite).map((x) => x.item), hayMas: todos.length > limite }
 }
+
+/**
+ * Aplica un cambio local de la pantalla (nota editada, registro anulado, registro nuevo
+ * arriba) a las actividades de la línea sin tocar los eventos del sistema: las que siguen
+ * quedan en su lugar (con su versión nueva), las que ya no están salen, y las nuevas van
+ * primero, en el orden en que las devolvió el cambio.
+ */
+export function aplicarAActividades<A extends ActividadMinima>(
+  items: readonly ItemLinea<A>[],
+  cambio: (actividades: A[]) => A[],
+): ItemLinea<A>[] {
+  const antes = items.flatMap((i) => (i.tipo === 'actividad' ? [i.actividad] : []))
+  const despues = cambio(antes)
+  const porId = new Map(despues.map((a) => [a.id, a]))
+  const habia = new Set(antes.map((a) => a.id))
+  const nuevas: ItemLinea<A>[] = despues.filter((a) => !habia.has(a.id)).map((actividad) => ({ tipo: 'actividad', actividad }))
+  const resto = items.flatMap((i): ItemLinea<A>[] => {
+    if (i.tipo === 'evento') return [i]
+    const a = porId.get(i.actividad.id)
+    return a ? [{ tipo: 'actividad', actividad: a }] : []
+  })
+  return [...nuevas, ...resto]
+}

@@ -7,7 +7,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FichaContacto } from './FichaContacto'
 import { SinAcceso } from './Pantallas'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba, lineaDePrueba } from './datos-prueba'
 import { simularRed, pedidosA } from './red-prueba'
 
 vi.mock('next/link', () => ({
@@ -24,7 +24,7 @@ const BASE = `/api/contacts/${CONTACTO}`
 function redNormal(extra: Parameters<typeof simularRed>[0] = {}) {
   return simularRed({
     [`${BASE}/ficha`]: { body: fichaDePrueba() },
-    [`${BASE}/activities`]: { body: { actividades: [actividadDePrueba()], hay_mas: false } },
+    [`${BASE}/activities`]: { body: { items: lineaDePrueba([actividadDePrueba()]), hay_mas: false } },
     [`${BASE}/tasks`]: { body: { tareas: [tareaDePrueba()], total: 1 } },
     ...extra,
   })
@@ -52,7 +52,7 @@ describe('FichaContacto: tres pedidos por separado', () => {
     let falla = true
     const red = redNormal({
       [`${BASE}/activities`]: () =>
-        falla ? { status: 500, body: { error: 'boom' } } : { body: { actividades: [actividadDePrueba()], hay_mas: false } },
+        falla ? { status: 500, body: { error: 'boom' } } : { body: { items: lineaDePrueba([actividadDePrueba()]), hay_mas: false } },
     })
     render(<FichaContacto contactoId={CONTACTO} rol="coordinador" usuarioId="u-1" abrirEditor={false} reloj={reloj} />)
     const act = await waitFor(() => {

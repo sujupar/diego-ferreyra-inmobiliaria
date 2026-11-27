@@ -8,7 +8,7 @@ import { armarAviso, type EntradaAviso } from '@/lib/crm/aviso-guardado'
 import type { BloqueCadencia } from '@/lib/supabase/cadencia'
 import { AvisoGuardado } from './AvisoGuardado'
 import { FichaContacto } from './FichaContacto'
-import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba } from './datos-prueba'
+import { CONTACTO, actividadDePrueba, fichaDePrueba, tareaDePrueba, lineaDePrueba } from './datos-prueba'
 import { pedidosA, simularRed } from './red-prueba'
 import { toast } from 'sonner'
 
@@ -186,7 +186,7 @@ describe('"Reintentar" en la ficha', () => {
     const llamada = actividadDePrueba({ id: 'a-9', kind: 'call', call_outcome: 'no_atendio', body: null, intento: 1, titulo: 'Llamada 1 · No atendió' })
     const red = simularRed({
       [`${BASE}/ficha`]: { body: fichaDePrueba() },
-      [`${BASE}/activities`]: { body: { actividades: [], hay_mas: false } },
+      [`${BASE}/activities`]: { body: { items: lineaDePrueba([]), hay_mas: false } },
       [`${BASE}/tasks`]: { body: { tareas: [tareaDePrueba()], total: 1 } },
       [`POST ${BASE}/activities`]: { status: 201, body: { actividad: llamada, cadencia: cad({ dealId: 'd-1' }), pendiente: true } },
       [`POST ${BASE}/activities/a-9/cadencia`]: {
@@ -216,7 +216,7 @@ describe('"Reintentar" en la ficha', () => {
     const llamada = actividadDePrueba({ id: 'a-9', kind: 'call', call_outcome: 'no_atendio', body: null, intento: 1, titulo: 'Llamada 1 · No atendió' })
     const red = simularRed({
       [`${BASE}/ficha`]: { body: fichaDePrueba() },
-      [`${BASE}/activities`]: { body: { actividades: [], hay_mas: false } },
+      [`${BASE}/activities`]: { body: { items: lineaDePrueba([]), hay_mas: false } },
       [`${BASE}/tasks`]: { body: { tareas: [tareaDePrueba()], total: 1 } },
       [`POST ${BASE}/activities`]: { status: 201, body: { actividad: llamada, cadencia: cad({ dealId: 'd-1' }), pendiente: true } },
       [`POST ${BASE}/activities/a-9/cadencia`]: () => {

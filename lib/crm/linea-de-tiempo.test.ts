@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  aplicarAActividades,
   eventosDeEtapa,
   eventosDeRegistro,
   eventosDeTareas,
@@ -315,3 +316,22 @@ describe('unirYCortar', () => {
 function claveDe(i: ItemLinea) {
   return i.tipo === 'evento' ? i.evento.id : i.actividad.id
 }
+
+describe('aplicarAActividades', () => {
+  type A = { id: string; occurred_at: string; body: string }
+  const a = (id: string, body = id): ItemLinea<A> => ({ tipo: 'actividad', actividad: { id, occurred_at: '2026-11-20T10:00:00Z', body } })
+  const e = (id: string): ItemLinea<A> => ({ tipo: 'evento', evento: { id, clase: 'etapa', titulo: id, detalle: null, autor: null, fecha: '2026-11-20T10:00:00Z' } })
+  const ver = (xs: ItemLinea<A>[]) => xs.map((i) => (i.tipo === 'evento' ? i.evento.id : `${i.actividad.id}=${i.actividad.body}`))
+
+  it('editar deja la actividad en su lugar, entre los eventos', () => {
+    const r = aplicarAActividades([e('x'), a('n1'), e('y')], (as) => as.map((v) => (v.id === 'n1' ? { ...v, body: 'nuevo' } : v)))
+    expect(ver(r)).toEqual(['x', 'n1=nuevo', 'y'])
+  })
+  it('sacar no toca los eventos', () => {
+    expect(ver(aplicarAActividades([e('x'), a('n1'), a('n2')], (as) => as.filter((v) => v.id !== 'n1')))).toEqual(['x', 'n2=n2'])
+  })
+  it('una nueva va primero', () => {
+    const nueva = { id: 'n9', occurred_at: '2026-11-27T10:00:00Z', body: 'n9' }
+    expect(ver(aplicarAActividades([e('x'), a('n1')], (as) => [nueva, ...as]))).toEqual(['n9=n9', 'x', 'n1=n1'])
+  })
+})

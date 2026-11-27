@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { leerJson } from '@/lib/crm/leer-json'
 import type { FichaContacto } from '@/lib/crm/ficha'
+import { aplicarAActividades, claveItem, fechaItem, type ClaseEvento, type ItemLinea } from '@/lib/crm/linea-de-tiempo'
 import type { ActividadDeFicha } from '@/lib/crm/tipos'
 import type { TareaDeFicha } from '@/lib/supabase/tasks'
 
@@ -23,8 +24,11 @@ export interface BloqueFicha {
 
 export interface BloqueActividad {
   estado: EstadoPedido
-  items: ActividadDeFicha[]
+  /** La línea de tiempo: actividades de las personas y eventos del sistema (crm-linea-de-tiempo D5). */
+  items: ItemLinea[]
   hayMas: boolean
+  /** Fuentes del sistema que no se pudieron leer: la pantalla avisa y ofrece "Reintentar". */
+  fuentesConError: ClaseEvento[]
   filtro: FiltroActividad
   cargandoMas: boolean
   errorMas: string | null
@@ -41,6 +45,7 @@ export function useFicha(contactoId: string) {
     estado: 'cargando',
     items: [],
     hayMas: false,
+    fuentesConError: [],
     filtro: 'todo',
     cargandoMas: false,
     errorMas: null,
@@ -70,12 +75,15 @@ export function useFicha(contactoId: string) {
   }, [traerFicha])
 
   const pedirActividad = useCallback(
-    async (filtro: FiltroActividad, antes: string | null) => {
+    async (filtro: FiltroActividad, antes: { fecha: string; id: string } | null) => {
       const v = ++version.current.actividad
       const params = new URLSearchParams({ filtro })
-      if (antes) params.set('antes', antes)
+      if (antes) {
+        params.set('antes', antes.fecha)
+        params.set('antes_id', antes.id)
+      }
       try {
-        const r = await leerJson<{ actividades: ActividadDeFicha[]; hay_mas: boolean }>(
+        const r = await leerJson<{ items: ItemLinea[]; hay_mas: boolean; fuentes_con_error?: ClaseEvento[] }>(
           await fetch(`${base}/activities?${params.toString()}`, { cache: 'no-store' }),
         )
         if (v !== version.current.actividad) return
@@ -87,7 +95,12 @@ export function useFicha(contactoId: string) {
             cargandoMas: false,
             errorMas: null,
             hayMas: r.data.hay_mas,
-            items: antes ? [...a.items, ...r.data.actividades.filter((n) => !a.items.some((x) => x.id === n.id))] : r.data.actividades,
+            fuentesConError: antes
+              ? [...new Set([...a.fuentesConError, ...(r.data.fuentes_con_error ?? [])])]
+              : (r.data.fuentes_con_error ?? []),
+            items: antes
+              ? [...a.items, ...r.data.items.filter((n) => !a.items.some((x) => claveItem(x) === claveItem(n)))]
+              : r.data.items,
           }))
         } else if (antes) {
           setActividad((a) => ({ ...a, cargandoMas: false, errorMas: r.error }))
@@ -113,6 +126,7 @@ export function useFicha(contactoId: string) {
         // Cambiar de filtro muestra la carga; recargar el mismo deja la lista a la vista.
         estado: a.filtro === f && a.estado === 'ok' ? 'ok' : 'cargando',
         items: a.filtro === f ? a.items : [],
+        fuentesConError: a.filtro === f ? a.fuentesConError : [],
       }))
       return pedirActividad(f, null)
     },
@@ -123,7 +137,7 @@ export function useFicha(contactoId: string) {
     const ultimo = actividad.items[actividad.items.length - 1]
     if (!ultimo || actividad.cargandoMas) return
     setActividad((a) => ({ ...a, cargandoMas: true, errorMas: null }))
-    void pedirActividad(actividad.filtro, ultimo.occurred_at)
+    void pedirActividad(actividad.filtro, { fecha: fechaItem(ultimo), id: claveItem(ultimo) })
   }, [actividad, pedirActividad])
 
   const traerTareas = useCallback(async () => {
@@ -157,7 +171,8 @@ export function useFicha(contactoId: string) {
 
   /** Cambios locales sin pedir nada (una nota editada, un registro anulado, una tarea completada). */
   const cambiarActividad = useCallback((f: (items: ActividadDeFicha[]) => ActividadDeFicha[]) => {
-    setActividad((a) => ({ ...a, items: f(a.items) }))
+    // Solo toca las actividades: los eventos del sistema quedan en su lugar.
+    setActividad((a) => ({ ...a, items: aplicarAActividades(a.items, f) }))
   }, [])
   const cambiarTareas = useCallback((f: (t: TareaDeFicha[]) => TareaDeFicha[]) => {
     setTareas((t) => ({ ...t, tareas: f(t.tareas) }))
