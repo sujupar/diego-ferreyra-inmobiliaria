@@ -1,10 +1,11 @@
 'use client'
 
+import { completarTarea, reabrirTareaPedida } from '@/components/tareas/acciones'
+import { esperaDesde } from '@/lib/tareas/agenda'
 import { useState } from 'react'
 import { Calendar, Check, Clock, ListChecks, MessageCircle, Phone, Plus, TriangleAlert } from 'lucide-react'
 import { AddTaskDialog } from '@/components/tasks/AddTaskDialog'
 import { textoVencimiento } from '@/lib/crm/formato-fecha'
-import { leerJson } from '@/lib/crm/leer-json'
 import type { TareaDeFicha } from '@/lib/supabase/tasks'
 import { cn } from '@/lib/utils'
 import { EstadoCarga, EstadoError } from '../ui/EstadoBloque'
@@ -23,7 +24,9 @@ function IconoTarea({ t }: { t: TareaDeFicha }) {
 }
 
 function Vence({ t, ahora }: { t: TareaDeFicha; ahora: Date }) {
-  const v = textoVencimiento(t, ahora)
+  // La tarea de entrada que espera desde el registro dice "Espera hace…" (crm-tareas-y-campanita).
+  const espera = esperaDesde(t)
+  const v = textoVencimiento(t, ahora, { todoElDia: !t.due_time, ...(espera ? { espera: { registradoEn: espera } } : {}) })
   const Icono = v.estado === 'vencida' ? TriangleAlert : v.estado === 'sinfecha' ? Calendar : Clock
   return (
     <span
@@ -50,6 +53,7 @@ export function LateralTareas({
   onCreada,
   onCompletada,
   avisar,
+  avisarCompletada,
 }: {
   contactoId: string
   nombre: string | null
@@ -60,21 +64,26 @@ export function LateralTareas({
   onCreada: () => void
   onCompletada: (id: string) => void
   avisar: (texto: string, error?: boolean) => void
+  /** "Tarea completada" con "Deshacer" (reabre y vuelve a pedir las tareas). */
+  avisarCompletada?: (deshacer: () => void) => void
 }) {
   const [completando, setCompletando] = useState<string | null>(null)
   const completar = async (t: TareaDeFicha) => {
     if (completando) return
     setCompletando(t.id)
     try {
-      const r = await leerJson<{ success: boolean }>(
-        await fetch(`/api/tasks/${encodeURIComponent(t.id)}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'complete' }),
-        }),
-      )
-      if (r.ok) onCompletada(t.id)
-      else avisar(`No se pudo completar la tarea: ${r.error}`, true)
+      // `completarTarea` avisa a la campanita (`tareas:cambio`).
+      const r = await completarTarea(t.id)
+      if (r.ok) {
+        onCompletada(t.id)
+        avisarCompletada?.(async () => {
+          const d = await reabrirTareaPedida(t.id)
+          if (d.ok) {
+            avisar('Listo, se deshizo.')
+            onCreada()
+          } else avisar(d.error, true)
+        })
+      } else avisar(`No se pudo completar la tarea: ${r.error}`, true)
     } catch (err) {
       console.error('[ficha] no se pudo completar la tarea', err)
       avisar('No se pudo completar la tarea. Probá de nuevo.', true)

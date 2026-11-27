@@ -1,5 +1,6 @@
 'use client'
 
+import { avisarCambioTareas } from '@/components/tareas/acciones'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast, type ExternalToast } from 'sonner'
 import { ContactEditor } from '@/components/contacts/ContactEditor'
@@ -176,6 +177,7 @@ export function FichaContacto({
     if (a.kind !== 'note') {
       void f.recargarTareas()
       void f.recargarFicha()
+      avisarCambioTareas() // anular deshace tareas de la cadencia: la campanita también
     }
   }
 
@@ -212,6 +214,7 @@ export function FichaContacto({
     // La llamada cierra y crea tareas y cambia el "Último contacto": se piden de nuevo.
     void f.recargarTareas()
     void f.recargarFicha()
+    avisarCambioTareas() // la campanita también (crm-tareas-y-campanita)
     const a = mostrarAvisoDe(r, tipo)
     despuesDeGuardar(origen)
     if (origen === 'composer') setEnfocar('aviso')
@@ -449,6 +452,7 @@ export function FichaContacto({
               void f.recargarActividad() // "Se completó la tarea …"
             }}
             avisar={avisar}
+            avisarCompletada={(deshacer) => mostrarToast('Tarea completada', { action: { label: 'Deshacer', onClick: deshacer } })}
           />
           {datos && <BloqueLista ficha={datos} ahora={ahora} onDeshacerPerdido={deshacerPerdido} />}
         </div>
