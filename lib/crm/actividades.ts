@@ -143,8 +143,9 @@ export function numerarLlamadas(intentos: Intento[]): Map<string, number> {
 }
 
 // Texto corto del resultado (maqueta `base.js`, campo `corto`): la spec fija
-// "Llamada 1 · Agendó" como título en la actividad.
-const RESULTADO_CORTO: Record<ResultadoLlamada, string> = {
+// "Llamada 1 · Agendó" como título en la actividad. Se exporta: la fila de la cartera
+// (`textoQueFue`) escribe el mismo resultado, para que lista y ficha digan lo mismo.
+export const RESULTADO_CORTO: Record<ResultadoLlamada, string> = {
   no_atendio: 'No atendió',
   agendo: 'Agendó',
   volver_a_llamar: 'Volver a llamar',
