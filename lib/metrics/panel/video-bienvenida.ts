@@ -32,9 +32,9 @@ const ATENDIO = new Set(['agendo', 'volver_a_llamar', 'no_interesa'])
 
 export interface EntradaPanelVideo {
   contactos: ContactoRow[]
-  enlaces: { contact_id: string; enviado_at: string | null; envio_fallido_at: string | null; aperturas: number }[]
+  enlaces: { contact_id: string; deal_envio?: string | null; enviado_at: string | null; envio_fallido_at: string | null; aperturas: number }[]
   vistas: { contact_id: string; playback_started: boolean | null; watched_buckets: string | null; duration_s: number | null }[]
-  procesos: { contact_id: string | null; origin: string | null; stage: string | null; created_at: string; scheduled_at: string | null }[]
+  procesos: { id?: string; contact_id: string | null; origin: string | null; stage: string | null; created_at: string; scheduled_at: string | null }[]
   llamadas: { contact_id: string; call_outcome: string | null; occurred_at: string }[]
   cambioDesde: string | null
 }
@@ -96,7 +96,11 @@ export function armarPanelVideoBienvenida(e: EntradaPanelVideo, ahora: Date): Pa
         minutos: v?.playback_started && v.duration_s ? formatoMinutos(segundosVistos(v.watched_buckets, v.duration_s)) : null,
         porcentaje: tramos,
         atendio: atendioDesde(x.contact_id, desde),
-        coordino: coordinoDesde(x.contact_id, desde),
+        // Con el proceso del envío se mira ESE proceso, aunque haya nacido horas antes de que saliera
+        // el WhatsApp (cola atrasada). Sin él, la ventana desde el envío.
+        coordino: x.deal_envio
+          ? e.procesos.some((p) => p.id === x.deal_envio && coordinado(p))
+          : coordinoDesde(x.contact_id, desde),
       },
     }
   })

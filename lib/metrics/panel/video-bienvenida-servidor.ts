@@ -5,32 +5,35 @@
 import 'server-only'
 import { db, todas } from './servidor'
 import { armarPanelVideoBienvenida, CAMBIO_DESDE, DIAS_ANTES, fechaDelCambio, type EntradaPanelVideo, type PanelVideoBienvenida } from './video-bienvenida'
-import type { ContactoRow } from './personas'
+import { contactosDePrueba, type ContactoRow } from './personas'
 
 export async function cargarPanelVideoBienvenida(ahora: Date): Promise<PanelVideoBienvenida> {
   const sb = db()
   // Los procesos y llamadas que importan son los desde 14 días antes del cambio (o desde el
   // primer enlace, si el cambio todavía no tiene fecha).
   const enlaces = await todas<EntradaPanelVideo['enlaces'][number] & { created_at: string }>((a, b) =>
-    sb.from('video_bienvenida_enlaces').select('contact_id, enviado_at, envio_fallido_at, aperturas, created_at').order('codigo').range(a, b))
-  const cambio = CAMBIO_DESDE ?? fechaDelCambio(enlaces.map((x) => x.enviado_at))
+    sb.from('video_bienvenida_enlaces').select('contact_id, deal_envio, enviado_at, envio_fallido_at, aperturas, created_at').order('codigo').range(a, b))
+  const contactos = await todas<ContactoRow>((a, b) => sb.from('contacts').select('id, full_name, email, phone').order('id').range(a, b))
+  // La fecha del cambio sin los envíos de prueba (auditoría de código 2, hallazgo 1): la prueba a
+  // un número del equipo antes de activar no puede adelantar el "después".
+  const prueba = contactosDePrueba(contactos).ids
+  const cambio = CAMBIO_DESDE ?? fechaDelCambio(enlaces.filter((x) => !prueba.has(x.contact_id)).map((x) => x.enviado_at))
   const primeros = [
     ...(cambio ? [Date.parse(`${cambio}T03:00:00.000Z`) - DIAS_ANTES * 86_400_000] : []),
     ...enlaces.map((x) => Date.parse(x.created_at) - 86_400_000),
   ]
   const desde = new Date(primeros.length ? Math.min(...primeros) : ahora.getTime()).toISOString()
 
-  const [vistasCrudas, procesos, llamadas, contactos] = await Promise.all([
+  const [vistasCrudas, procesos, llamadas] = await Promise.all([
     todas<EntradaPanelVideo['vistas'][number] & { contact_id: string | null; updated_at: string }>((a, b) =>
       sb.from('video_view_state').select('contact_id, playback_started, watched_buckets, duration_s, updated_at')
         .like('anon_id', 'bv:%').like('video_key', 'bienvenida-tasacion-%').order('id').range(a, b)),
     todas<EntradaPanelVideo['procesos'][number]>((a, b) =>
-      sb.from('deals').select('contact_id, origin, stage, created_at, scheduled_at')
+      sb.from('deals').select('id, contact_id, origin, stage, created_at, scheduled_at')
         .eq('origin', 'embudo').gte('created_at', desde).order('id').range(a, b)),
     todas<EntradaPanelVideo['llamadas'][number]>((a, b) =>
       sb.from('contact_activities').select('contact_id, call_outcome, occurred_at')
         .eq('kind', 'call').is('voided_at', null).gte('occurred_at', desde).order('id').range(a, b)),
-    todas<ContactoRow>((a, b) => sb.from('contacts').select('id, full_name, email, phone').order('id').range(a, b)),
   ])
   // Una vista por persona: la más reciente (cuando cambie el video, -v1 y -v2 no se mezclan).
   const vistas = new Map<string, EntradaPanelVideo['vistas'][number] & { updated_at: string }>()

@@ -215,7 +215,8 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
   if (requerido(p, 'funnel') !== 'tasacion') return 'skipped'
 
   const plantilla = process.env.WHATSAPP_TEMPLATE_TASACION
-  if (!plantilla) return 'skipped' // todavía sin plantilla aprobada
+  // Un respaldo del video (sinVideo) sale aunque la variable se haya vaciado después del envío.
+  if (!plantilla && p.sinVideo !== true) return 'skipped' // todavía sin plantilla aprobada
 
   const phoneCrudo = texto(p, 'phone')
   if (!phoneCrudo) return 'skipped'
@@ -273,7 +274,7 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
   if (sinVideo) {
     // Meta frenó por marketing el mensaje con video de esta persona (ver respaldo.ts): va el de siempre.
     r = await mandar(v.PLANTILLA_SIN_VIDEO, [primerNombre])
-  } else if (v.esPlantillaConVideo(plantilla)) {
+  } else if (plantilla && v.esPlantillaConVideo(plantilla)) {
     const contactId = texto(p, 'contactId')
     const { obtenerOCrearEnlace } = await import('@/lib/video-bienvenida/enlaces')
     enlace = contactId
@@ -294,7 +295,8 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
       r = await mandar(v.PLANTILLA_SIN_VIDEO, [primerNombre])
     }
   } else {
-    r = await mandar(plantilla, [primerNombre])
+    // `plantilla` vacía solo llega acá con sinVideo, que ya salió arriba.
+    r = await mandar(plantilla ?? v.PLANTILLA_SIN_VIDEO, [primerNombre])
   }
   // Modo prueba / sin credenciales: no salió nada, y decirlo es información.
   if (r.skipped) return 'skipped'

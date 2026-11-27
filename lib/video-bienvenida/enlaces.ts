@@ -77,19 +77,33 @@ export async function marcarEnviado(codigo: string, wamid: string | null, dealId
  * misma transacción vuelve a encolar el trabajo de WhatsApp de ese proceso, sin video:
  * `encolado = false` quiere decir que no pudo (sin proceso, o el trabajo está corriendo).
  */
-export async function tomarRespaldo(wamid: string, telefono: string): Promise<{ contactId: string; nombre: string | null; encolado: boolean } | null> {
+export type Respaldo = { contactId: string; nombre: string | null; encolado: boolean }
+
+/** `'error'` = la base no respondió (no es lo mismo que "no hay nada que tomar", que es `null`). */
+export async function tomarRespaldo(wamid: string, telefono: string): Promise<Respaldo | null | 'error'> {
   try {
     const { data, error } = await admin().rpc('video_bienvenida_tomar_respaldo', { p_wamid: wamid, p_phone: telefono })
     if (error) {
       console.warn('[video-bienvenida] no se pudo tomar el respaldo:', error.message)
-      return null
+      return 'error'
     }
     const fila = Array.isArray(data) ? (data[0] as { contact_id?: unknown; nombre?: unknown; encolado?: unknown } | undefined) : undefined
     if (!fila || typeof fila.contact_id !== 'string') return null
     return { contactId: fila.contact_id, nombre: typeof fila.nombre === 'string' ? fila.nombre : null, encolado: fila.encolado === true }
   } catch (e) {
     console.warn('[video-bienvenida] excepción tomando el respaldo:', e)
-    return null
+    return 'error'
+  }
+}
+
+/** ¿Hay un enlace con este mensaje? Sirve para distinguir "ya se tomó el respaldo" de "no lo encuentro". */
+export async function existeEnlaceDelMensaje(wamid: string): Promise<boolean | 'error'> {
+  try {
+    const { data, error } = await admin().from('video_bienvenida_enlaces').select('codigo').eq('wamid', wamid).limit(1).maybeSingle()
+    if (error) return 'error'
+    return !!data
+  } catch {
+    return 'error'
   }
 }
 

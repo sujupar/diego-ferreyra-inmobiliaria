@@ -11,10 +11,14 @@ import 'server-only'
  */
 import { createClient } from '@supabase/supabase-js'
 import { CODIGOS_FRENO_MARKETING, decidirRespaldoBienvenida } from './respaldo'
-import { tomarRespaldo } from './enlaces'
+import { existeEnlaceDelMensaje, tomarRespaldo } from './enlaces'
 import { PLANTILLA_SIN_VIDEO } from './plantillas'
 
-export type ResultadoRespaldoBienvenida = 'no_corresponde' | 'ya_mandado' | 'encolado' | 'mandado' | 'fallido' | 'error'
+export type ResultadoRespaldoBienvenida = 'no_corresponde' | 'ya_mandado' | 'sin_enlace' | 'encolado' | 'mandado' | 'fallido' | 'error'
+
+/** Espera antes del único reintento: cubre un hipo de la base y la ventana entre que se registra el
+ *  mensaje y se escribe su `wamid` en el enlace (auditoría de código 2, hallazgo 2). */
+export const ESPERA_REINTENTO_MS = 1500
 
 /** `tasacion_llamada_v1` empieza "Hola {{1}}, ¡recibimos…": sin nombre queda "Hola qué tal, ¡recibimos…". */
 const SALUDO_SIN_NOMBRE = 'qué tal'
@@ -47,8 +51,21 @@ export async function mandarRespaldoBienvenidaSiCorresponde(s: {
     const telefono = typeof fila?.phone_e164 === 'string' ? fila.phone_e164 : null
     if (!telefono) return 'no_corresponde'
 
-    const tomado = await tomarRespaldo(s.waMessageId, telefono)
-    if (!tomado) return 'ya_mandado'
+    let tomado = await tomarRespaldo(s.waMessageId, telefono)
+    if (tomado === 'error' || tomado === null) {
+      await new Promise((r) => setTimeout(r, ESPERA_REINTENTO_MS))
+      tomado = await tomarRespaldo(s.waMessageId, telefono)
+    }
+    if (tomado === 'error') {
+      console.error(`[video-bienvenida] la base no respondió dos veces; ${s.waMessageId} queda SIN respaldo (persona sin primer mensaje)`)
+      return 'error'
+    }
+    if (tomado === null) {
+      const existe = await existeEnlaceDelMensaje(s.waMessageId)
+      if (existe === true) return 'ya_mandado'
+      console.error(`[video-bienvenida] Meta frenó ${plantilla} (${s.codigoError}) pero no hay enlace con ${s.waMessageId}: SIN respaldo`)
+      return 'sin_enlace'
+    }
     // Lo normal: la RPC volvió a encolar el trabajo de WhatsApp sin video, que sale con los
     // reintentos de la cola (auditoría de código, hallazgo 2). El webhook no llama a Meta.
     if (tomado.encolado) {

@@ -13,6 +13,11 @@ describe('"Qué pasa ahora" aparece a los 30 segundos de video reproducido', () 
     expect(mostrarQuePasaAhora({ segundosEnEstaVisita: 30, segundosPrevios: 0 })).toBe(true)
   })
 
+  it('suma lo de antes y lo de ahora: 20 s ayer + 10 s hoy', () => {
+    expect(mostrarQuePasaAhora({ segundosEnEstaVisita: 10, segundosPrevios: 20 })).toBe(true)
+    expect(mostrarQuePasaAhora({ segundosEnEstaVisita: 9, segundosPrevios: 20 })).toBe(false)
+  })
+
   it('si ya los había visto otro día, aparece desde que entra', () => {
     expect(mostrarQuePasaAhora({ segundosEnEstaVisita: 0, segundosPrevios: 120 })).toBe(true)
   })

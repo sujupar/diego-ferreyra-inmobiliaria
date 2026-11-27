@@ -94,5 +94,5 @@
 ## 9. Auditoría doble
 
 - [x] 9.1 Auditor 1 revisa el código contra los escenarios de `specs/`
-- [ ] 9.2 Auditor 2 revisa el código y la auditoría del 1
-- [ ] 9.3 Se repite hasta cero hallazgos de peso; todo queda en `auditoria.md`
+- [x] 9.2 Auditor 2 revisa el código y la auditoría del 1
+- [x] 9.3 Se repite hasta cero hallazgos de peso; todo queda en `auditoria.md`

@@ -87,6 +87,11 @@ async function main() {
     ok(j.status === 'pending' && j.attempts === 0 && j.payload.sinVideo === true && j.payload.phone === '5491155550000' && j.payload.dealId === deal.id && j.payload.nombre === 'Ana',
       'el trabajo de WhatsApp vuelve a la cola, sin video y con el payload rearmado')
 
+    // Marcar sin wamid (Meta no lo devolvió) NO reinicia el respaldo del mensaje anterior.
+    await c.query(`SELECT public.video_bienvenida_marcar_enviado('ooooHq2mXb', NULL, $1)`, [deal.id])
+    const { rows: [e1b] } = await c.query(`SELECT respaldo_at, wamid FROM video_bienvenida_enlaces WHERE codigo='ooooHq2mXb'`)
+    ok(e1b.respaldo_at !== null && e1b.wamid === 'wamid.TEST1', 'marcar sin wamid no reinicia el respaldo del mensaje anterior')
+
     // La persona se vuelve a registrar: un mensaje con video NUEVO reinicia el respaldo.
     await c.query(`SELECT public.video_bienvenida_marcar_enviado('ooooHq2mXb', 'wamid.TEST2', $1)`, [deal.id])
     const { rows: [e2] } = await c.query(`SELECT respaldo_at, envio_fallido_at FROM video_bienvenida_enlaces WHERE codigo='ooooHq2mXb'`)

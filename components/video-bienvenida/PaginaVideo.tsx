@@ -70,7 +70,7 @@ export function PaginaVideo({ codigo, titular, medir, segundosPrevios }: PaginaV
             trackKey={medir ? c.video.trackKey : undefined}
             // Pasados los 30 s el bloque ya está: dejar de actualizar evita redibujar la página
             // durante los 13 minutos de video (auditoría de código, hallazgo 5).
-            onSegundosReproducidos={(n) => setSegundos((p) => (p >= UMBRAL_SEGUNDOS ? p : n))}
+            onSegundosReproducidos={(n) => setSegundos((p) => (p + segundosPrevios >= UMBRAL_SEGUNDOS ? p : n))}
             className="rounded-none! sm:rounded-[14px]!"
           />
         </div>

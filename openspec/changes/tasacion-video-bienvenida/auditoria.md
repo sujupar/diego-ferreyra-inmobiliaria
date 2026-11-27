@@ -85,3 +85,23 @@ Sin hallazgos altos. Pruebas: 385 ✓ y `tsc` ✓. Arreglos en ba33ac7c.
 - tarjeta de Paula; código inexistente → 404; privacidad de la vista previa;
 - línea de tiempo, tarjeta de la ficha y marca en la cartera;
 - panel de Métricas vacío, como corresponde.
+
+## Ronda 2b: código (auditor 2, 2026-11-27, sobre ba33ac7c)
+
+Sin hallazgos altos. Confirma que los arreglos de la ronda 2 cierran lo que prometen:
+- la RPC plpgsql no tiene ambigüedades;
+- no puede reencolar trabajos ajenos;
+- la carrera con el worker es segura;
+- el `CASE` de `marcar_enviado` lee la fila vieja.
+
+| # | Sev. | Hallazgo | Resolución |
+|---|---|---|---|
+| 1 | Media | La fecha del cambio contaba enlaces `[TEST]` (la prueba antes de activar adelantaba el "después") | Se excluyen los contactos de prueba antes de `fechaDelCambio` |
+| 2 | Media | Un error de la RPC, o el `wamid` todavía sin escribir, terminaban como "ya mandado" | `tomarRespaldo` distingue `'error'` de "nada que tomar"; un reintento a los 1,5 s; si sigue sin enlace, devuelve `'sin_enlace'` con `console.error`. Reemplaza la aceptación del hallazgo 3 de la ronda 2 (tests) |
+| 3 | Baja | `marcar_enviado` con `p_wamid` NULL reiniciaba el respaldo | `CASE WHEN p_wamid IS NOT NULL AND …`; verificado en la base |
+| 4 | Baja | Con la variable vacía, el trabajo `sinVideo` terminaba en `skipped` | `sinVideo` se evalúa antes del chequeo de la plantilla |
+| 5 | Baja | "Coordinó" por ventana de tiempo subestimaba los envíos atrasados | Con `deal_envio` se mira ese proceso; sin él, la ventana (test) |
+| — | Baja | El bloque no sumaba visitas (20 s ayer + 10 s hoy) | `mostrarQuePasaAhora` suma lo previo y lo actual (test) |
+| — | Baja | `/t/` lee la sesión sin refrescarla | Ya estaba cubierto: `esVisitaDelEquipo` mira el nombre de la cookie aunque esté vencida |
+
+Cierre de la auditoría doble: cero hallazgos de peso pendientes. Pruebas: 395 del cambio, 2460 del CRM; `tsc` ✓; migración reaplicada y verificada.

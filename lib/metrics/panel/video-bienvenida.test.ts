@@ -99,6 +99,16 @@ describe('panel del video de bienvenida', () => {
   })
 })
 
+describe('coordinó, con el proceso del envío', () => {
+  it('mira ESE proceso aunque haya nacido horas antes de que saliera el WhatsApp', () => {
+    const e = base()
+    e.procesos.push({ id: 'd-jorge', contact_id: 'jorge', origin: 'embudo', stage: 'scheduled', created_at: '2026-12-01T22:00:00Z', scheduled_at: '2026-12-03T10:00:00Z' })
+    e.enlaces[1] = { ...e.enlaces[1], deal_envio: 'd-jorge' }
+    const p = armarPanelVideoBienvenida(e, AHORA)
+    expect(p.personas.find((x) => x.nombre === 'Jorge García')?.coordino).toBe(true)
+  })
+})
+
 describe('fecha del cambio', () => {
   it('es el día en Argentina del primer mensaje con video aceptado', () => {
     // 01:30 del 2 de diciembre en UTC = 22:30 del 1 de diciembre en Argentina

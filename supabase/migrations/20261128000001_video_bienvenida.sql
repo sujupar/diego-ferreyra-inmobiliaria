@@ -123,8 +123,8 @@ SET search_path = public
 AS $$
   UPDATE public.video_bienvenida_enlaces
      SET enviado_at       = coalesce(enviado_at, now()),
-         respaldo_at      = CASE WHEN p_wamid IS DISTINCT FROM wamid THEN NULL ELSE respaldo_at END,
-         envio_fallido_at = CASE WHEN p_wamid IS DISTINCT FROM wamid THEN NULL ELSE envio_fallido_at END,
+         respaldo_at      = CASE WHEN p_wamid IS NOT NULL AND p_wamid IS DISTINCT FROM wamid THEN NULL ELSE respaldo_at END,
+         envio_fallido_at = CASE WHEN p_wamid IS NOT NULL AND p_wamid IS DISTINCT FROM wamid THEN NULL ELSE envio_fallido_at END,
          wamid            = coalesce(p_wamid, wamid),
          deal_envio       = coalesce(p_deal, deal_envio)
    WHERE codigo = p_codigo;
