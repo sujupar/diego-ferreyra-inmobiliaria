@@ -182,7 +182,7 @@ describe('tiempo medio a la primera llamada', () => {
 
 describe('tareas', () => {
   const t = (id: string, o: Record<string, unknown> = {}) => ({
-    id, title: `T ${id}`, tipo: 'llamada' as const, due_date: '2026-11-25', due_time: '09:00', todoElDia: false,
+    id, deal_id: null as string | null, title: `T ${id}`, tipo: 'llamada' as const, due_date: '2026-11-25', due_time: '09:00', todoElDia: false,
     vencimiento: { texto: 'Vencida hace 1 h', estado: 'vencida' }, enlace: '/x', contacto: { id: 'c1', nombre: 'M' }, asignado: null, ...o,
   })
   it('la coordinación no ve las llamadas que ya están en la cola (por proceso), sí un mensaje de esa persona', () => {
