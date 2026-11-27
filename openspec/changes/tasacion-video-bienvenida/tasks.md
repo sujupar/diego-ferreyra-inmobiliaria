@@ -34,9 +34,9 @@
 
 ## 2. Base de datos
 
-- [ ] 2.1 Migración `20261128000001_video_bienvenida` (tabla, CHECK, UNIQUE, RLS, las tres RPC con REVOKE, RPC de la cartera sin tocar `get_panel_video`); verificar antes que el número siga libre
-- [ ] 2.2 `scripts/apply-video-bienvenida-pg.ts` con las verificaciones de D2 en una transacción con ROLLBACK
-- [ ] 2.3 Aplicada en `mncsnastmcjdjxrehdep` y vuelta a correr (idempotente); 0 filas de prueba
+- [x] 2.1 Migración `20261128000001_video_bienvenida` (tabla, CHECK, UNIQUE, RLS, las tres RPC con REVOKE, RPC de la cartera sin tocar `get_panel_video`); verificar antes que el número siga libre
+- [x] 2.2 `scripts/apply-video-bienvenida-pg.ts` con las verificaciones de D2 en una transacción con ROLLBACK
+- [x] 2.3 Aplicada en `mncsnastmcjdjxrehdep` y vuelta a correr (idempotente); 0 filas de prueba
 
 ## 3. Enlaces y envío
 
