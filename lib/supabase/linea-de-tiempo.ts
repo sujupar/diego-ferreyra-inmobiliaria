@@ -15,6 +15,7 @@ import {
   eventosDeRegistro,
   eventosDeTareas,
   eventosDeVideo,
+  eventoDeAperturaDeEnlace,
   eventosDeWhatsapp,
   telefonoUtilizable,
   type ClaseEvento,
@@ -24,6 +25,7 @@ import {
   type FilaRegistro,
   type FilaTarea,
   type FilaVideo,
+  type FilaEnlaceVideo,
   type FilaWhatsapp,
 } from '@/lib/crm/linea-de-tiempo'
 
@@ -186,12 +188,23 @@ export async function leerEventosDelSistema(
 
     const videoP = filas<FilaVideo>(
       conCorte(
-        db.from('video_view_state').select('id, video_key, max_percent, first_at, playback_started')
+        db.from('video_view_state').select('id, video_key, max_percent, first_at, playback_started, duration_s, watched_buckets')
           .eq('contact_id', contactId).eq('playback_started', true),
         'first_at',
       ).order('first_at', { ascending: false }).limit(n).abortSignal(s),
       'video',
     ).then((l) => conPiso(l, (x) => x.first_at))
+
+    // El enlace del video de bienvenida (uno por contacto): su apertura va en la fecha de la
+    // primera, así que el cursor corta por esa columna.
+    const enlaceP = filas<FilaEnlaceVideo>(
+      conCorte(
+        db.from('video_bienvenida_enlaces').select('codigo, aperturas, primera_apertura, ultima_apertura')
+          .eq('contact_id', contactId).not('primera_apertura', 'is', null),
+        'primera_apertura',
+      ).limit(1).abortSignal(s),
+      'enlace del video',
+    )
 
     // Todos los perfiles en una lectura (son pocos): dan los teléfonos del equipo, los
     // nombres y quién es de la coordinación, sin un viaje más al final.
@@ -255,8 +268,8 @@ export async function leerEventosDelSistema(
       return conPiso(mensajes, (x) => x.created_at)
     })()
 
-    const [procesos, registros, etapas, tareas, video, whatsapp] = await Promise.allSettled([
-      procesosP, registrosP, etapasP, tareasP, videoP, whatsappP,
+    const [procesos, registros, etapas, tareas, video, whatsapp, enlace] = await Promise.allSettled([
+      procesosP, registrosP, etapasP, tareasP, videoP, whatsappP, enlaceP,
     ])
 
     const fuentesConError: ClaseEvento[] = []
@@ -287,6 +300,7 @@ export async function leerEventosDelSistema(
     const listaTareas = ok(tareas, 'tarea')
     const listaVideo = ok(video, 'video')
     const listaWhatsapp = ok(whatsapp, 'whatsapp')
+    const listaEnlace = ok(enlace, 'enlace_video')
 
     // Sin nombres, cada evento perdería su autor sin avisar: si no se pudieron leer los
     // perfiles, falla todo (la ruta lo muestra como "Parte de la historia no se pudo cargar").
@@ -307,6 +321,7 @@ export async function leerEventosDelSistema(
       ...(listaTareas ? eventosDeTareas(listaTareas, nombres, coordinacion) : []),
       ...(listaWhatsapp ? eventosDeWhatsapp(listaWhatsapp, nombres) : []),
       ...(listaVideo ? eventosDeVideo(listaVideo) : []),
+      ...(listaEnlace ?? []).map((f) => eventoDeAperturaDeEnlace(f, new Date())).filter((e): e is NonNullable<typeof e> => e !== null),
     ]
     // El piso es el más reciente de los pisos (todas las fuentes cortadas leyeron al menos hasta ahí).
     const piso = pisos.length > 0 ? pisos.reduce((a, b) => (Date.parse(a) >= Date.parse(b) ? a : b)) : null

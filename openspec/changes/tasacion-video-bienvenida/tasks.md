@@ -55,12 +55,12 @@
 - [x] 4.7 Filas con embudo nulo no entran en `/embudos` (verificado contra la base en `apply-video-bienvenida-pg.ts`: caen en "otro"); `video-keys.test.ts` recorre también `app/t/`
 - [x] 4.8 Medición apagada con sesión de la plataforma y aviso "Vista del equipo" (test)
 - [x] 4.9 Respaldo tardío: `lib/video-bienvenida/respaldo.ts` (puro, con tests), RPC `tomar_respaldo` y el webhook de estados (test con aviso repetido)
-- [ ] 4.6 Video a 720p con `faststart` y póster subidos (TUS) a `funnel-media/bienvenida/`; responde 206 a un pedido por rango
+- [x] 4.6 Video a 720p con `faststart` y póster subidos (TUS) a `funnel-media/bienvenida/`; responde 206 a un pedido por rango
 - [ ] 4.10 QA del `.vcf` en iOS y en Android (navegador dentro de WhatsApp)
 
 ## 5. CRM y panel
 
-- [ ] 5.1 Línea de tiempo: evento de apertura y detalle `mm:ss de mm:ss` (tests en `linea-de-tiempo.test.ts`)
+- [x] 5.1 Línea de tiempo: evento de apertura y detalle `mm:ss de mm:ss` (tests en `linea-de-tiempo.test.ts`)
 - [ ] 5.2 Cartera: `marcaVideo` (puro, con tests) y la RPC por lote como fuente opcional; la marca en la fila
 - [ ] 5.3 Ficha: "Enlace del video" con Copiar y Crear; `POST /api/contacts/[id]/video-bienvenida` con permisos (403 al abogado)
 - [ ] 5.4 `lib/metrics/panel/video-bienvenida.ts` (puro, con tests: grupos, atendió, coordinó, exclusiones, `n`) y `VideoBienvenida.tsx`

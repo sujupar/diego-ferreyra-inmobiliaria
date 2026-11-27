@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ArrowRightLeft, CirclePlay, ListChecks, MessageCircle, UserPlus, type LucideIcon } from 'lucide-react'
+import { ArrowRightLeft, CirclePlay, Link2, ListChecks, MessageCircle, UserPlus, type LucideIcon } from 'lucide-react'
 import type { ClaseEvento, EventoSistema } from '@/lib/crm/linea-de-tiempo'
 import { cn } from '@/lib/utils'
 import { FechaRelativa } from '../ui/FechaRelativa'
@@ -18,6 +18,7 @@ const ICONOS: Record<ClaseEvento, LucideIcon> = {
   tarea: ListChecks,
   whatsapp: MessageCircle,
   video: CirclePlay,
+  enlace_video: Link2,
 }
 
 export function ItemEvento({ evento: e, ahora }: { evento: EventoSistema; ahora: Date }) {

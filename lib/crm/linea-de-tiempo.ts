@@ -2,11 +2,13 @@
 // eventos del sistema a partir de las filas de cada tabla, y une y corta la lista. Las
 // lecturas viven en `lib/supabase/linea-de-tiempo.ts`; acá no se toca la base.
 
-import { VIDEO_KEYS } from '@/lib/funnel/video-keys'
+import { VIDEO_KEYS, type VideoKeyDef } from '@/lib/funnel/video-keys'
+import { porcentajeVisto, segundosVistos, formatoMinutos } from '@/lib/video-bienvenida/tramos'
+import { haceCuanto } from './formato-fecha'
 import { etapaCRM, NOMBRE_ETAPA } from './etapas'
 import type { ActividadDeFicha } from './tipos'
 
-export const CLASES_EVENTO = ['registro', 'etapa', 'tarea', 'whatsapp', 'video'] as const
+export const CLASES_EVENTO = ['registro', 'etapa', 'tarea', 'whatsapp', 'video', 'enlace_video'] as const
 export type ClaseEvento = (typeof CLASES_EVENTO)[number]
 
 export interface EventoSistema {
@@ -319,9 +321,18 @@ export interface FilaVideo {
   max_percent: number | null
   first_at: string
   playback_started: boolean | null
+  /** Para el video de bienvenida: % y minutos salen de los tramos, no de `max_percent`. */
+  duration_s?: number | null
+  watched_buckets?: string | null
+}
+
+function definicion(clave: string): VideoKeyDef | undefined {
+  return (VIDEO_KEYS as Record<string, VideoKeyDef | undefined>)[clave]
 }
 
 function queVideo(clave: string): string {
+  const nombre = definicion(clave)?.nombreEnLinea
+  if (nombre) return `Vio ${nombre}`
   if (clave === 'clase-completa') return 'Vio el video de la clase completa'
   const pagina = (VIDEO_KEYS as Record<string, { pagina?: string } | undefined>)[clave]?.pagina
   if (pagina === 'tasacion' || pagina === 'tasacion-neta') return 'Vio el video de la landing de tasación'
@@ -332,14 +343,48 @@ function queVideo(clave: string): string {
 export function eventosDeVideo(filas: readonly FilaVideo[]): EventoSistema[] {
   return filas
     .filter((f) => f.playback_started === true)
-    .map((f) => ({
-      id: `video:${f.id}`,
-      clase: 'video' as const,
-      titulo: `${queVideo(f.video_key)} · ${Math.max(0, Math.min(100, Math.round(f.max_percent ?? 0)))} %`,
-      detalle: null,
-      autor: null,
-      fecha: f.first_at,
-    }))
+    .map((f) => {
+      // Video de bienvenida (tasacion-video-bienvenida, D5): se mide por tramos vistos, porque
+      // `max_percent` sube con un salto. Los videos de las landings siguen como estaban.
+      const porTramos = Boolean(definicion(f.video_key)?.nombreEnLinea)
+      const pct = porTramos ? porcentajeVisto(f.watched_buckets) : Math.max(0, Math.min(100, Math.round(f.max_percent ?? 0)))
+      const detalle = porTramos && f.duration_s && f.watched_buckets
+        ? `${formatoMinutos(segundosVistos(f.watched_buckets, f.duration_s))} de ${formatoMinutos(f.duration_s)}`
+        : null
+      return {
+        id: `video:${f.id}`,
+        clase: 'video' as const,
+        titulo: `${queVideo(f.video_key)} · ${pct} %`,
+        detalle,
+        autor: null,
+        fecha: f.first_at,
+      }
+    })
+}
+
+// ── Enlace del video de bienvenida ───────────────────────────────────
+
+export interface FilaEnlaceVideo {
+  codigo: string
+  aperturas: number
+  primera_apertura: string | null
+  ultima_apertura: string | null
+}
+
+/** "Abrió el enlace del video de bienvenida": UN evento, en la primera apertura. */
+export function eventoDeAperturaDeEnlace(f: FilaEnlaceVideo, ahora: Date): EventoSistema | null {
+  if (f.aperturas <= 0 || !f.primera_apertura) return null
+  const detalle = f.aperturas > 1 && f.ultima_apertura
+    ? `${f.aperturas} veces · la última ${haceCuanto(f.ultima_apertura, ahora)}`
+    : null
+  return {
+    id: `enlace_video:${f.codigo}`,
+    clase: 'enlace_video',
+    titulo: 'Abrió el enlace del video de bienvenida',
+    detalle,
+    autor: null,
+    fecha: f.primera_apertura,
+  }
 }
 
 // ── Unir y cortar ────────────────────────────────────────────────────

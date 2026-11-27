@@ -266,7 +266,7 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
     La respuesta entra al Inbox como cualquier mensaje entrante, y el agente de tasación
     no contesta;
   - el video va a `funnel-media/bienvenida/tasacion-v1.mp4`: 720p H.264 + AAC,
-    `+faststart`, ~110 MB, subido en modo resumible (TUS). El límite del proyecto es 500 MB y
+    `+faststart`; quedó en 35 MB (la grabación de pantalla comprime mucho), subido el 2026-11-27 y verificado con un pedido por rango (206). El límite del proyecto es 500 MB y
     el bucket no tiene límite propio (`file_size_limit: null`, leído el 2026-11-27). El
     póster es un JPG.
 - **`VIDEO_KEYS`:** suma `'bienvenida-tasacion-v1'` sin `pagina` y con
