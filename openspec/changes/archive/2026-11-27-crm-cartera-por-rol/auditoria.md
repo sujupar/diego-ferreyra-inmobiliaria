@@ -351,3 +351,24 @@ hallazgos de permisos ni de seguridad. Resultado: **No conforme** (1 MEDIA de pr
 de permisos ni de seguridad. Todos los hallazgos MEDIA quedaron corregidos y verificados: M1 y
 M2 de código, H1 de spec, A3-1 y A4-1 de proceso. Los BAJA están aplicados, salvo B7(b), que
 queda aceptado como riesgo latente. `openspec validate --strict`: válido.
+
+## Pasada final contra producción (11.5, 2026-11-27)
+
+Después del merge (f2873d09 en `main`, autor Sujupar) y del deploy, con los datos de la receta
+creados en la misma sesión (`borrar` → `verificar` → `crear`) en `https://inmodf.com.ar`:
+
+| Criterio | Cómo se probó | Resultado |
+|---|---|---|
+| Pantalla nueva en producción | `/crm` como admin | OK: "Lo que está trabado", "Ver como", barra y lista |
+| Vista de la coordinación | rol coordinador, `/crm?q=cartera qa` | OK: "Sin primer contacto" y "Llamada o mensaje vencido" |
+| Ficha y vuelta | abrir una fila desde `/crm` | OK: "‹ Volver al CRM" |
+| Contactos | `/contacts` como admin | OK: "Con proceso abierto / Sin proceso abierto" |
+| Asesor por la red | rol asesor: `/api/crm/cartera` y `/api/crm/contactos` | 200, sin el proceso ni el contacto del caso 10 (de otro asesor); tampoco en el HTML de `/crm` |
+| Control del anterior | rol admin: `/api/crm/cartera` | el proceso del caso 10 SÍ viaja (la prueba mide algo) |
+| "Ver como" desde un asesor | `/api/crm/cartera?ver_como=<uuid>` | 403, sin filas |
+| Abogado | `/crm` y las dos rutas | redirige a `/properties/review`; 403 y 403 |
+| Celular | rol asesor a 390 px | OK |
+| Consola | todo el recorrido | 0 errores, 0 respuestas 5xx |
+
+Cierre (10.4): `borrar` y `verificar` → 0 filas; cuenta "Claude · pruebas" en `admin`
+(verificado con un select); navegador de Claude cerrado.
