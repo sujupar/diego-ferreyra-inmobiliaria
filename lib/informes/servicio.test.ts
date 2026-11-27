@@ -128,7 +128,7 @@ describe('listo', () => {
     datosMock.marcarListo.mockResolvedValue(true)
     datosMock.cerrarTareasDelInforme.mockResolvedValue(1)
     await marcarInformeListo(informe(), PDF, 'u1', 'v1')
-    expect(datosMock.cerrarTareasDelInforme).toHaveBeenCalledWith(informe().propertyId)
+    expect(datosMock.cerrarTareasDelInforme).toHaveBeenCalledWith(informe().propertyId, 'u1')
   })
   it('si cerrar la tarea falla, el informe igual queda listo (la tarea se cierra a mano)', async () => {
     datosMock.primerosBytes.mockResolvedValue({ bytes: new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]), tamano: 50000 })
