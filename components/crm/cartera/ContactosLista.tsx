@@ -21,7 +21,7 @@ import { FiltrosLista, type ConfigFiltros } from './FiltrosCartera'
 import { GrupoCartera } from './GrupoCartera'
 import { DE_A, PieCartera } from './PieCartera'
 import { SegmentoAbiertos } from './SegmentoAbiertos'
-import { SUBTITULO_CONTACTOS, TEXTO_ERROR_TAREAS, TEXTO_ERROR_ULTIMO, TEXTO_TOPE, textoNoSeAplico } from './textos'
+import { SUBTITULO_CONTACTOS, TEXTO_ERROR_TAREAS, TEXTO_ERROR_ULTIMO, TEXTO_TOPE_CONTACTOS, textoNoSeAplico } from './textos'
 
 // Contactos (spec "Contactos por rol" y "Segmentos y filtros de Contactos"): las personas
 // con la MISMA fila que el CRM, "Proceso" en lugar de "Etapa" y el teléfono debajo del
@@ -188,7 +188,7 @@ export function VistaContactos(p: PropsVistaContactos) {
       <FiltrosLista config={config} filtros={filtros} aplicar={aplicar} />
       {datos.fuentes.ultimoContacto === 'error' && <AvisoFuente texto={TEXTO_ERROR_ULTIMO} alReintentar={p.alReintentar} />}
       {datos.fuentes.tareas === 'error' && <AvisoFuente texto={TEXTO_ERROR_TAREAS} alReintentar={p.alReintentar} />}
-      {datos.truncado && <AvisoSuave texto={TEXTO_TOPE} />}
+      {datos.truncado && <AvisoSuave texto={TEXTO_TOPE_CONTACTOS} />}
       {lista}
     </div>
   )

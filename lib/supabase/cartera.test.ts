@@ -278,7 +278,7 @@ describe('cargarCartera — copias de la coordinación (lectura (d))', () => {
     expect(de('tasks')).toHaveLength(1)
   })
 
-  it('(d) pagina con el mismo tope y avisa truncado', async () => {
+  it('(d) pagina con el mismo tope; cortada, las tareas van con error y no se culpa a los procesos (M2)', async () => {
     const c = contacto('Sofía')
     const p = proceso({ contact_id: c.id })
     const cerradas = Array.from({ length: TOPE_FILAS + 5 }, (_, i) =>
@@ -288,7 +288,27 @@ describe('cargarCartera — copias de la coordinación (lectura (d))', () => {
     const d = await cargar({ id: DUENO, role: 'dueno' })
     const rangos = de('tasks').filter((x) => x.filtros.some((f) => f.startsWith('in:status='))).flatMap((x) => x.rangos)
     expect(rangos).toEqual([[0, 999], [1000, 1999], [2000, 2999]])
-    expect(d.truncado).toBe(true)
+    expect(d.truncado).toBe(false)
+    expect(d.fuentes.tareas).toBe('error')
+  })
+
+  it('tareas pendientes cortadas por el tope → error de tareas, no "Nada agendado" (M2)', async () => {
+    const c = contacto('Sofía')
+    const p = proceso({ contact_id: c.id })
+    const muchas = Array.from({ length: TOPE_FILAS + 5 }, (_, i) => tarea({ deal_id: p.id, assigned_to: COORD_1, title: `Tarea ${i}` }))
+    usar({ contacts: [c], deals: [p], tasks: muchas })
+    const d = await cargar({ id: DUENO, role: 'dueno' })
+    expect(d.truncado).toBe(false)
+    expect(d.fuentes.tareas).toBe('error')
+    expect(d.filas[0].proximo).toBe('error')
+  })
+
+  it('la vista de la coordinación no lee (d): cada una ve solo sus tareas (B1)', async () => {
+    const c = contacto('Sofía')
+    const p = proceso({ contact_id: c.id })
+    usar({ contacts: [c], deals: [p], tasks: [tarea({ deal_id: p.id, assigned_to: COORD_1 })] })
+    await cargar({ id: COORD_1, role: 'coordinador' })
+    expect(de('tasks').filter((x) => x.filtros.some((f) => f.startsWith('in:status=')))).toHaveLength(0)
   })
 
   it('si (d) falla, las tareas van con error (una copia ya hecha no se muestra como pendiente)', async () => {

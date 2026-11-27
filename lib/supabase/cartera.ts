@@ -43,6 +43,19 @@ import { contactoRegistrado, type ContactoRegistrado } from '@/lib/crm/ultimo-co
  */
 export const PLAZO_LECTURA_MS = 15_000
 
+/**
+ * Las tareas para armar las filas: 'error' si la lectura de pendientes o la (d) fallaron o
+ * quedaron cortadas por el tope (con un corte, qué tarea falta es al azar).
+ */
+export function tareasOError(
+  pendientes: { tareas: TareaLeida[] | 'error'; truncado: boolean },
+  cerradas: { truncado: boolean } | 'error' | null,
+): TareaLeida[] | 'error' {
+  if (pendientes.tareas === 'error' || pendientes.truncado) return 'error'
+  if (cerradas === 'error' || (cerradas && cerradas.truncado)) return 'error'
+  return pendientes.tareas
+}
+
 /** Más filas que esto por fuente no viajan: se avisa `truncado` y la pantalla lo dice. */
 export const TOPE_FILAS = 3000
 
@@ -461,7 +474,9 @@ export async function cargarCartera(
     const idsContactos = [...new Set(procesos.flatMap((p) => (p.contacto ? [p.contacto.id] : [])))]
     const [ultimos, cerradas] = await Promise.all([
       leerUltimos(cliente, idsContactos, senal),
-      pendientes.tareas === 'error'
+      // (d) solo sirve para juntar copias de distintas coordinadoras, y eso pasa solo en la
+      // vista del dueño (`deCualquiera`); en las demás cada una ve las suyas (auditoría, B1).
+      pendientes.tareas === 'error' || vista.tipo !== 'dueno'
         ? Promise.resolve(null)
         : leerCerradas(cliente, pendientes.tareas, perfiles, senal).catch((e: unknown) => {
             console.error('[crm] tareas cerradas de la coordinación:', e)
@@ -471,10 +486,13 @@ export async function cargarCartera(
     const tanda2Ms = Date.now() - t2
 
     // Sin (d), una copia ya hecha se mostraría como pendiente: su falla es falla de tareas.
-    const tareas: TareaLeida[] | 'error' = pendientes.tareas === 'error' || cerradas === 'error' ? 'error' : pendientes.tareas
+    // Y una lectura de tareas o de (d) cortada por el tope deja afuera filas al azar (orden por
+    // id): una fila diría "Nada agendado" sin saberlo. Cortada = no se sabe = error (auditoría, M2).
+    const tareas = tareasOError(pendientes, cerradas)
     const tareasCerradas = cerradas && cerradas !== 'error' ? cerradas.cerradas : []
+    const ultimosOError = ultimos.truncado ? ('error' as const) : ultimos.ultimos
 
-    const filas = armarFilasCartera({ vista, procesos, tareas, tareasCerradas, ultimos: ultimos.ultimos, perfiles, ahora })
+    const filas = armarFilasCartera({ vista, procesos, tareas, tareasCerradas, ultimos: ultimosOError, perfiles, ahora })
 
     const verComoPermitido = (quien.role === 'admin' || quien.role === 'dueno') && !mirando
     const opcionesVerComo = verComoPermitido ? opcionesVerComoDe(perfiles) : null
@@ -498,13 +516,10 @@ export async function cargarCartera(
       filas,
       asesores: vista.tipo === 'asesor' ? null : asesoresDe(filas),
       opcionesVerComo,
-      fuentes: { ultimoContacto: ultimos.ultimos === 'error' ? 'error' : 'ok', tareas: tareas === 'error' ? 'error' : 'ok' },
-      truncado:
-        procesosLeidos.truncado ||
-        pendientes.truncado ||
-        perfilesLeidos.truncado ||
-        ultimos.truncado ||
-        (!!cerradas && cerradas !== 'error' && cerradas.truncado),
+      fuentes: { ultimoContacto: ultimosOError === 'error' ? 'error' : 'ok', tareas: tareas === 'error' ? 'error' : 'ok' },
+      // Solo el corte de PROCESOS es "hay más de los que se pueden traer" (TEXTO_TOPE); los
+      // demás cortes ya salen como error de su dato.
+      truncado: procesosLeidos.truncado || perfilesLeidos.truncado,
       generadoEn: ahora.toISOString(),
     }
     return { ok: true, datos }
@@ -623,7 +638,8 @@ export async function cargarContactos(
     const t2 = Date.now()
     const [ultimos, cerradas] = await Promise.all([
       leerUltimos(cliente, contactos.map((c) => c.id), senal),
-      pendientes.tareas === 'error'
+      // Con alcance propio cada uno ve solo sus tareas: no hay copias que juntar (B1).
+      pendientes.tareas === 'error' || propios
         ? Promise.resolve(null)
         : leerCerradas(cliente, pendientes.tareas, perfiles, senal).catch((e: unknown) => {
             console.error('[crm] tareas cerradas de la coordinación (contactos):', e)
@@ -632,7 +648,8 @@ export async function cargarContactos(
     ])
     const tanda2Ms = Date.now() - t2
 
-    const tareas: TareaLeida[] | 'error' = pendientes.tareas === 'error' || cerradas === 'error' ? 'error' : pendientes.tareas
+    const tareas = tareasOError(pendientes, cerradas)
+    const ultimosOError = ultimos.truncado ? ('error' as const) : ultimos.ultimos
     const filas = armarFilasContactos({
       usuario,
       contactos,
@@ -640,7 +657,7 @@ export async function cargarContactos(
       tasaciones,
       tareas,
       tareasCerradas: cerradas && cerradas !== 'error' ? cerradas.cerradas : [],
-      ultimos: ultimos.ultimos,
+      ultimos: ultimosOError,
       perfiles,
       ahora,
     })
@@ -656,15 +673,8 @@ export async function cargarContactos(
     return {
       filas,
       asesores: propios ? null : asesoresDe(filas),
-      fuentes: { ultimoContacto: ultimos.ultimos === 'error' ? 'error' : 'ok', tareas: tareas === 'error' ? 'error' : 'ok' },
-      truncado:
-        contactosLeidos.truncado ||
-        procesosLeidos.truncado ||
-        tasacionesLeidas.truncado ||
-        pendientes.truncado ||
-        perfilesLeidos.truncado ||
-        ultimos.truncado ||
-        (!!cerradas && cerradas !== 'error' && cerradas.truncado),
+      fuentes: { ultimoContacto: ultimosOError === 'error' ? 'error' : 'ok', tareas: tareas === 'error' ? 'error' : 'ok' },
+      truncado: contactosLeidos.truncado || procesosLeidos.truncado || tasacionesLeidas.truncado || perfilesLeidos.truncado,
       generadoEn: ahora.toISOString(),
     }
   })

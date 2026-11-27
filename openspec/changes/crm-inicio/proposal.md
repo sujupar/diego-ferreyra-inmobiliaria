@@ -47,3 +47,8 @@ Ninguna.
   celular, con el foco en "No atendió". La ficha no la construyó.
 - Pendiente que deja `crm-ficha-y-llamadas`: "Mis contactos" del asesor no lista los contactos
   que ve solo por un proceso o una tasación a su nombre (sí puede abrir su ficha).
+- Lo que deja `crm-cartera-por-rol` para reusar (no copiar): `lib/crm/cartera.ts` (reglas de
+  la fila y del próximo paso), `lib/crm/formato-fecha.ts` (ampliado con `haceCuanto` y
+  `duracion`), `minutosHabilesEntre` (`lib/crm/horario-laboral.ts`) y la fecha de inicio del
+  registro `INICIO_REGISTRO_CONTACTOS` (`lib/crm/ultimo-contacto.ts`). El pendiente de "Mis
+  contactos" del asesor quedó resuelto en `/contacts` (`contactoVisible`).

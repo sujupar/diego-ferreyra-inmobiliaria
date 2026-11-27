@@ -246,3 +246,31 @@ Cada hallazgo se verificó contra el código antes de aplicarlo; ninguno result�
 | 6 | BAJA | Faltaba aceptar por escrito que en Contactos un asesor ve "hace N días · Visita de tasación" de una visita hecha en un proceso de otro asesor. | Aplicado: en Risks, como aceptado (solo viaja el instante y coincide con la ficha). |
 
 `openspec validate crm-cartera-por-rol --strict`: válido.
+
+## Auditoría del código — Auditor 1 (2026-11-27)
+
+Agente nuevo, sin contexto, en solo lectura sobre `feat/crm-cartera-por-rol` (92f83abf). Revisó
+cada `#### Scenario` de `crm-cartera` y del delta de `crm-sistema-diseno` contra el código
+(tabla completa en el informe del auditor: todos "Cumple" salvo cuatro "Parcial", que son M1,
+M2/B5, B4 y B2), más permisos y seguridad. Corridas: vitest 2249 en verde, `tsc` sin errores.
+
+**Permisos y seguridad: sin hallazgos.** Asesor por la red (`/api/crm/cartera` y
+`/api/crm/contactos`), `ver_como` desde asesor o coordinación (403 antes de leer; en la página se
+ignora), abogado, `?volver=` (lista blanca de caminos, sin redirector abierto ni XSS), frontera
+servidor→cliente (solo datos planos), `appraisals` (tres columnas, nunca `select('*')`) y
+`crm_ultimos_contactos` (INVOKER, `search_path` fijo, solo `service_role`).
+
+| # | Nivel | Hallazgo (verificado) | Qué se hizo |
+|---|---|---|---|
+| M1 | MEDIA | En la vista de la coordinación, una tasación vencida del asesor competía por fecha con las tareas de la coordinadora: si vencía antes, una llamada vencida de ella quedaba fuera de "Llamada o mensaje vencido". Reproducido. | Aplicado: `proximoPaso` recibe `tasacionVencidaSoloSinTareas` (solo vista de coordinación); la tasación vencida cede si ella tiene alguna tarea en el proceso. Tests: el par del auditor (→ tarea, grupo `vencidas`) y el mismo caso para el asesor (sigue la tasación). Contactos no agrupa por vencidas: sin cambio. |
+| M2 | MEDIA (latente) | `truncado` juntaba todas las fuentes: un corte de tareas, de (d) o de la RPC decía "hay más procesos…" (falso) y dejaba filas con "Nada agendado" al azar. | Aplicado: `tareasOError` — tareas o (d) cortadas = error de tareas; RPC cortada = error de último contacto; `truncado` queda solo para procesos/contactos/tasaciones/perfiles. Tests: (d) cortada y pendientes cortadas → `fuentes.tareas = 'error'`, `truncado = false`. |
+| B1 | BAJA | (d) se leía en vistas que no la usan (coordinación, asesor; Contactos con alcance propio): una falla de (d) marcaba error sin motivo. | Aplicado: (d) solo en la vista del dueño y en Contactos con alcance `todos`. Test: la coordinación no lee (d). |
+| B2 | BAJA | Si `/crm?ver=<id>` fallaba en la primera carga, "Reintentar" perdía la persona. | Aplicado: sin datos, `ver` se acepta con forma de uuid (el servidor lo valida). |
+| B3 | BAJA | En Contactos del asesor, una persona visible cuyo único proceso es de otro asesor sale "Sin proceso abierto". Sin fuga de datos. | Pregunta al dueño (texto neutro "Sin proceso tuyo" o aceptarlo). Un booleano "tiene otro proceso" revelaría lo que la ficha oculta. |
+| B4 | BAJA | En "Sin proceso abierto" de Contactos la cabecera de la tabla dice "Cierre" y la tarjeta "Próximo paso". | Pregunta al dueño junto con B3 (ver PR). |
+| B5 | BAJA | Contactos usaba el aviso de tope que habla de "procesos". | Aplicado: `TEXTO_TOPE_CONTACTOS` ("…más personas…"). |
+| B6 | BAJA | "Nada urgente" se calculaba sobre lo filtrado: con una etapa elegida lo afirmaba aunque hubiera urgentes fuera del filtro. | Aplicado: no se muestra con etapa ni con lo trabado elegidos. |
+| B7 | BAJA | (a) El racimo de copias se encadenaba contra la última tarea y podía abarcar más de 60 s; (b) en Contactos, tareas solo de contacto con el mismo título se tratarían como copias (hoy no ocurre: todo `createTaskForRole` lleva `deal_id`). | (a) Aplicado: se compara contra la primera del racimo, con test. (b) Aceptado como riesgo latente, anotado. |
+
+Después de las correcciones: vitest 2254 en verde, `tsc -p tsconfig.crm.json` y `eslint` sin
+errores. Como son cambios posteriores al QA, vuelven a pasar por la vista previa (tarea 11.2).

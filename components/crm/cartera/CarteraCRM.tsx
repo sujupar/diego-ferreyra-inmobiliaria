@@ -71,10 +71,10 @@ const DEFECTOS: FiltrosUrlCartera = { ...FILTROS_DEFECTO }
  * de identidad con cada lista nueva, el hook entraría en un bucle (use-filtros-url.ts, la
  * guarda de opciones estables). Se actualiza en cada render, antes de llamar al hook.
  */
-const PERMITIDOS: { actual: { asesores: string[]; etapas: EtapaCRM[]; verComo: string[] } } = {
+const PERMITIDOS: { actual: { asesores: string[]; etapas: EtapaCRM[]; verComo?: string[] } } = {
   actual: { asesores: [], etapas: [], verComo: [] },
 }
-function fijarPermitidos(p: { asesores: string[]; etapas: EtapaCRM[]; verComo: string[] }) {
+function fijarPermitidos(p: { asesores: string[]; etapas: EtapaCRM[]; verComo?: string[] }) {
   PERMITIDOS.actual = p
 }
 function normalizarCartera(f: FiltrosUrlCartera): FiltrosUrlCartera {
@@ -298,6 +298,9 @@ export function VistaCartera(p: PropsVistaCartera) {
     filtros.seg === 'abiertos' &&
     filtradas.length > 0 &&
     fuentesOk &&
+    // Con una etapa o lo trabado elegidos, lo urgente puede estar fuera del filtro (B6).
+    !filtros.etapa &&
+    !filtros.trabado &&
     !grupos.some((g) => g.clave === 'sin-contacto' || g.clave === 'vencidas')
   const volverA = p.volver
   // La clave reinicia la paginación y la selección cuando cambia lo que se mira.
@@ -421,7 +424,9 @@ export function CarteraCRM({ inicial, rol, opcionesVerComo, avisoInicial }: Prop
   fijarPermitidos({
     asesores: datos ? (datos.asesores ?? []).map((a) => a.id) : [searchParams.get('asesor') ?? ''].filter(Boolean),
     etapas: etapasDeLaVista(tipo, datos ? contarTodas(datos.filas) : TODAS),
-    verComo: esDueno ? (opcionesVerComo ?? []).map((o) => o.id) : [],
+    // Sin datos (falló la primera carga) las opciones no llegaron: alcanza con que `ver` sea
+    // un uuid, así "Reintentar" vuelve a pedir a la misma persona (el servidor la valida). B2.
+    verComo: esDueno ? (datos ? (opcionesVerComo ?? []).map((o) => o.id) : undefined) : [],
   })
   const { filtros, aplicados, aplicar } = useFiltrosUrl({ defectos: DEFECTOS, normalizar: normalizarCartera, soloNavegador: true })
 
