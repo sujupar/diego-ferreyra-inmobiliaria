@@ -48,6 +48,14 @@ describe('eventosDeRegistro', () => {
     expect(r[0]).toMatchObject({ titulo: 'Se registró · Clase gratuita', detalle: null })
   })
 
+  it('un anuncio con la plantilla de Meta sin completar no se muestra', () => {
+    const [e] = eventosDeRegistro(
+      [{ id: 's1', funnel: 'tasacion', status: 'complete', deal_id: 'd1', created_at: '2026-11-20T10:00:00Z' }],
+      new Map([['d1', { meta_ad_name: '{{ad.name}}' }]]),
+    )
+    expect(e.detalle).toBeNull()
+  })
+
   it('un anuncio vacío o con espacios no se muestra', () => {
     const [e] = eventosDeRegistro(
       [{ id: 's1', funnel: 'tasacion', status: 'complete', deal_id: 'd1', created_at: '2026-11-20T10:00:00Z' }],

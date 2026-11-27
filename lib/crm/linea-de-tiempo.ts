@@ -62,7 +62,9 @@ export function eventosDeRegistro(
   return filas
     .filter((f) => f.status === 'complete')
     .map((f) => {
-      const anuncio = f.deal_id ? procesos.get(f.deal_id)?.meta_ad_name?.trim() : null
+      const crudo = f.deal_id ? procesos.get(f.deal_id)?.meta_ad_name?.trim() : null
+      // Un nombre con la plantilla de Meta sin completar ("{{ad.name}}") no dice nada.
+      const anuncio = crudo && !/\{\{.*\}\}/.test(crudo) ? crudo : null
       return {
         id: `registro:${f.id}`,
         clase: 'registro' as const,

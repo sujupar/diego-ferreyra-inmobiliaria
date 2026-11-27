@@ -116,12 +116,15 @@ describe('leerEventosDelSistema', () => {
     expect(r.fuentesConError).toEqual([])
   })
 
-  it('si no se pueden leer los teléfonos del equipo, WhatsApp queda con error y no se muestra', async () => {
-    usar(tablas(), { fallarConsulta: (c) => c.tabla === 'profiles' && c.select.includes('phone') })
-    const r = await leer()
-    expect(r.fuentesConError).toEqual(['whatsapp'])
-    expect(r.eventos.some((e) => e.clase === 'whatsapp')).toBe(false)
-    expect(r.eventos.some((e) => e.clase === 'etapa')).toBe(true)
+  it('si no se pueden leer los perfiles (equipo, nombres), falla toda la lectura del sistema', async () => {
+    usar(tablas(), { fallar: ['profiles'] })
+    await expect(leer()).rejects.toThrow(/perfiles/)
+  })
+
+  it('perfiles, contacto y procesos se piden en el primer viaje, no encadenados', async () => {
+    await leer()
+    const orden = base.consultas.map((c) => c.tabla)
+    expect(orden.slice(0, 5).sort()).toEqual(['contacts', 'deals', 'funnel_lead_submissions', 'profiles', 'video_view_state'])
   })
 
   it('una fuente que falla no tapa las demás', async () => {
