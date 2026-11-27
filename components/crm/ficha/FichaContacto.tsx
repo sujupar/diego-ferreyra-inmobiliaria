@@ -226,6 +226,7 @@ export function FichaContacto({
       const r = await leerJson<{ ok: boolean }>(await fetch(`/api/deals/${encodeURIComponent(dealId)}/undo-lost`, { method: 'POST' }))
       if (r.ok) {
         void f.recargarFicha()
+        void f.recargarActividad() // el cambio de etapa entra a la línea de tiempo
         mostrarToast('Listo, se deshizo.')
         return true
       }
@@ -262,6 +263,7 @@ export function FichaContacto({
       }
       setAviso(null)
       void f.recargarFicha()
+      void f.recargarActividad() // "Pasó de … a Descartado" entra a la línea de tiempo
       mostrarToast(textoToastPerdido(teniaTasacion), {
         ...TOAST_DESHACER,
         description: DESCRIPCION_TOAST_PERDIDO,
@@ -438,8 +440,14 @@ export function FichaContacto({
             tareas={tareas.tareas}
             ahora={ahora}
             onReintentar={() => void f.recargarTareas()}
-            onCreada={() => void f.recargarTareas()}
-            onCompletada={(id) => f.cambiarTareas((ts) => ts.filter((t) => t.id !== id))}
+            onCreada={() => {
+              void f.recargarTareas()
+              void f.recargarActividad() // "Se creó la tarea …"
+            }}
+            onCompletada={(id) => {
+              f.cambiarTareas((ts) => ts.filter((t) => t.id !== id))
+              void f.recargarActividad() // "Se completó la tarea …"
+            }}
             avisar={avisar}
           />
           {datos && <BloqueLista ficha={datos} ahora={ahora} onDeshacerPerdido={deshacerPerdido} />}

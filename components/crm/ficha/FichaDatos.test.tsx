@@ -294,6 +294,8 @@ describe('Procesos: "Deshacer" fijo del perdido', () => {
     await u.click(await screen.findByRole('button', { name: 'Deshacer' }))
     await waitFor(() => expect(pedidosA(red, '/ficha').length).toBe(2))
     expect(pedidosA(red, '/undo-lost', 'POST')).toHaveLength(1)
+    // El cambio de etapa entra a la línea de tiempo sin recargar la página.
+    await waitFor(() => expect(pedidosA(red, '/activities').length).toBeGreaterThanOrEqual(2))
     // Segunda vez: el servidor ya no deja (409).
     await u.click(await screen.findByRole('button', { name: 'Deshacer' }))
     await waitFor(() =>
@@ -366,13 +368,18 @@ describe('Tareas', () => {
     const titulo = () => screen.getByRole('heading', { name: /^Tareas/ })
     await waitFor(() => expect(titulo()).toHaveTextContent('Tareas · 1'))
     tareas = [...tareas, tareaDePrueba({ id: 't-nueva', title: 'Visitar', channel: 'visit', source_activity_id: null })]
+    const actividadAntes = pedidosA(red, '/activities').length
     await u.click(screen.getByRole('button', { name: 'simular tarea creada' }))
     await waitFor(() => expect(titulo()).toHaveTextContent('Tareas · 2'))
+    // La línea de tiempo se pide de nuevo: "Se creó la tarea …" (crm-linea-de-tiempo, hallazgo 11).
+    await waitFor(() => expect(pedidosA(red, '/activities').length).toBe(actividadAntes + 1))
     expect(screen.getByText('Visitar')).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Tareas/ })).toHaveTextContent('2')
     await u.click(screen.getByRole('checkbox', { name: 'Completar: Llamada 2 a [TEST] Marcela Ibáñez' }))
     await waitFor(() => expect(screen.queryByText('Llamada 2 a [TEST] Marcela Ibáñez')).toBeNull())
     expect(titulo()).toHaveTextContent('Tareas · 1')
     expect(JSON.parse(String(pedidosA(red, '/api/tasks/t-1', 'PUT')[0][1]?.body))).toEqual({ action: 'complete' })
+    // Y otra vez al completar: "Se completó la tarea …".
+    await waitFor(() => expect(pedidosA(red, '/activities').length).toBe(actividadAntes + 2))
   })
 })
