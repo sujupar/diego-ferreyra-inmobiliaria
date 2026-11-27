@@ -50,6 +50,6 @@ producción: en la investigación, solo SELECT.
 ## 6. Cierre
 
 - [x] 6.1 Auditoría del código por un revisor independiente; corregir y anotar en `auditoria.md`
-- [ ] 6.2 Merge con `gh pr merge --rebase`, deploy y humo en producción
-- [ ] 6.3 Limpieza: 0 filas de prueba, cuenta de QA en admin, navegador cerrado
-- [ ] 6.4 `CLAUDE.md` (sección CRM: autor de etapas, riesgo del autor pegado, fila `scheduled → scheduled`), archivar el change y avisarle al dueño
+- [x] 6.2 Merge con `gh pr merge --rebase`, deploy y humo en producción
+- [x] 6.3 Limpieza: 0 filas de prueba, cuenta de QA en admin, navegador cerrado
+- [x] 6.4 `CLAUDE.md` (sección CRM: autor de etapas, riesgo del autor pegado, fila `scheduled → scheduled`), archivar el change y avisarle al dueño

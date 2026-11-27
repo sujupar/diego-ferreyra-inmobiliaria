@@ -2719,6 +2719,26 @@ Change `openspec/changes/archive/2026-11-27-crm-cartera-por-rol/` (archivado; sp
   de datos de QA: `scripts/_qa-cartera-datos.ts crear|borrar|verificar` (base de producción,
   solo `[TEST] Cartera QA <n>`).
 
+## CRM — Línea de tiempo de la ficha (PR #98, 2026-11-27)
+
+Change archivado en `openspec/changes/archive/2026-11-27-crm-linea-de-tiempo/` (specs, design, auditoría con 3 rondas y el QA).
+
+- **Qué muestra:** además de las notas, las llamadas y el WhatsApp marcado, la línea suma registro en la landing (con el anuncio), cambios de etapa, tareas creadas y completadas, WhatsApp con el número de la persona y video visto. Se lee en el momento de sus tablas, sin copias: `lib/crm/linea-de-tiempo.ts` (puro) + `lib/supabase/linea-de-tiempo.ts` + `GET /api/contacts/[id]/activities`, que devuelve `items` (ya no `actividades`).
+- **Fuera por decisión del dueño:** los emails (hoy no se le escribe ninguno al lead) y las consultas de portal.
+- **Autor desde 2026-11-27.** `deals.stage_changed_by` y `tasks.completed_by`. Las seis funciones que escriben `deals.stage`, más `updateDealSchedule`, reciben `autorId` como parámetro OBLIGATORIO (`null` = el sistema). **Trampa:** el valor queda guardado en el proceso. Un escritor nuevo de `stage` que no lo mande hace que el historial le atribuya el cambio a la persona anterior. Cualquier escritor nuevo de `stage` o `scheduled_date` tiene que pasar el autor. La prueba está en `lib/supabase/deals.autor.test.ts`.
+- **El historial tiene una fila `scheduled → scheduled`.** El trigger (`20261127000002`) también escucha `scheduled_date`: poner el primer día a una solicitud que ya estaba en `scheduled` (para la plataforma es Solicitud) la vuelve Coordinada, y antes eso no dejaba rastro. `metadata` guarda `{scheduled_date, scheduled_date_antes}`. Las métricas toman la primera llegada a cada etapa y no cambian. **Excepción:** `get_funnel_stage_timings` usa `LAG` y la contaría; hoy no la llama nadie.
+- **WhatsApp falla cerrada.** No se muestra nada si el teléfono es del equipo. Del equipo son los que están en `profiles.phone`, en `WHATSAPP_CC_PHONES` o `WHATSAPP_FALLBACK_PHONE`, o los que recibieron alguna vez `consulta_portal*`. Tampoco se muestra si otro contacto tiene el mismo teléfono, o si los 10 dígitos coinciden con más de un número completo (otro país). Solo 2 de 8 perfiles tienen teléfono. **Si se crea otra plantilla que va al equipo con datos de otros interesados, sumarla a `PLANTILLAS_INTERNAS`.**
+- **El asesor** no recibe ni por la red las etapas, el registro ni las tareas de un proceso de otro asesor (la misma regla que los bloques "Procesos" y "Tareas"). Lo de la persona (WhatsApp y video) sí lo ve, aunque la bandeja de WhatsApp no se lo muestre.
+- **Paginación entre fuentes** (cursor `antes` + `antes_id`):
+  - **Microsegundos:** las fechas de la base tienen microsegundos, así que se corta con `<` al milisegundo siguiente.
+  - **Margen de empates:** cada fuente lee 20 filas de más.
+  - **Piso:** si una fuente vino cortada, lo anterior a su fila más vieja leída espera a la página siguiente.
+  - **Aperturas:** su evento va en la fecha del proceso, no en la de la fila, así que se leen todas, sin corte. 654 aperturas se escribieron al cargar datos viejos.
+- **Datos sucios vistos:**
+  - Hay un `meta_ad_name` con `{{ad.name}}` (la plantilla de Meta sin completar), que no se muestra.
+  - 6 contactos tienen el teléfono cargado con el "15" del celular y no coinciden con ningún WhatsApp.
+
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.
