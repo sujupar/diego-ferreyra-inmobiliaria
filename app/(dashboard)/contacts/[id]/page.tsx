@@ -23,7 +23,7 @@ export default async function FichaContactoPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ edit?: string | string[]; volver?: string | string[] }>
+  searchParams: Promise<{ edit?: string | string[]; volver?: string | string[]; registrar?: string | string[] }>
 }) {
   const user = await requireAuth()
   if (alcanceContactos(user.profile.role) === 'ninguno') return <SinAcceso />
@@ -39,6 +39,8 @@ export default async function FichaContactoPage({
       rol={user.profile.role}
       usuarioId={user.id}
       abrirEditor={sp.edit === '1'}
+      // El "Registrar" del Inicio: la ficha arranca con "Registrar llamada" abierto (crm-inicio, D4).
+      abrirLlamada={sp.registrar === '1'}
       // El "‹" de la spec es el ícono de la flecha (FichaCabecera); el texto es "Volver al CRM".
       volver={v ? { href: v.href, texto: v.texto } : null}
     />
