@@ -41,9 +41,9 @@
 ## 3. Enlaces y envío
 
 - [x] 3.1 `lib/video-bienvenida/codigo.ts`: generación y validación del código (tests: alfabeto, largo, que no se repita)
-- [ ] 3.2 `lib/video-bienvenida/plantillas.ts`: `PLANTILLAS_CON_VIDEO`, `parametrosDelEnvio` y `esRechazoDePlantilla`; las dos plantillas en `PLANTILLAS_QUE_SOLO_AVISAN` con test de `modoDePlantilla`
-- [ ] 3.3 `lib/video-bienvenida/enlaces.ts`: `obtenerOCrearEnlace` (reusa por contacto, reintenta si el código choca, une `bv:<codigo>`)
-- [ ] 3.4 `primerWhatsappDeTasacion`: envío con enlace, `marcar_enviado`, y vuelta a `tasacion_llamada_v1` si falla el enlace o Meta rechaza la plantilla (tests del handler, incluido el límite de volumen que sigue reintentando)
+- [x] 3.2 `lib/video-bienvenida/plantillas.ts`: `PLANTILLAS_CON_VIDEO`, `parametrosDelEnvio` y `esRechazoDePlantilla`; las dos plantillas en `PLANTILLAS_QUE_SOLO_AVISAN` con test de `modoDePlantilla`
+- [x] 3.3 `lib/video-bienvenida/enlaces.ts`: `obtenerOCrearEnlace` (reusa por contacto, reintenta si el código choca, une `bv:<codigo>`)
+- [x] 3.4 `primerWhatsappDeTasacion`: envío con enlace, `marcar_enviado`, y vuelta a `tasacion_llamada_v1` si falla el enlace o Meta rechaza la plantilla (tests del handler, incluido el límite de volumen que sigue reintentando)
 
 ## 4. Página y medición
 

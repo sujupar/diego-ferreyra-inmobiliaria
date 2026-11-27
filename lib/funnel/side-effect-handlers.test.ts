@@ -26,7 +26,14 @@ const espias = vi.hoisted(() => ({
   /** Cada llamada a `sendWhatsappTemplate`, con su input completo. */
   whatsapp: [] as Array<Record<string, unknown>>,
   respuestaWhatsapp: { ok: true, skipped: false } as
-    { ok: boolean; skipped: boolean; error?: string; errorCode?: number },
+    { ok: boolean; skipped: boolean; error?: string; errorCode?: number; messageId?: string },
+  /** Respuestas en orden para envíos sucesivos (la vuelta atrás manda un segundo mensaje). */
+  colaWhatsapp: [] as Array<{ ok: boolean; skipped: boolean; error?: string; errorCode?: number; messageId?: string }>,
+  /** Video de bienvenida: lo que devuelve crear el enlace y las marcas de enviado. */
+  enlace: { codigo: 'k7Hq2mXb9T', url: 'https://inmodf.com.ar/t/k7Hq2mXb9T' } as { codigo: string; url: string } | null,
+  enlacesPedidos: [] as Array<Record<string, unknown>>,
+  enviados: [] as Array<{ codigo: string; wamid: string | null }>,
+  marcarEnviadoLanza: false,
   /** Escrituras `from(tabla).update(patch).eq('id', id)` — la marca del trato. */
   marcas: [] as Array<{ tabla: string; patch: Record<string, unknown>; id: string }>,
   /**
@@ -71,7 +78,17 @@ vi.mock('@/lib/marketing/meta-capi', () => ({
 vi.mock('@/lib/integrations/whatsapp/core', () => ({
   sendWhatsappTemplate: async (input: Record<string, unknown>) => {
     espias.whatsapp.push(input)
-    return espias.respuestaWhatsapp
+    return espias.colaWhatsapp.shift() ?? espias.respuestaWhatsapp
+  },
+}))
+vi.mock('@/lib/video-bienvenida/enlaces', () => ({
+  obtenerOCrearEnlace: async (input: Record<string, unknown>) => {
+    espias.enlacesPedidos.push(input)
+    return espias.enlace
+  },
+  marcarEnviado: async (codigo: string, wamid: string | null) => {
+    if (espias.marcarEnviadoLanza) throw new Error('la base no responde')
+    espias.enviados.push({ codigo, wamid })
   },
 }))
 vi.mock('@supabase/supabase-js', () => ({
@@ -92,7 +109,8 @@ vi.mock('@supabase/supabase-js', () => ({
 }))
 
 import { ejecutarTrabajo } from './side-effect-handlers'
-import { textoDePlantilla } from '@/lib/integrations/whatsapp/cuerpos'
+import { textoDePlantilla, CUERPOS_DE_PLANTILLA, cantidadDeVariables, renderCuerpo } from '@/lib/integrations/whatsapp/cuerpos'
+import { CUERPOS_PEDIDOS } from '@/lib/video-bienvenida/cuerpos'
 
 beforeEach(() => {
   espias.tareas = []
@@ -107,6 +125,11 @@ beforeEach(() => {
   espias.respuestaEmail = { ok: true, sent: 2, skipped: 0, failed: 0, errors: [] }
   espias.whatsapp = []
   espias.respuestaWhatsapp = { ok: true, skipped: false }
+  espias.colaWhatsapp = []
+  espias.enlace = { codigo: 'k7Hq2mXb9T', url: 'https://inmodf.com.ar/t/k7Hq2mXb9T' }
+  espias.enlacesPedidos = []
+  espias.enviados = []
+  espias.marcarEnviadoLanza = false
   espias.marcas = []
   process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://proyecto.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'clave-de-prueba'
@@ -237,6 +260,96 @@ describe('primer WhatsApp de tasación', () => {
     await expect(ejecutarTrabajo('whatsapp', WA)).rejects.toThrow(/^(?!.*LIMITE_META).*número inválido/)
     expect(espias.marcas).toEqual([])
   })
+})
+
+/**
+ * Video de bienvenida (change tasacion-video-bienvenida, D3): con una plantilla con video
+ * vigente, el primer WhatsApp lleva el enlace personal. Nadie se queda sin mensaje: si el
+ * enlace no se puede crear o Meta rechaza la plantilla en el envío, sale tasacion_llamada_v1.
+ */
+describe('primer WhatsApp con video de bienvenida', () => {
+  beforeEach(() => {
+    process.env.WHATSAPP_TEMPLATE_TASACION = 'tasacion_video_caso_v1'
+  })
+
+  it('manda nombre + enlace en el cuerpo y el código en el botón', async () => {
+    espias.respuestaWhatsapp = { ok: true, skipped: false, messageId: 'wamid.1' }
+    const r = await ejecutarTrabajo('whatsapp', WA)
+    expect(r).toBe('done')
+    expect(espias.enlacesPedidos).toEqual([
+      { contactId: 'contacto-1', dealId: 'deal-1', nombre: 'Ana', origen: 'whatsapp', creadoPor: null },
+    ])
+    expect(espias.whatsapp).toHaveLength(1)
+    expect(espias.whatsapp[0]).toMatchObject({
+      templateName: 'tasacion_video_caso_v1',
+      bodyParams: ['Ana', 'https://inmodf.com.ar/t/k7Hq2mXb9T'],
+      urlButtonParam: 'k7Hq2mXb9T',
+    })
+    expect(espias.enviados).toEqual([{ codigo: 'k7Hq2mXb9T', wamid: 'wamid.1' }])
+  })
+
+  it('si el enlace no se puede crear, sale tasacion_llamada_v1 y no se marca nada', async () => {
+    espias.enlace = null
+    const r = await ejecutarTrabajo('whatsapp', WA)
+    expect(r).toBe('done')
+    expect(espias.whatsapp).toHaveLength(1)
+    expect(espias.whatsapp[0]).toMatchObject({ templateName: 'tasacion_llamada_v1', bodyParams: ['Ana'] })
+    expect(espias.whatsapp[0].urlButtonParam).toBeUndefined()
+    expect(espias.enviados).toEqual([])
+  })
+
+  it('sin contacto en el trabajo, tampoco hay enlace: sale tasacion_llamada_v1', async () => {
+    await ejecutarTrabajo('whatsapp', { ...WA, contactId: null })
+    expect(espias.enlacesPedidos).toEqual([])
+    expect(espias.whatsapp[0]).toMatchObject({ templateName: 'tasacion_llamada_v1' })
+  })
+
+  it('plantilla pausada (132015): vuelta atrás en el MISMO intento, sin tirar', async () => {
+    espias.colaWhatsapp = [
+      { ok: false, skipped: false, error: 'plantilla pausada', errorCode: 132015 },
+      { ok: true, skipped: false, messageId: 'wamid.2' },
+    ]
+    const r = await ejecutarTrabajo('whatsapp', WA)
+    expect(r).toBe('done')
+    expect(espias.whatsapp.map((w) => w.templateName)).toEqual(['tasacion_video_caso_v1', 'tasacion_llamada_v1'])
+    expect(espias.whatsapp[1].bodyParams).toEqual(['Ana'])
+    expect(espias.enviados).toEqual([])
+  })
+
+  it('un límite de volumen sigue reintentando con la MISMA plantilla (no hay vuelta atrás)', async () => {
+    espias.respuestaWhatsapp = { ok: false, skipped: false, error: 'límite', errorCode: 131048 }
+    await expect(ejecutarTrabajo('whatsapp', WA)).rejects.toThrow('[LIMITE_META]')
+    expect(espias.whatsapp).toHaveLength(1)
+  })
+
+  it('si la marca de enviado falla, el trabajo igual termina bien (no se reenvía)', async () => {
+    espias.respuestaWhatsapp = { ok: true, skipped: false, messageId: 'wamid.3' }
+    espias.marcarEnviadoLanza = true
+    const r = await ejecutarTrabajo('whatsapp', WA)
+    expect(r).toBe('done')
+    expect(espias.whatsapp).toHaveLength(1)
+  })
+
+  it('con lo que manda el handler, el texto pedido a Meta se arma completo', async () => {
+    await ejecutarTrabajo('whatsapp', WA)
+    const { templateName, bodyParams } = espias.whatsapp[0] as { templateName: 'tasacion_video_caso_v1'; bodyParams: string[] }
+    const cuerpo = CUERPOS_PEDIDOS[templateName]
+    expect(cantidadDeVariables(cuerpo)).toBe(bodyParams.length)
+    expect(renderCuerpo(cuerpo, bodyParams)).toBe(
+      'Hola Ana, recibimos tu solicitud de tasación.\n\n' +
+        'Antes de coordinar la visita, mirá este caso: la dueña de una casa terminó con USD 16.606 más en mano por cómo se publicó, cómo se negoció y cómo se calcularon los impuestos de la venta.\n\n' +
+        'Diego te lo cuenta acá: https://inmodf.com.ar/t/k7Hq2mXb9T\n\n' +
+        'Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.',
+    )
+  })
+
+  // Se activa sola cuando la plantilla aprobada entra al catálogo (sincronizar-cuerpos-plantillas):
+  // lo que aprobó Meta tiene que ser lo que se pidió, o el Inbox mostraría otro mensaje.
+  for (const nombre of Object.keys(CUERPOS_PEDIDOS) as Array<keyof typeof CUERPOS_PEDIDOS>) {
+    it.skipIf(!CUERPOS_DE_PLANTILLA[nombre])(`lo aprobado de ${nombre} es lo que se pidió`, () => {
+      expect(CUERPOS_DE_PLANTILLA[nombre]).toBe(CUERPOS_PEDIDOS[nombre])
+    })
+  }
 })
 
 describe('tarea de coordinación', () => {

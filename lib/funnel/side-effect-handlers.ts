@@ -245,14 +245,49 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
   // el parámetro pelado ("Martín"): feo, pero honesto — y el Inbox lo rearma
   // retroactivamente en cuanto se corre `scripts/sincronizar-cuerpos-plantillas.ts`.
   const { sendWhatsappTemplate } = await import('@/lib/integrations/whatsapp/core')
-  const r = await sendWhatsappTemplate({
-    to: destino,
-    templateName: plantilla,
-    languageCode: process.env.WHATSAPP_TEMPLATE_TASACION_LANG ?? 'es_AR',
-    bodyParams: [primerNombre],
-    origen: 'landing',
-    aiGenerated: true,
-  })
+  const mandar = (templateName: string, bodyParams: string[], urlButtonParam?: string) =>
+    sendWhatsappTemplate({
+      to: destino,
+      templateName,
+      languageCode: process.env.WHATSAPP_TEMPLATE_TASACION_LANG ?? 'es_AR',
+      bodyParams,
+      ...(urlButtonParam ? { urlButtonParam } : {}),
+      origen: 'landing',
+      aiGenerated: true,
+    })
+
+  // VIDEO DE BIENVENIDA (change tasacion-video-bienvenida, D3). Con una plantilla con video, el
+  // mensaje lleva el enlace personal (`inmodf.com.ar/t/<código>`) en el cuerpo y en el botón.
+  // Nadie se queda sin primer mensaje: si el enlace no se puede crear, o si Meta rechaza la
+  // plantilla EN EL ENVÍO (132xxx: pausada, deshabilitada…), sale la de siempre en este mismo
+  // intento. Los frenos de marketing (131049/131050) no llegan acá: Meta los avisa minutos
+  // después por el webhook de estados (lib/video-bienvenida/respaldo.ts).
+  const v = await import('@/lib/video-bienvenida/plantillas')
+  let enlace: { codigo: string; url: string } | null = null
+  let r: Awaited<ReturnType<typeof sendWhatsappTemplate>>
+  if (v.esPlantillaConVideo(plantilla)) {
+    const contactId = texto(p, 'contactId')
+    const { obtenerOCrearEnlace } = await import('@/lib/video-bienvenida/enlaces')
+    enlace = contactId
+      ? await obtenerOCrearEnlace({ contactId, dealId: texto(p, 'dealId'), nombre: primerNombre || null, origen: 'whatsapp', creadoPor: null })
+      : null
+    const params = enlace ? v.parametrosDelEnvio(plantilla, primerNombre, enlace.url, enlace.codigo) : null
+    if (enlace && params) {
+      r = await mandar(plantilla, params.bodyParams, params.urlButtonParam)
+      if (!r.ok && !r.skipped && v.esRechazoDePlantilla(r.errorCode)) {
+        const log = v.esErrorDeParametros(r.errorCode) ? console.error : console.warn
+        log(`[funnel-jobs] Meta rechazó ${plantilla} (${r.errorCode}: ${r.error ?? ''}); sale ${v.PLANTILLA_SIN_VIDEO}`)
+        enlace = null
+        r = await mandar(v.PLANTILLA_SIN_VIDEO, [primerNombre])
+      }
+    } else {
+      console.warn(`[funnel-jobs] sin enlace del video de bienvenida (contacto ${contactId ?? 'ausente'}); sale ${v.PLANTILLA_SIN_VIDEO}`)
+      enlace = null
+      r = await mandar(v.PLANTILLA_SIN_VIDEO, [primerNombre])
+    }
+  } else {
+    r = await mandar(plantilla, [primerNombre])
+  }
   // Modo prueba / sin credenciales: no salió nada, y decirlo es información.
   if (r.skipped) return 'skipped'
   if (!r.ok) {
@@ -268,6 +303,17 @@ async function primerWhatsappDeTasacion(p: Record<string, unknown>): Promise<Res
     throw new Error(
       `${marca}WhatsApp: ${r.error ?? 'error desconocido'}${Number.isFinite(codigo) ? ` (código ${codigo})` : ''}`,
     )
+  }
+
+  // Enlace enviado: best-effort (marcarEnviado nunca lanza). Si esto hiciera fallar el trabajo,
+  // la cola lo reintentaría y la persona recibiría el WhatsApp dos veces.
+  if (enlace) {
+    try {
+      const { marcarEnviado } = await import('@/lib/video-bienvenida/enlaces')
+      await marcarEnviado(enlace.codigo, r.messageId ?? null)
+    } catch (e) {
+      console.warn('[funnel-jobs] no se pudo marcar el enlace del video como enviado', e)
+    }
   }
 
   // ESTA MARCA ES LO QUE HACE QUE LA CONVERSACIÓN SEA "DE TASACIÓN".
