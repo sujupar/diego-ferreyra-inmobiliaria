@@ -29,7 +29,7 @@ export type SituacionProceso = 'solicitud' | 'clase_gratuita' | 'coordinada_o_po
 type ProcesoParaSituacion = { stage: string; scheduled_date: string | null; origin: string | null }
 
 function esEtapaDeSolicitud(deal: { stage: string; scheduled_date: string | null }): boolean {
-  // Mismo criterio que `deriveCRMStage`: "scheduled" sin día todavía es una solicitud.
+  // Mismo criterio que `etapaCRM` (lib/crm/etapas.ts): "scheduled" sin día todavía es una solicitud.
   return deal.stage === 'request' || (deal.stage === 'scheduled' && !deal.scheduled_date)
 }
 

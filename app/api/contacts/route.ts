@@ -7,6 +7,13 @@ import { sanearDatosContacto } from '@/lib/crm/datos-contacto'
 
 const SIN_ACCESO = { error: 'No tenés acceso a los contactos.' }
 
+/**
+ * SIN CONSUMIDOR DE PANTALLA desde crm-cartera-por-rol (tarea 6.4): la lista de Contactos
+ * lee `/api/crm/contactos`, que aplica la regla de acceso de la ficha y pagina. Esta corta
+ * en 200 filas y al asesor le filtraba solo por `assigned_to` (no veía a las personas de sus
+ * procesos ni de sus tasaciones). No se borra: la cubren tests y la puede pedir un script.
+ * El POST sí está vivo (alta de contacto y `ContactEditor`).
+ */
 export async function GET(request: NextRequest) {
   // Cierra el dump anónimo de PII de contactos (service-role bypassa RLS).
   const user = await requireAuth()

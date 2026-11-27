@@ -108,6 +108,10 @@ describe('grupos de cada vista', () => {
     expect(screen.getAllByRole('link', { name: /^Abrir la ficha de/ })).toHaveLength(4)
     expect(screen.queryByText('Lo que está trabado')).toBeNull()
     expect(screen.queryByText('Ver como')).toBeNull()
+    // La coordinación sí filtra por asesor (el asesor no: ver el test de su vista).
+    const asesor = screen.getAllByLabelText('Asesor')[0]
+    expect(within(asesor).getByRole('option', { name: 'Todos los asesores' })).toBeInTheDocument()
+    expect(within(asesor).getByRole('option', { name: 'Sin asesor' })).toBeInTheDocument()
   })
 
   it('asesor: sus cuatro grupos con los textos, las tasaciones de hoy por hora, sin filtro Asesor', () => {

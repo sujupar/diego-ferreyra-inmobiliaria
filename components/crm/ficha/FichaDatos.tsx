@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Pencil, Plus } from 'lucide-react'
-import { ORIGIN_LABELS } from '@/app/(dashboard)/crm/_components/constants'
+import { NOMBRE_ORIGEN } from '@/lib/crm/cartera-pantalla'
 import type { FichaContacto } from '@/lib/crm/ficha'
 import { leerJson } from '@/lib/crm/leer-json'
 import { enlaceTel, telefonoParaMostrar } from '@/lib/crm/telefono-ficha'
@@ -16,7 +16,8 @@ import { Dato, Tarjeta } from './Tarjeta'
 // Detalles (solo renglones con valor, con el renglón Etapa) y Background editable en el
 // lugar. Qué datos viajan lo decide el servidor (`armarFicha`): acá solo se dibuja.
 
-const ORIGENES: Record<string, string> = { ...ORIGIN_LABELS, historico: 'Histórico', clase_gratuita: 'Clase gratuita' }
+// Los mismos nombres de origen que la fila de la cartera: una sola lista.
+const ORIGENES: Record<string, string> = NOMBRE_ORIGEN
 
 const BOTON_CHICO =
   'inline-flex items-center justify-center gap-1.5 rounded-md px-3 text-[13px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand'

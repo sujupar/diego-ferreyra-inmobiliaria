@@ -1,7 +1,8 @@
 // Una sola definición de las etapas del CRM (crm-cartera-por-rol, design.md D5). Puro.
 // La cartera, la ficha y los contadores de `getDeals` escriben y clasifican las etapas con
 // esto; si cada uno tuviera su `switch`, la ficha diría "No Realizada" y la lista "No
-// realizada" de la misma persona (pasaba con `crm-stages.ts`).
+// realizada" de la misma persona (pasaba con el `crm-stages.ts` de la pantalla vieja, que
+// se borró en la tarea 6.4).
 
 export type EtapaCRM =
   | 'solicitud'
@@ -41,7 +42,7 @@ export const ETAPAS_FUERA_DEL_EMBUDO: readonly EtapaCRM[] = ['clase_gratuita', '
 export const ETAPAS_CERRADAS_CARTERA: readonly EtapaCRM[] = ['captada', 'descartado']
 
 /**
- * El mismo criterio que `deriveCRMStage`: `scheduled` sin día todavía es una Solicitud (53
+ * El criterio de siempre (el de la vieja `deriveCRMStage`): `scheduled` sin día todavía es una Solicitud (53
  * procesos el 2026-11-26), y una etapa que no conocemos cae en Solicitud en vez de romper
  * la lista: preferimos mostrarla a esconder un proceso.
  */

@@ -27,7 +27,7 @@ describe('etapaCRM', () => {
       expect(etapaCRM({ stage, scheduled_date: dia })).toBe(esperada)
     })
   }
-  it('coordinada sin día todavía es una solicitud (mismo criterio que deriveCRMStage)', () => {
+  it('coordinada sin día todavía es una solicitud (el criterio de la vieja deriveCRMStage)', () => {
     expect(etapaCRM({ stage: 'scheduled', scheduled_date: null })).toBe('solicitud')
   })
   it('una etapa desconocida cae en solicitud', () => {

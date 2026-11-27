@@ -27,6 +27,12 @@ function getAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+/**
+ * SIN CONSUMIDOR DE PANTALLA desde crm-cartera-por-rol (tarea 6.4): la lista del CRM lee
+ * `/api/crm/cartera` (vista por rol armada en el servidor, paginada). No se borra: la cubren
+ * tests y la puede pedir un script. Sus contadores por etapa cortan en 1000 filas (ver
+ * `getDeals`). El POST sí está vivo (`FormCoordinarTasacion`, desde `pipeline/new`).
+ */
 export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth()
