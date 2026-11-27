@@ -99,8 +99,9 @@ ficha que la propuesta lista y no son de tareas (borrar contactos, permisos de p
 ### D3. Rutas
 
 - `GET /api/tasks/agenda?de=mias|todos|<uuid>&tipo=&sin_fecha_desde=`: con
-  `pipeline.view_all` respeta `de`; sin permiso, siempre las propias (no 403: la pantalla del
-  asesor no ofrece el filtro). `de=<uuid>` de alguien inactivo o inexistente → lista vacía.
+  `pipeline.view_all` respeta `de` (el admin y el dueño arrancan en `todos`); sin permiso,
+  siempre las propias (no 403: la pantalla del asesor no ofrece el filtro). `de=<uuid>` de
+  alguien que no está entre los activos → lista vacía.
 - `GET /api/tasks/avisos`: solo las propias.
 - `PUT /api/tasks/[id]`:
   - `complete` también completa las copias hermanas de la entrada
@@ -126,7 +127,15 @@ Migración `20261127000003_tareas_entrada_se_cierran.sql` (aplicada y verificada
 `scripts/apply-tareas-entrada-pg.ts`): trigger AFTER `UPDATE OF stage, scheduled_date` en
 `deals`; si el proceso era Solicitud y deja de serlo, completa sus tareas de entrada
 (`update_contact` + `call` + pendiente) con el autor del cambio. Las viejas sin canal no se
-tocan. Reprogramar una coordinada no hace nada.
+tocan. Reprogramar una coordinada no hace nada. Camino inverso, SOLO en "Deshacer perdido"
+(`lost` → Solicitud): reabre las que el trigger cerró (completadas desde ese cambio de
+etapa, sin llamada); un choque con el índice único no reabre nada pero no tira el cambio.
+
+La tarea de entrada de la **clase gratuita** nace sin fecha (como antes): su proceso nace en
+`clase_gratuita`, nunca pasa por Solicitud y sonaría para siempre (auditoría de cierre, 1).
+
+"Deshacer" de completar una entrada reabre también la copia cerrada en el mismo instante,
+salvo que el proceso ya haya salido de Solicitud.
 
 ### D5. Pantalla (`components/tareas/`)
 
@@ -187,7 +196,12 @@ con fecha de Argentina y sin fecha), `tareaDeCoordinacion`, y componentes (`Camp
 - **API directa de la base:** las policies de `tasks` (`20260505000001`) dejan crear para
   otro o posponer al pasado sin pasar por la plataforma. Pendiente conocido, como en la ficha.
 - **"Ver como"** de la cartera no cambia la sesión: la campanita es siempre de quien está
-  conectado.
+  conectado (con la suplantación de `impersonate_user_id`, de la persona suplantada, como
+  todo el resto).
+- **Netlify:** la vista previa de este PR falló dos veces en el primer build de un commit
+  nuevo y pasó al reintentar sin cambios (el build local termina bien). Si el deploy de
+  producción falla, reintentar antes de buscar un error en el código.
+- **"Sin fecha" expandido** vuelve a las primeras 25 cada vez que algo cambia una tarea.
 
 ## Migration Plan
 
