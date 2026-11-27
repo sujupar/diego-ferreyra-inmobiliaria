@@ -381,5 +381,8 @@ describe('Tareas', () => {
     expect(JSON.parse(String(pedidosA(red, '/api/tasks/t-1', 'PUT')[0][1]?.body))).toEqual({ action: 'complete' })
     // Y otra vez al completar: "Se completó la tarea …".
     await waitFor(() => expect(pedidosA(red, '/activities').length).toBe(actividadAntes + 2))
+    // Con "Deshacer" (crm-tareas-y-campanita), que reabre la tarea.
+    const aviso = toastes.toast.mock.calls.find((c) => (c as unknown[])[0] === 'Tarea completada') as unknown as [string, { action: { label: string } }]
+    expect(aviso?.[1].action.label).toBe('Deshacer')
   })
 })
