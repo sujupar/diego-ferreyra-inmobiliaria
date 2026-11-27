@@ -51,7 +51,10 @@ export function useFicha(contactoId: string) {
     errorMas: null,
   })
   const [tareas, setTareas] = useState<BloqueTareas>({ estado: 'cargando', tareas: [] })
-  const version = useRef({ ficha: 0, actividad: 0, tareas: 0 })
+  // `actividad` numera las cargas de la primera página (filtro, recarga) y `mas` los "Ver
+  // más": un "Ver más" no invalida una recarga en curso, y una recarga sí invalida un "Ver
+  // más" viejo (revisión de código de crm-linea-de-tiempo, hallazgo 4).
+  const version = useRef({ ficha: 0, actividad: 0, mas: 0, tareas: 0 })
   const filtroActual = useRef<FiltroActividad>('todo')
   const base = `/api/contacts/${encodeURIComponent(contactoId)}`
 
@@ -76,7 +79,9 @@ export function useFicha(contactoId: string) {
 
   const pedirActividad = useCallback(
     async (filtro: FiltroActividad, antes: { fecha: string; id: string } | null) => {
-      const v = ++version.current.actividad
+      const v = antes ? version.current.actividad : ++version.current.actividad
+      const vMas = antes ? ++version.current.mas : version.current.mas
+      const vigente = () => v === version.current.actividad && (!antes || vMas === version.current.mas)
       const params = new URLSearchParams({ filtro })
       if (antes) {
         params.set('antes', antes.fecha)
@@ -86,7 +91,7 @@ export function useFicha(contactoId: string) {
         const r = await leerJson<{ items: ItemLinea[]; hay_mas: boolean; fuentes_con_error?: ClaseEvento[] }>(
           await fetch(`${base}/activities?${params.toString()}`, { cache: 'no-store' }),
         )
-        if (v !== version.current.actividad) return
+        if (!vigente()) return
         if (r.ok) {
           setActividad((a) => ({
             ...a,
@@ -105,12 +110,14 @@ export function useFicha(contactoId: string) {
         } else if (antes) {
           setActividad((a) => ({ ...a, cargandoMas: false, errorMas: r.error }))
         } else {
-          setActividad((a) => ({ ...a, estado: 'error', filtro }))
+          setActividad((a) => ({ ...a, estado: 'error', filtro, cargandoMas: false }))
         }
       } catch (err) {
         console.error('[ficha] no se pudo pedir la actividad', err)
-        if (v !== version.current.actividad) return
-        setActividad((a) => (antes ? { ...a, cargandoMas: false, errorMas: 'No se pudo cargar. Probá de nuevo.' } : { ...a, estado: 'error' }))
+        if (!vigente()) return
+        setActividad((a) =>
+          antes ? { ...a, cargandoMas: false, errorMas: 'No se pudo cargar. Probá de nuevo.' } : { ...a, estado: 'error', cargandoMas: false },
+        )
       }
     },
     [base],

@@ -362,13 +362,20 @@ export async function updateDealNotes(id: string, notes: string) {
   if (error) throw error
 }
 
+/**
+ * `autorId`: poner el primer día a una tasación sin día la convierte en Coordinada, y el
+ * trigger del historial lo anota con `stage_changed_by` (crm-linea-de-tiempo D1): por eso
+ * también acá se escribe siempre, aunque `stage` no cambie.
+ */
 export async function updateDealSchedule(
   id: string,
   schedule: { scheduled_date: string | null; scheduled_time: string | null },
+  autorId: string | null,
 ) {
   const { error } = await getAdmin()
     .from('deals')
     .update({
+      stage_changed_by: autorId,
       scheduled_date: schedule.scheduled_date,
       scheduled_time: schedule.scheduled_time,
       updated_at: new Date().toISOString(),

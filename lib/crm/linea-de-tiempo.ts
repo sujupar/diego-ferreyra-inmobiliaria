@@ -367,8 +367,12 @@ export function unirYCortar<A extends ActividadMinima>(
   listas: readonly (readonly ItemLinea<A>[])[],
   cursor: CursorLinea | null,
   limite: number,
+  /** Fecha de lo más viejo leído de una fuente que vino cortada: lo anterior espera a la próxima página. */
+  piso: string | null = null,
 ): { items: ItemLinea<A>[]; hayMas: boolean } {
   const c = cursor ? { t: Date.parse(cursor.fecha), k: cursor.id } : null
+  const tPiso = piso ? Date.parse(piso) : null
+  let cortadoPorPiso = false
   const vistos = new Set<string>()
   const todos: { item: ItemLinea<A>; t: number; k: string }[] = []
   for (const lista of listas) {
@@ -379,11 +383,15 @@ export function unirYCortar<A extends ActividadMinima>(
       const x = { item, t: Date.parse(fechaItem(item)), k }
       if (Number.isNaN(x.t)) continue
       if (c && comparar(c, x) >= 0) continue // no es posterior al cursor en el orden
+      if (tPiso !== null && x.t < tPiso) {
+        cortadoPorPiso = true
+        continue
+      }
       todos.push(x)
     }
   }
   todos.sort(comparar)
-  return { items: todos.slice(0, limite).map((x) => x.item), hayMas: todos.length > limite }
+  return { items: todos.slice(0, limite).map((x) => x.item), hayMas: todos.length > limite || cortadoPorPiso }
 }
 
 /**

@@ -78,6 +78,12 @@ export interface AlcanceLinea {
 export interface LecturaEventos {
   eventos: EventoSistema[]
   fuentesConError: ClaseEvento[]
+  /**
+   * Si alguna fuente vino cortada por el límite, la fecha de su fila MÁS VIEJA leída (la
+   * más nueva entre las cortadas). Lo anterior a esa fecha no se puede mostrar en esta
+   * página: de esa fuente puede faltar algo que no se leyó (revisión de código, hallazgo 3).
+   */
+  piso: string | null
 }
 
 interface ProcesoLeido {
@@ -125,18 +131,34 @@ export async function leerEventosDelSistema(
       'registros',
     )
 
-    const etapasP = procesosP.then(({ visibles }) =>
-      visibles.length === 0
-        ? []
-        : filas<FilaHistorial>(
-            conCorte(
-              db.from('deal_stage_history').select('id, deal_id, from_stage, to_stage, changed_at, changed_by, metadata')
-                .in('deal_id', visibles.map((p) => p.id)),
-              'changed_at',
-            ).order('changed_at', { ascending: false }).limit(n).abortSignal(s),
-            'etapas',
-          ),
-    )
+    const pisos: string[] = []
+    /** Anota el piso si la fuente vino cortada por el límite. */
+    const conPiso = <T>(lista: T[], fecha: (x: T) => string): T[] => {
+      if (lista.length >= n && lista.length > 0) pisos.push(fecha(lista[lista.length - 1]))
+      return lista
+    }
+    const COLUMNAS_HISTORIAL = 'id, deal_id, from_stage, to_stage, changed_at, changed_by, metadata'
+    const etapasP = procesosP.then(async ({ visibles }) => {
+      if (visibles.length === 0) return []
+      const ids = visibles.map((p) => p.id)
+      const [aperturas, cambios] = await Promise.all([
+        // Las aperturas, todas y sin corte: su evento va en la fecha del PROCESO, no en la de
+        // la fila (654 se escribieron al cargar datos viejos), así que cortarlas por
+        // `changed_at` las perdería entre páginas (revisión de código, hallazgo 1).
+        filas<FilaHistorial>(
+          db.from('deal_stage_history').select(COLUMNAS_HISTORIAL).in('deal_id', ids).is('from_stage', null).abortSignal(s),
+          'aperturas',
+        ),
+        filas<FilaHistorial>(
+          conCorte(
+            db.from('deal_stage_history').select(COLUMNAS_HISTORIAL).in('deal_id', ids).not('from_stage', 'is', null),
+            'changed_at',
+          ).order('changed_at', { ascending: false }).limit(n).abortSignal(s),
+          'etapas',
+        ).then((l) => conPiso(l, (x) => x.changed_at)),
+      ])
+      return [...aperturas, ...cambios]
+    })
 
     // Las del contacto Y las de sus procesos (17 tareas tienen proceso sin contacto), con
     // la misma regla de visibilidad que el bloque "Tareas" de la ficha.
@@ -149,9 +171,14 @@ export async function leerEventosDelSistema(
           .or(filtro).order('created_at', { ascending: false }).limit(TOPE_TAREAS).abortSignal(s),
         'tareas',
       )
+      // Para el asesor, oculto es todo proceso que no esté entre los suyos de ESTE contacto:
+      // también el de una tarea cuyo proceso hoy es de otro contacto (revisión, hallazgo 5).
+      const propios = new Set(todos.filter((p) => p.assigned_to === alcance.usuarioId).map((p) => p.id))
       return tareasVisiblesEnFicha(leidas, {
         dealsConTasacionAgendada: [],
-        dealsOcultos: alcance.soloPropios ? todos.filter((p) => p.assigned_to !== alcance.usuarioId).map((p) => p.id) : [],
+        dealsOcultos: alcance.soloPropios
+          ? [...new Set(leidas.map((t) => t.deal_id).filter((d): d is string => !!d && !propios.has(d)))]
+          : [],
         usuarioId: alcance.usuarioId,
         soloPropiasSinProceso: alcance.soloPropios,
       })
@@ -164,7 +191,7 @@ export async function leerEventosDelSistema(
         'first_at',
       ).order('first_at', { ascending: false }).limit(n).abortSignal(s),
       'video',
-    )
+    ).then((l) => conPiso(l, (x) => x.first_at))
 
     // Todos los perfiles en una lectura (son pocos): dan los teléfonos del equipo, los
     // nombres y quién es de la coordinación, sin un viaje más al final.
@@ -225,7 +252,7 @@ export async function leerEventosDelSistema(
       ])
       if (otros.length > 0 || avisos.length > 0) return []
       if (primero[0]?.phone_e164 !== ultimo[0]?.phone_e164) return []
-      return mensajes
+      return conPiso(mensajes, (x) => x.created_at)
     })()
 
     const [procesos, registros, etapas, tareas, video, whatsapp] = await Promise.allSettled([
@@ -281,7 +308,9 @@ export async function leerEventosDelSistema(
       ...(listaWhatsapp ? eventosDeWhatsapp(listaWhatsapp, nombres) : []),
       ...(listaVideo ? eventosDeVideo(listaVideo) : []),
     ]
-    return { eventos, fuentesConError }
+    // El piso es el más reciente de los pisos (todas las fuentes cortadas leyeron al menos hasta ahí).
+    const piso = pisos.length > 0 ? pisos.reduce((a, b) => (Date.parse(a) >= Date.parse(b) ? a : b)) : null
+    return { eventos, fuentesConError, piso }
   } finally {
     clearTimeout(reloj)
   }
