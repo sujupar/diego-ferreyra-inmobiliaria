@@ -11,6 +11,7 @@ import { EmbudoCanal } from './EmbudoCanal'
 import { SerieConversion } from './SerieConversion'
 import { LandingsVideo } from './LandingsVideo'
 import { VideoRegistrados } from './VideoRegistrados'
+import { VideoBienvenida } from './VideoBienvenida'
 import { PlataNegocio } from './PlataNegocio'
 import { Planificador } from './Planificador'
 import { CargaDatos } from './CargaDatos'
@@ -105,6 +106,7 @@ export function PanelNegocio() {
             {embudos.map(e => <SerieConversion key={e} embudo={e} panel={panel} agrupar={filtros.agrupar} />)}
             <LandingsVideo panel={panel} embudos={[...embudos]} />
             <VideoRegistrados panel={panel} embudos={[...embudos]} />
+            <VideoBienvenida />
             <PlataNegocio panel={panel} />
             <Planificador panel={panel} />
             <CargaDatos onCambio={recargar} />
