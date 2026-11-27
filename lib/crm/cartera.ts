@@ -455,11 +455,22 @@ export function sinAsesor(f: FilaCartera): boolean {
  * registro no se anotaba nada y no se puede afirmar que nadie llamó.
  */
 export function sinMovimiento(f: FilaCartera, ahora: Date): boolean {
-  if (!f.abierto || f.etapa !== 'seguimiento' || f.ultimoContacto === 'error') return false
+  if (!f.abierto || f.etapa !== 'seguimiento') return false
+  const dias = diasSinMovimiento(f, ahora)
+  return dias !== null && dias >= SIN_MOVIMIENTO_DIAS
+}
+
+/**
+ * Días de Argentina sin contacto que cuentan para "sin movimiento": desde el último
+ * contacto o desde el inicio del registro, lo que sea más reciente. `null` si el dato
+ * falló. Es el "22 días · " de "Lo que está trabado": una sola cuenta para la regla y el texto.
+ */
+export function diasSinMovimiento(f: FilaCartera, ahora: Date): number | null {
+  if (f.ultimoContacto === 'error') return null
   const inicio = instanteDesdeAR(INICIO_REGISTRO_CONTACTOS, '00:00')
   const ultimo = f.ultimoContacto ? new Date(f.ultimoContacto.at) : null
   const desde = ultimo && !Number.isNaN(ultimo.getTime()) && ultimo > inicio ? ultimo : inicio
-  return diasDeCalendarioEntre(desde, ahora) >= SIN_MOVIMIENTO_DIAS
+  return diasDeCalendarioEntre(desde, ahora)
 }
 
 // ── La lista en memoria: filtros, orden y grupos (D4: el navegador no vuelve a pedir) ────
