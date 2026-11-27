@@ -504,7 +504,8 @@ Contactos, "Con proceso abierto N" / "Sin proceso abierto N"). El total SHALL ap
 ese selector y en el pie de la lista, en ningún otro lugar, y respetar los filtros puestos
 salvo la etapa. Los cerrados SHALL ir
 en una sola lista, del cierre más reciente al más viejo, con la columna "Cierre" en lugar de
-"Próximo paso".
+"Próximo paso" (en Contactos, "Cierre / próximo paso": ese segmento mezcla cerrados y personas
+sin proceso).
 
 #### Scenario: Pasar a cerrados
 - **WHEN** el dueño toca "Cerrados"
@@ -669,7 +670,7 @@ la ficha. Toda la fila SHALL abrir la ficha.
 
 #### Scenario: Persona sin ningún proceso
 - **WHEN** una persona no tiene ningún proceso
-- **THEN** su fila dice "Sin proceso" en la columna Proceso y aparece en "Sin proceso abierto"
+- **THEN** su fila dice "Sin proceso" (para el asesor, "Sin proceso tuyo") en la columna Proceso y aparece en "Sin proceso abierto"
 
 #### Scenario: El asesor solo ve sus procesos en Contactos
 - **WHEN** un asesor mira a una persona que tiene un proceso suyo y otro más nuevo de otro asesor
@@ -690,7 +691,7 @@ contacto" que abre el alta de hoy.
 - **THEN** ve a las personas cuyo proceso se cerró o que nunca tuvieron uno, con el texto "Su proceso se cerró (captado o descartado) o nunca tuvo uno."
 
 #### Scenario: Sin proceso abierto en los Contactos del asesor
-- **WHEN** el asesor ve en sus Contactos a una persona visible para él cuyo único proceso lleva otro asesor
+- **WHEN** el asesor ve en sus Contactos a una persona visible para él sin ningún proceso suyo (no tiene ninguno, o el único lo lleva otro asesor)
 - **THEN** su fila dice "Sin proceso tuyo", aparece en "Sin proceso abierto" con el texto "Su proceso se cerró (captado o descartado), nunca tuvo uno o lo lleva otro asesor.", y no se muestra nada del proceso ajeno
 
 #### Scenario: Nuevo contacto

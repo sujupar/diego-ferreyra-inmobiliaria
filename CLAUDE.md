@@ -2668,7 +2668,7 @@ Change `openspec/changes/crm-cartera-por-rol/` (proposal, maqueta aprobada, desi
   "Reintentar", "Ver como" y volver a la pestaña tras 5 minutos.
 - **Lectura:** dos tandas en paralelo con un SOLO plazo de 15 s para todo
   (`PLAZO_LECTURA_MS`; un techo por lectura sumaba más que los ~26 s de Netlify), paginadas de
-  a 1000 con tope `TOPE_FILAS = 3000`. Pasado el tope, **procesos** (y en Contactos personas o
+  a 1000 con tope `TOPE_FILAS = 3000`. Pasado el tope, **procesos o perfiles** (y en Contactos también personas o
   tasaciones) → `truncado: true` y aviso en pantalla; **tareas, (d) o último contacto** → ese
   dato en `'error'` + `console.warn('[crm] tope de 3000 filas en …')` (con un corte, qué fila
   falta es al azar: "Nada agendado" sería falso). La lectura (d) solo corre en la vista del
