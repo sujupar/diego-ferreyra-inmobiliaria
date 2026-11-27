@@ -25,7 +25,7 @@ export interface NormalizedTask {
   title: string
   description: string | null
   channel: TaskChannel
-  due_date: string
+  due_date: string | null
   due_time: string | null
   all_day: boolean
   deal_id: string | null
@@ -40,6 +40,9 @@ type Result =
   | { ok: true; value: NormalizedTask }
   | { ok: false; error: string; status: number }
 
+/** El título de la maqueta ("¿Qué hay que hacer?", 120 caracteres). */
+export const MAX_TITULO = 120
+
 function asStr(v: unknown): string | null {
   return typeof v === 'string' ? v : null
 }
@@ -53,11 +56,15 @@ function asStr(v: unknown): string | null {
 export function validateTaskInput(
   raw: RawTaskInput,
   user: { id: string; role: string },
+  /** Hoy en Argentina (YYYY-MM-DD), nunca `toISOString()`: de 21 a 24 h ya es mañana en UTC. */
   today: string,
+  /** La hora actual en Argentina (HH:MM), para rechazar una hora de hoy que ya pasó. */
+  horaActual?: string,
 ): Result {
   const title = (asStr(raw.title) ?? '').trim()
-  if (!title || title.length > 200) {
-    return { ok: false, error: 'El título es obligatorio (máx. 200).', status: 400 }
+  if (!title) return { ok: false, error: 'Escribí qué hay que hacer.', status: 400 }
+  if (title.length > MAX_TITULO) {
+    return { ok: false, error: `El título no puede pasar de ${MAX_TITULO} caracteres.`, status: 400 }
   }
 
   const channel = asStr(raw.channel) as TaskChannel | null
@@ -65,15 +72,16 @@ export function validateTaskInput(
     return { ok: false, error: 'Tipo de tarea inválido.', status: 400 }
   }
 
-  const due_date = asStr(raw.due_date)
-  if (!due_date || !DATE_RE.test(due_date)) {
-    return { ok: false, error: 'Fecha requerida (YYYY-MM-DD).', status: 400 }
+  // Sin día queda en "Sin fecha" (crm-tareas-y-campanita): todo el día y sin hora.
+  const due_date = asStr(raw.due_date)?.trim() || null
+  if (due_date !== null && !DATE_RE.test(due_date)) {
+    return { ok: false, error: 'Fecha inválida (YYYY-MM-DD).', status: 400 }
   }
-  if (due_date < today) {
+  if (due_date !== null && due_date < today) {
     return { ok: false, error: 'La fecha no puede ser anterior a hoy.', status: 400 }
   }
 
-  const all_day = raw.all_day !== false
+  const all_day = due_date === null || raw.all_day !== false
   let due_time: string | null = null
   if (!all_day) {
     const t = asStr(raw.due_time)
@@ -81,6 +89,9 @@ export function validateTaskInput(
       return { ok: false, error: 'Si no es todo el día, indicá una hora (HH:MM).', status: 400 }
     }
     due_time = t
+    if (due_date === today && horaActual && t.slice(0, 5) < horaActual.slice(0, 5)) {
+      return { ok: false, error: 'Elegí un día y una hora que todavía no hayan pasado.', status: 400 }
+    }
   }
 
   // Entidad: a lo sumo una

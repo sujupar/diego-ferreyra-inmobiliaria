@@ -89,4 +89,20 @@ describe('validateTaskInput', () => {
     const r = validateTaskInput({ ...base(), assigned_to: 'u1' }, USER, TODAY)
     expect(r.ok && r.value.assigned_to).toBe('u1')
   })
+
+  // crm-tareas-y-campanita
+  it('sin día: queda sin fecha, todo el día y sin hora', () => {
+    const r = validateTaskInput({ ...base(), due_date: '', all_day: false, due_time: '10:00' }, USER, TODAY)
+    expect(r.ok && r.value).toMatchObject({ due_date: null, all_day: true, due_time: null })
+  })
+  it('título: obligatorio y hasta 120', () => {
+    expect(validateTaskInput({ ...base(), title: 'x'.repeat(120) }, USER, TODAY).ok).toBe(true)
+    expect(validateTaskInput({ ...base(), title: 'x'.repeat(121) }, USER, TODAY)).toMatchObject({ ok: false, status: 400 })
+    expect(validateTaskInput({ ...base(), title: ' ' }, USER, TODAY)).toMatchObject({ ok: false, error: 'Escribí qué hay que hacer.' })
+  })
+  it('hoy a una hora que ya pasó: error; más tarde hoy: ok', () => {
+    const hoy = { ...base(), due_date: TODAY, all_day: false }
+    expect(validateTaskInput({ ...hoy, due_time: '21:30' }, USER, TODAY, '22:00')).toMatchObject({ ok: false, error: 'Elegí un día y una hora que todavía no hayan pasado.' })
+    expect(validateTaskInput({ ...hoy, due_time: '23:00' }, USER, TODAY, '22:00').ok).toBe(true)
+  })
 })
