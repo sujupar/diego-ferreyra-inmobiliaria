@@ -16,8 +16,8 @@ producción: en la investigación, solo SELECT.
 - [x] 1.1 Propuesta con las cinco decisiones del dueño ("ok a las 5", 2026-11-27)
 - [x] 1.2 Specs y diseño; `openspec validate crm-linea-de-tiempo --strict` pasa
 - [x] 1.3 Auditoría de los artefactos por un revisor independiente: 18 hallazgos, todos corregidos (`auditoria.md`)
-- [ ] 1.4 Pre-flight de choques (skill `anticipating-implementation-conflicts`); anotarlo en el PR
-- [ ] 1.5 Abrir el PR en borrador; nombrarle al dueño que el asesor ve los WhatsApp de sus contactos (Risks)
+- [x] 1.4 Pre-flight de choques (skill `anticipating-implementation-conflicts`); anotarlo en el PR
+- [x] 1.5 Abrir el PR en borrador; nombrarle al dueño que el asesor ve los WhatsApp de sus contactos (Risks)
 
 ## 2. Base de datos
 
@@ -42,14 +42,14 @@ producción: en la investigación, solo SELECT.
 
 ## 5. Verificación
 
-- [ ] 5.1 Suite completa, `tsc` (también sobre todas las rutas y `lib/`, por las firmas nuevas) y `eslint`
-- [ ] 5.2 Revisión de código independiente (permisos: que nada de un proceso ajeno llegue a un asesor)
-- [ ] 5.3 QA en la vista previa a 1280 y 390 px con las vistas de coordinación, asesor y dueño, **sobre contactos reales en solo lectura** (no se insertan registros, WhatsApp ni video: alimentan métricas y la bandeja): uno del embudo con registro, video, WhatsApp y etapas; uno con teléfono del equipo; uno con teléfono compartido; uno con un proceso de otro asesor visto como asesor. Textos, filtros, "Ver más", aviso de fuente rota (bloqueando la ruta), sin desplazamiento horizontal, 0 errores de consola, tiempo del pedido
-- [ ] 5.4 En la vista previa, con un contacto `[TEST]` (proceso con `origin` vacío, email suprimido): marcar perdido y deshacer, crear y completar una tarea; ver que la línea lo muestra con el nombre y que el historial guarda el autor (SELECT); borrar todo
+- [x] 5.1 Suite completa, `tsc` (también sobre todas las rutas y `lib/`, por las firmas nuevas) y `eslint`
+- [x] 5.2 Revisión de código independiente (permisos: que nada de un proceso ajeno llegue a un asesor)
+- [x] 5.3 QA en la vista previa a 1280 y 390 px con las vistas de coordinación, asesor y dueño, **sobre contactos reales en solo lectura** (no se insertan registros, WhatsApp ni video: alimentan métricas y la bandeja): uno del embudo con registro, video, WhatsApp y etapas; uno con teléfono del equipo; uno con teléfono compartido; uno con un proceso de otro asesor visto como asesor. Textos, filtros, "Ver más", aviso de fuente rota (bloqueando la ruta), sin desplazamiento horizontal, 0 errores de consola, tiempo del pedido
+- [x] 5.4 En la vista previa, con un contacto `[TEST]` (proceso con `origin` vacío, email suprimido): marcar perdido y deshacer, crear y completar una tarea; ver que la línea lo muestra con el nombre y que el historial guarda el autor (SELECT); borrar todo
 
 ## 6. Cierre
 
-- [ ] 6.1 Auditoría del código por un revisor independiente; corregir y anotar en `auditoria.md`
+- [x] 6.1 Auditoría del código por un revisor independiente; corregir y anotar en `auditoria.md`
 - [ ] 6.2 Merge con `gh pr merge --rebase`, deploy y humo en producción
 - [ ] 6.3 Limpieza: 0 filas de prueba, cuenta de QA en admin, navegador cerrado
 - [ ] 6.4 `CLAUDE.md` (sección CRM: autor de etapas, riesgo del autor pegado, fila `scheduled → scheduled`), archivar el change y avisarle al dueño

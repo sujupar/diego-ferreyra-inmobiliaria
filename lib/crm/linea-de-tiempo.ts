@@ -372,7 +372,6 @@ export function unirYCortar<A extends ActividadMinima>(
 ): { items: ItemLinea<A>[]; hayMas: boolean } {
   const c = cursor ? { t: Date.parse(cursor.fecha), k: cursor.id } : null
   const tPiso = piso ? Date.parse(piso) : null
-  let cortadoPorPiso = false
   const vistos = new Set<string>()
   const todos: { item: ItemLinea<A>; t: number; k: string }[] = []
   for (const lista of listas) {
@@ -383,15 +382,19 @@ export function unirYCortar<A extends ActividadMinima>(
       const x = { item, t: Date.parse(fechaItem(item)), k }
       if (Number.isNaN(x.t)) continue
       if (c && comparar(c, x) >= 0) continue // no es posterior al cursor en el orden
-      if (tPiso !== null && x.t < tPiso) {
-        cortadoPorPiso = true
-        continue
-      }
+      if (tPiso !== null && x.t < tPiso) continue
       todos.push(x)
     }
   }
+  // En el milisegundo del piso puede haber filas sin leer de la fuente cortada (la base
+  // ordena por microsegundo, acá por clave): si la página tiene algo más nuevo, ese
+  // milisegundo entero espera a la próxima (auditoría de cierre, hallazgo 2).
+  if (tPiso !== null && todos.some((x) => x.t > tPiso)) {
+    for (let i = todos.length - 1; i >= 0; i--) if (todos[i].t === tPiso) todos.splice(i, 1)
+  }
   todos.sort(comparar)
-  return { items: todos.slice(0, limite).map((x) => x.item), hayMas: todos.length > limite || cortadoPorPiso }
+  // Una fuente cortada siempre tiene algo más.
+  return { items: todos.slice(0, limite).map((x) => x.item), hayMas: todos.length > limite || tPiso !== null }
 }
 
 /**

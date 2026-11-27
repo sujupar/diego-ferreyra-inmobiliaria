@@ -110,12 +110,12 @@ async function main(): Promise<void> {
 
   // ── Cerrar ────────────────────────────────────────────────────────────────────────
   console.log('\n4) closeTasksByActivity')
-  const cerradas = await closeTasksByActivity(deEntrada, activityId)
+  const cerradas = await closeTasksByActivity(deEntrada, activityId, null)
   esperar(cerradas.length === 2, 'cierra las 2 tareas de entrada')
   e = await estado(deEntrada)
   esperar(deEntrada.every((id) => e.get(id)?.status === 'completed' && e.get(id)?.closed_by_activity_id === activityId && !!e.get(id)?.completed_at),
     'en la base quedan completadas, con completed_at y closed_by_activity_id')
-  const otraVez = await closeTasksByActivity(deEntrada, activityId)
+  const otraVez = await closeTasksByActivity(deEntrada, activityId, null)
   esperar(otraVez.length === 0, 'cerrar de nuevo no toca nada (solo cierra pendientes)')
 
   // ── Leer lo que hizo la actividad ────────────────────────────────────────────────

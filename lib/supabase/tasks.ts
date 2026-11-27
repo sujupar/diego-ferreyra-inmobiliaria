@@ -164,6 +164,8 @@ export async function completeTask(id: string, autorId: string | null) {
     .from('tasks')
     .update({ status: 'completed', completed_at: new Date().toISOString(), completed_by: autorId })
     .eq('id', id)
+    // Solo una pendiente: completar dos veces reescribiría quién la completó (auditoría de cierre, hallazgo 7).
+    .eq('status', 'pending')
   if (error) throw error
 }
 

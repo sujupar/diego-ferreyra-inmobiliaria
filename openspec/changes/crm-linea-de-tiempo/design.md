@@ -102,8 +102,8 @@ verificada con `scripts/apply-crm-linea-de-tiempo-pg.ts`):
 
 **El riesgo del autor "pegado".** `stage_changed_by` queda en el proceso después del
 cambio. Si un escritor posterior cambia la etapa sin mandarlo, el historial le atribuiría
-el cambio a la persona anterior. Por eso **las seis funciones que escriben `stage` reciben
-`autorId: string | null` como parámetro obligatorio** y siempre escriben
+el cambio a la persona anterior. Por eso **las seis funciones que escriben `stage`, y `updateDealSchedule` (poner el primer día
+la vuelve Coordinada), reciben `autorId: string | null` como parámetro obligatorio** y siempre escriben
 `stage_changed_by: autorId` en el mismo UPDATE/INSERT: TypeScript obliga a cada llamador a
 decidir. El sistema pasa `null`. Un test (`lib/supabase/deals.autor.test.ts`) recorre esas
 funciones con una base simulada y exige `stage_changed_by` en cada escritura que lleva
@@ -201,7 +201,16 @@ role, una consulta por fuente:
   proceso que no está a su nombre ni se consultan ni viajan, igual que en los bloques
   "Procesos" y "Tareas" (spec vigente de la ficha). WhatsApp y video son de la persona.
 
-Volumen medido: mediana 1 evento, máximo 38 por contacto.
+- **Aperturas** (`from_stage` null): todas y sin corte, porque su evento va en la fecha del
+  proceso, no en la de la fila (revisión de código, hallazgo 1).
+- **Piso** (revisión, hallazgo 3; auditoría de cierre, hallazgo 2): si una fuente vino
+  cortada por el límite, lo anterior a su fila más vieja leída no entra en la página, el
+  milisegundo del piso tampoco si hay algo más nuevo, y `hay_mas` es verdadero. Así nada
+  se pierde aunque se descarten filas leídas (avisos internos, empates ya mostrados).
+
+Volumen medido: mediana 1 evento, máximo 38 por contacto. Medido en la vista previa: el
+pedido tarda 0,6–0,8 s (1,4 s en frío), en dos viajes a la base: todos los perfiles (8)
+se leen de una vez y dan teléfonos del equipo, nombres y roles.
 
 `GET /api/contacts/[id]/activities` mantiene permisos, 404 y filtros. Cambia:
 
@@ -220,7 +229,10 @@ Volumen medido: mediana 1 evento, máximo 38 por contacto.
   prefijo de tipo, `fuentesConError`. Las altas, ediciones y anulaciones de actividades
   siguen tocando solo los ítems `tipo:'actividad'`.
 - `FichaContacto.tsx` vuelve a pedir la línea después de marcar perdido, deshacerlo, y
-  crear o completar una tarea (hallazgo 11).
+  crear o completar una tarea (hallazgo 11). Cada recarga vuelve a la página 1.
+- Página 1 y "Ver más" llevan contadores separados: un "Ver más" no hace descartar una
+  recarga, y mientras la página 1 está en camino "Ver más" no sale (su cursor saldría de
+  la lista vieja y saltearía un renglón).
 - `Actividad.tsx`: aviso "Parte de la historia no se pudo cargar" con "Reintentar" arriba
   de la lista cuando `fuentesConError` no está vacío; vacíos como hoy.
 - `ItemEvento.tsx` (nuevo): misma anatomía que `ItemActividad` (ícono por clase con los de
@@ -256,6 +268,10 @@ suman al `vitest.crm.config.ts` y `tsconfig.crm.json`.
 ## Risks / Trade-offs
 
 - **Autor pegado** (D1): mitigado con el parámetro obligatorio y su test.
+- **`get_funnel_stage_timings`** (migración `20260806000003`) usa `LAG` sobre el
+  historial: una fila `scheduled → scheduled` correría la fecha de entrada de la etapa
+  siguiente. Hoy ninguna parte del código la llama. Si se vuelve a usar, filtrar
+  `from_stage IS DISTINCT FROM to_stage`.
 - **WhatsApp que no se ve:** 6 contactos tienen el teléfono cargado con el "15" del
   celular y no coinciden con ningún mensaje. Se arregla corrigiendo el dato, no acá. Riesgo
   residual: un escritor fuera de esas seis funciones (GHL en cuarentena, un script) que

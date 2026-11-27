@@ -32,3 +32,43 @@ Lo que confirmó como correcto: las seis funciones que escriben `deals.stage`, l
 creaciones de tareas con sesión y los cierres; los conteos del diseño; las FK con `ON DELETE
 SET NULL`; y que hoy no se le manda email al lead (Mailchimp apagado: 69 de 69 sincronizaciones
 `skipped_disabled`).
+
+## Ronda 2: revisión de código (revisor independiente, sobre `e985ce82`)
+
+Sin fugas de permisos ni de privacidad. 2 MEDIA y 5 BAJA, corregidas en `2520d34d`:
+
+1. MEDIA — las aperturas con fecha falsa se perdían entre páginas (consulta cortada por `changed_at`, evento en `created_at`) → se leen sin corte.
+2. MEDIA — "Pasó de Solicitud a Coordinada" heredaba el autor anterior: `updateDealSchedule` no escribía `stage_changed_by` → recibe el autor (`PUT /api/deals/[id]` pasa `user.id`).
+3. BAJA — filas leídas y descartadas podían dejar huecos entre páginas → piso por fuente cortada.
+4. BAJA — "Ver más" durante una recarga hacía descartar la recarga → contadores separados.
+5. BAJA — tarea del contacto con proceso de otro contacto → para el asesor, todo proceso ajeno es oculto.
+6. BAJA — detección del equipo frágil si aparece otra plantilla interna → anotado en Risks.
+7. BAJA — el camino viejo (solo `antes`) no cortaba los eventos del sistema → corta con clave vacía.
+
+## QA en la vista previa (2026-11-27)
+
+Sobre 5 contactos reales en solo lectura y un contacto `[TEST]` con dos procesos (borrado al final, 0 filas):
+
+- **Textos:** registro con anuncio, etapas, tareas (copias de la coordinación juntas), WhatsApp automático y "no se pudo enviar", y video.
+- **Exclusiones:** el número interno (746 mensajes), un teléfono del equipo y un número compartido no muestran ningún WhatsApp.
+- **Asesor:** no recibe nada del proceso de otro asesor, ni por la red ni en la página. La coordinación ve todo.
+- **Autor:**
+  - Marcar perdido, deshacerlo, completar la tarea desde la casilla y poner el día a una solicitud guardan a quien lo hizo.
+  - La línea lo muestra sin recargar.
+  - Reprogramar no agrega nada.
+- **Pantalla:** 1280 y 390 px sin desplazamiento horizontal. El renglón alterna la fecha exacta y los eventos no tienen menú.
+- **Consola:** 0 errores.
+- **Tiempo:** el pedido tardaba 0,9–1,6 s; se redujo a 0,6–0,8 s (`6a9fe28c`).
+- **Datos:** se encontró un anuncio "{{ad.name}}" (plantilla de Meta sin completar), que ya no se muestra.
+
+## Ronda 3: auditoría de cierre (revisor independiente, sobre `2520d34d`)
+
+Sin fugas. Verificó las FK, el trigger AFTER, los siete escritores con autor y los arreglos de la ronda 2. 1 MEDIA y 6 BAJA, todas corregidas:
+
+1. MEDIA — un "Ver más" tocado durante la carga de la página 1 salteaba un renglón → no sale hasta que llega la página 1. Prueba que falla sin el arreglo.
+2. BAJA — empates en el milisegundo del piso → ese milisegundo espera si hay algo más nuevo; con piso, `hay_mas` siempre es verdadero.
+3. BAJA — `get_funnel_stage_timings` contaría la fila `scheduled → scheduled` → anotado en Risks; la función no tiene uso.
+4. BAJA — documentos atrasados → actualizados.
+5. BAJA — `scripts/_qa-tareas-cadencia.ts` tenía la firma vieja → pasa `null`.
+6. BAJA — el escenario del asesor contradecía "tarea propia en proceso ajeno" → aclarado.
+7. BAJA (previo) — completar dos veces reescribía el autor → `completeTask` solo toca pendientes.
