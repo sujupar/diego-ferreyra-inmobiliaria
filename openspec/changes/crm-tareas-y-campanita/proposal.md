@@ -15,6 +15,16 @@ la cadencia de llamadas funcione, la tarea tiene que avisar a su hora.
   filtro por tipo y, para operaciones, por persona. Total exacto y paginado, sin techo oculto.
 - Crear tarea con fecha y hora desde la ficha, la página de tareas y el Inicio.
 - La campanita no cuenta tareas sin fecha ni las vencidas antes de la salida de este change.
+- La tarea de entrada de cada lead nuevo nace con fecha y hora (la de su registro si entra en
+  horario hábil; si no, el día hábil siguiente a las 9:00), así suena en la campanita.
+- Un solo formulario "Nueva tarea" (el de la maqueta) en la ficha, Pendientes y las demás
+  pantallas que hoy usan `AddTaskDialog`; fechas en hora de Argentina.
+- Completar ofrece "Deshacer"; "Descartar" y el filtro de completadas salen de la pantalla.
+
+**Recomendaciones aplicadas mientras el dueño responde (2026-11-27):** 1) la tarea de
+entrada nace con fecha; 2) se sigue la maqueta (sin "Descartar" ni filtro de completadas);
+3) las ~600 tareas viejas sin fecha quedan en "Sin fecha" con la nota de la maqueta, sin
+limpieza automática; 4) los filtros de Pendientes siguen la maqueta aprobada de esa pantalla.
 - **Queda afuera:** avisos al celular (push, WhatsApp, email), limpieza de las 625 tareas
   viejas sin fecha, tareas recurrentes, calendario.
 
@@ -29,7 +39,9 @@ y asignar tareas de otros.
 
 ### Modified Capabilities
 
-Ninguna.
+Ninguna: la anatomía de la campanita, de Pendientes y del formulario ya está en
+`crm-sistema-diseno` (requisitos "Campanita", "Página de pendientes", "Un solo formulario de
+nueva tarea" y los textos de vencimiento); este change la construye.
 
 ## Impact
 
