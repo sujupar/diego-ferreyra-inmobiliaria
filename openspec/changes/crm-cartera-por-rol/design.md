@@ -293,7 +293,7 @@ los 100 seguimientos "sin movimiento": la pantalla afirmaría que nadie llamó a
 lo que pasa es que antes no se anotaba. Reglas: (1) una solicitud cuyo proceso se creó antes
 de esa fecha y sin contacto registrado no es "sin primer contacto"; (2) los días de "sin
 movimiento" se cuentan desde `max(último contacto, inicio)`; (3) esa fila dice "Sin contacto
-registrado". La tarea 1.2 fija el valor con la fecha real del deploy de la ficha.
+registrado". La tarea 1.2 fija el valor con la fecha real del deploy de la ficha: **`'2026-11-26'`** (PR #92, deploy en producción el 2026-11-26 a las 21:04 de Argentina; cierre en el PR #95). Se toma el día entero: lo que entró ese día antes del deploy cuenta como posterior al registro, del lado de avisar de más.
 
 ### D4. Cómo se lee: un viaje, filas armadas en el servidor, todo lo demás en memoria
 
@@ -392,7 +392,7 @@ preguntas distintas y quedan escritas así en los dos módulos.
 // lib/crm/ultimo-contacto.ts — YA EXISTE (lo crea crm-ficha-y-llamadas): masReciente,
 // UltimoContacto { texto, dias, alerta } y ultimoContacto(ultimoEn, ahora, etapaCRM) de la
 // cabecera no se tocan. Se le suma, con su test:
-export const INICIO_REGISTRO_CONTACTOS: string        // 'AAAA-MM-DD' de Argentina (D3)
+export const INICIO_REGISTRO_CONTACTOS: string        // '2026-11-26' (día de Argentina del deploy de la ficha, D3)
 export type QueFue = 'llamada' | 'whatsapp' | 'visita'
 export interface ContactoRegistrado { at: string; que: QueFue; resultado: ResultadoLlamada | null }
 export function contactoRegistrado(r: {
