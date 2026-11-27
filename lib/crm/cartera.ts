@@ -461,3 +461,213 @@ export function sinMovimiento(f: FilaCartera, ahora: Date): boolean {
   const desde = ultimo && !Number.isNaN(ultimo.getTime()) && ultimo > inicio ? ultimo : inicio
   return diasDeCalendarioEntre(desde, ahora) >= SIN_MOVIMIENTO_DIAS
 }
+
+// ── La lista en memoria: filtros, orden y grupos (D4: el navegador no vuelve a pedir) ────
+
+/** Todo texto: `useFiltrosUrl` exige `Record<string, string>`. */
+export interface FiltrosCartera {
+  seg: 'abiertos' | 'cerrados'
+  etapa: EtapaCRM | ''
+  origen: 'embudo' | 'referido' | 'historico' | ''
+  asesor: string // id, 'sin' o ''
+  entro: '' | 'hoy' | 'ayer' | '7' | '15' | '30' | '90' | 'rango'
+  desde: string
+  hasta: string
+  q: string
+  trabado: '' | 'sin-contacto' | 'sin-asesor' | 'sin-movimiento'
+  orden: 'proximo' | 'ultimo' | 'nuevos' | 'nombre'
+  colegas: '' | '1'
+  ver: string
+}
+
+export type ClaveGrupo = 'sin-contacto' | 'vencidas' | 'tasaciones' | 'resto' | 'hoy' | 'proximos' | 'nada' | 'todos' | 'cerrados'
+
+export interface Grupo {
+  clave: ClaveGrupo
+  filas: FilaCartera[]
+  urgente: boolean
+}
+
+/** Sin tildes (NFD y NFC), en minúscula y con los espacios juntados. Sin regex del usuario. */
+export function textoBusqueda(s: string): string {
+  return sinMarcas(s).replace(/\s+/g, ' ').trim()
+}
+
+function textoDeLaFila(f: FilaCartera): string {
+  const digitos = (f.telefono ?? '').replace(/\D/g, '')
+  return textoBusqueda([f.nombre, f.telefono, digitos, f.email, f.direccion, f.propiedad].filter(Boolean).join(' '))
+}
+
+function entroEnElRango(f: FilaCartera, filtros: FiltrosCartera, ahora: Date): boolean {
+  if (!filtros.entro) return true
+  const creado = new Date(f.creadoEn)
+  if (Number.isNaN(creado.getTime())) return false
+  if (filtros.entro === 'rango') {
+    const dia = enArgentina(creado).fecha
+    return (!filtros.desde || dia >= filtros.desde) && (!filtros.hasta || dia <= filtros.hasta)
+  }
+  const dias = diasDeCalendarioEntre(creado, ahora)
+  if (filtros.entro === 'hoy') return dias === 0
+  if (filtros.entro === 'ayer') return dias === 1
+  // "Últimos N días" = hoy y los N−1 anteriores, en días de Argentina.
+  return dias >= 0 && dias < Number(filtros.entro)
+}
+
+/** Todos los filtros menos etapa y segmento (los usa `contarPorEtapa` tal cual). */
+function pasaFiltrosComunes(f: FilaCartera, filtros: FiltrosCartera, ahora: Date): boolean {
+  if (f.colega && filtros.colegas !== '1') return false
+  if (filtros.origen) {
+    // "Embudo" incluye a los que vienen de la clase gratuita (spec "Embudo incluye la clase").
+    const ok = filtros.origen === 'embudo' ? f.origen === 'embudo' || f.origen === 'clase_gratuita' : f.origen === filtros.origen
+    if (!ok) return false
+  }
+  if (filtros.asesor) {
+    if (filtros.asesor === 'sin' ? f.asesor !== null : f.asesor?.id !== filtros.asesor) return false
+  }
+  if (!entroEnElRango(f, filtros, ahora)) return false
+  if (filtros.trabado === 'sin-contacto' && !sinPrimerContacto(f)) return false
+  if (filtros.trabado === 'sin-asesor' && !sinAsesor(f)) return false
+  if (filtros.trabado === 'sin-movimiento' && !sinMovimiento(f, ahora)) return false
+  const palabras = textoBusqueda(filtros.q).split(' ').filter(Boolean)
+  if (palabras.length > 0) {
+    const texto = textoDeLaFila(f)
+    if (!palabras.every((p) => texto.includes(p))) return false
+  }
+  return true
+}
+
+export function filtrarFilas(f: FilaCartera[], filtros: FiltrosCartera, ahora: Date): FilaCartera[] {
+  return f.filter(
+    (x) =>
+      (filtros.seg === 'cerrados' ? !x.abierto : x.abierto) &&
+      (!filtros.etapa || x.etapa === filtros.etapa) &&
+      pasaFiltrosComunes(x, filtros, ahora),
+  )
+}
+
+/**
+ * Números de la barra de etapas y de "Abiertos/Cerrados": respetan todos los filtros menos
+ * la etapa y el segmento (spec "Totales con filtros"), así tocar una etapa no hace que las
+ * otras pasen a cero.
+ */
+export function contarPorEtapa(f: FilaCartera[], filtros: FiltrosCartera, ahora: Date): Record<EtapaCRM, number> {
+  const c: Record<EtapaCRM, number> = {
+    solicitud: 0, coordinada: 0, no_realizada: 0, realizada: 0, entregada: 0,
+    seguimiento: 0, clase_gratuita: 0, comprador: 0, captada: 0, descartado: 0,
+  }
+  for (const x of f) if (pasaFiltrosComunes(x, filtros, ahora)) c[x.etapa] += 1
+  return c
+}
+
+const ms = (s: string | null | undefined): number => {
+  const v = s ? Date.parse(s) : Number.NaN
+  return Number.isNaN(v) ? Number.NaN : v
+}
+
+/** Instante del último contacto para ordenar: sin contacto = el más viejo posible; error = al final. */
+function ultimoParaOrdenar(f: FilaCartera): number {
+  if (f.ultimoContacto === 'error') return Number.POSITIVE_INFINITY
+  if (!f.ultimoContacto) return Number.NEGATIVE_INFINITY
+  const v = ms(f.ultimoContacto.at)
+  return Number.isNaN(v) ? Number.NEGATIVE_INFINITY : v
+}
+
+/** Rango del próximo paso: 0 con fecha (por instante), 1 sin fecha, 2 sin nada, 3 sin dato. */
+function rangoProximo(f: FilaCartera): number {
+  if (f.proximo === 'error') return 3
+  if (!f.proximo) return 2
+  return f.proximo.instante ? 0 : 1
+}
+
+function compararProximo(a: FilaCartera, b: FilaCartera): number {
+  const ra = rangoProximo(a)
+  const rb = rangoProximo(b)
+  if (ra !== rb) return ra - rb
+  if (ra === 0 && a.proximo && a.proximo !== 'error' && b.proximo && b.proximo !== 'error') {
+    const d = ms(a.proximo.instante) - ms(b.proximo.instante)
+    if (d) return d
+  }
+  // Mismo vencimiento: primero el que lleva más tiempo sin contacto; entre dos sin ningún
+  // contacto, el que entró antes (así las solicitudes viejas quedan de la más vieja a la nueva).
+  const u = ultimoParaOrdenar(a) - ultimoParaOrdenar(b)
+  if (u && !Number.isNaN(u)) return u
+  return ms(a.creadoEn) - ms(b.creadoEn) || a.id.localeCompare(b.id)
+}
+
+const COMPARAR: Record<FiltrosCartera['orden'], (a: FilaCartera, b: FilaCartera) => number> = {
+  proximo: compararProximo,
+  ultimo: (a, b) => ultimoParaOrdenar(a) - ultimoParaOrdenar(b) || ms(a.creadoEn) - ms(b.creadoEn) || a.id.localeCompare(b.id),
+  nuevos: (a, b) => ms(b.creadoEn) - ms(a.creadoEn) || a.id.localeCompare(b.id),
+  nombre: (a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }) || a.nombre.localeCompare(b.nombre, 'es') || a.id.localeCompare(b.id),
+}
+
+/** Devuelve una lista nueva: no toca la que recibe. */
+export function ordenarFilas(f: FilaCartera[], orden: FiltrosCartera['orden']): FilaCartera[] {
+  return [...f].sort(COMPARAR[orden] ?? compararProximo)
+}
+
+function proximoVencido(f: FilaCartera, ahora: Date): boolean {
+  return !!f.proximo && f.proximo !== 'error' && vencimientoDeTarea(f.proximo.vence, ahora).vencida
+}
+
+function tasacionFutura(f: FilaCartera, ahora: Date, dias: number[]): boolean {
+  if (!f.tasacion) return false
+  if (ms(f.tasacion.instante) <= ahora.getTime()) return false
+  let d: number
+  try {
+    d = diasDeCalendarioEntre(ahora, instanteDesdeAR(f.tasacion.fecha, '12:00'))
+  } catch {
+    return false
+  }
+  return dias.includes(d)
+}
+
+const porTasacion = (a: FilaCartera, b: FilaCartera) => ms(a.tasacion?.instante) - ms(b.tasacion?.instante) || a.id.localeCompare(b.id)
+
+/**
+ * Los grupos de cada vista, en su orden, con cada proceso solo en el PRIMERO que le toca y
+ * sin grupos vacíos. Las filas cerradas van a un único grupo "cerrados" (del cierre más
+ * reciente al más viejo). Si una fuente falló, la fila trae 'error' y no entra en los
+ * grupos que dependen de ese dato: con el último contacto en error nadie está "sin primer
+ * contacto"; con las tareas en error no hay vencidas ni "Con próximo paso" (las tasaciones
+ * sí, salen del proceso), y en la vista del asesor el resto queda en una lista neutra
+ * ("todos"): "Sin nada pendiente" afirmaría algo que no se sabe.
+ */
+export function agrupar(f: FilaCartera[], v: Vista, ahora: Date): Grupo[] {
+  const abiertos = f.filter((x) => x.abierto)
+  const cerrados = f.filter((x) => !x.abierto)
+  const grupos: Grupo[] = []
+  let quedan = abiertos
+  const tomar = (clave: ClaveGrupo, cumple: (x: FilaCartera) => boolean, orden: (a: FilaCartera, b: FilaCartera) => number, urgente = false) => {
+    const filas = quedan.filter(cumple).sort(orden)
+    quedan = quedan.filter((x) => !cumple(x))
+    if (filas.length > 0) grupos.push({ clave, filas, urgente })
+  }
+
+  if (v.tipo === 'coordinacion') {
+    tomar('sin-contacto', sinPrimerContacto, (a, b) => ms(a.creadoEn) - ms(b.creadoEn) || a.id.localeCompare(b.id), true)
+    // La tasación pasada es tarea del asesor: no cuenta como llamada vencida de la coordinación.
+    tomar('vencidas', (x) => proximoVencido(x, ahora) && x.proximo !== 'error' && x.proximo?.clase === 'tarea', compararProximo, true)
+    tomar('tasaciones', (x) => tasacionFutura(x, ahora, [0, 1]), porTasacion)
+    tomar('resto', () => true, compararProximo)
+  } else if (v.tipo === 'asesor') {
+    tomar('hoy', (x) => tasacionFutura(x, ahora, [0]), porTasacion)
+    tomar('vencidas', (x) => proximoVencido(x, ahora), compararProximo, true)
+    tomar('proximos', (x) => !!x.proximo && x.proximo !== 'error', compararProximo)
+    tomar('nada', (x) => x.proximo === null, compararProximo)
+    tomar('todos', () => true, compararProximo)
+  } else {
+    tomar('todos', () => true, compararProximo)
+  }
+
+  if (cerrados.length > 0) {
+    const sinCierre = Number.NEGATIVE_INFINITY
+    const cierre = (x: FilaCartera) => (Number.isNaN(ms(x.cerradoEn)) ? sinCierre : ms(x.cerradoEn))
+    grupos.push({
+      clave: 'cerrados',
+      filas: [...cerrados].sort((a, b) => cierre(b) - cierre(a) || a.id.localeCompare(b.id)),
+      urgente: false,
+    })
+  }
+  return grupos
+}
