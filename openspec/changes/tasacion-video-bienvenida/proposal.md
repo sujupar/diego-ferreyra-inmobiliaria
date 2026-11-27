@@ -48,6 +48,8 @@ estudian la asistencia a llamadas coinciden en tres cosas:
   Se reusa la medición de video que ya existe en las landings (latido cada 5 s, respaldo
   si se cierra el navegador). La diferencia es que acá la visita queda atada al contacto
   desde el primer segundo.
+- **Ficha:** "Enlace del video" con "Copiar", y "Crear enlace del video" para quien se
+  registró antes del cambio, para que Paula lo mande a mano (decisión 4).
 - **Dónde se ve:**
   - en la línea de tiempo de la ficha ("Abrió el video de bienvenida", "Vio el video de
     bienvenida · 64 %");
@@ -71,7 +73,8 @@ estudian la asistencia a llamadas coinciden en tres cosas:
 **Roles:**
 - La página la ve cualquiera que tenga el enlace, que solo llega por WhatsApp a la persona.
 - La medición la ven:
-  - admin, dueño y coordinador (Paula) en `/metrics` y en la cartera;
+  - admin y dueño en `/metrics` (los que hoy tienen `metrics.view`);
+  - Paula (coordinador) en su cartera y en la ficha;
   - quien puede abrir la ficha, en la línea de tiempo, con las reglas de hoy.
 - El abogado no ve nada nuevo.
 
@@ -100,14 +103,14 @@ estudian la asistencia a llamadas coinciden en tres cosas:
   - lecturas para la ficha, la cartera y el panel.
 - **Externo:**
   - plantilla nueva a aprobar en Meta (Utilidad, con botón de URL);
-  - el video se sube a Cloudflare R2 (pesa 311 MB en bruto, más de lo que conviene en
-    Supabase Storage);
+  - el video se sube a Supabase Storage (`funnel-media`), comprimido a 720p; el token de
+    Cloudflare solo maneja el dominio y no puede subir a R2;
   - `WHATSAPP_TEMPLATE_TASACION` en Netlify pasa a la plantilla nueva recién cuando Meta
     la apruebe como UTILIDAD.
 - **Corte seguro:** si crear el enlace falla, se manda la plantilla de hoy
   (`tasacion_llamada_v1`). Nadie se queda sin el primer mensaje.
 
-## Decisiones del dueño (pendientes)
+## Decisiones del dueño (2026-11-27, "ok a las 5")
 
 1. **El texto del WhatsApp.** Propuesta en `design.md` § D1: una versión sobria (A) y una
    con el gancho de los USD 16.606 (B). **Recomiendo mandar las dos a Meta y usar la B
