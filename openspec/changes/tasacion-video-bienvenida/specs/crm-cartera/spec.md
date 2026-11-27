@@ -9,8 +9,8 @@ nombre, una marca de cómo está el video de bienvenida de esa persona:
 - "Abrió el video" si abrió el enlace sin tocar play;
 - "No abrió el video" si tiene enlace marcado como enviado y nunca lo abrió.
 
-Una persona sin enlace enviado MUST NOT llevar marca. La marca va en gris neutro, sin rojo
-ni ámbar.
+Una persona sin enlace, o con un enlace que no le llegó por WhatsApp y nunca se abrió, MUST
+NOT llevar marca. La marca va en gris neutro, sin rojo ni ámbar.
 
 #### Scenario: Vio el video
 - **WHEN** la coordinadora mira la fila de Ana, que vio el 63 % del video
@@ -23,6 +23,10 @@ ni ámbar.
 #### Scenario: Sin enlace
 - **WHEN** una persona se registró antes del cambio y no tiene enlace
 - **THEN** su fila no lleva ninguna marca de video
+
+#### Scenario: Enlace creado a mano y abierto
+- **WHEN** Paula creó el enlace de Mario desde la ficha, se lo mandó por su cuenta y Mario lo abrió sin tocar play
+- **THEN** la fila de Mario dice "Abrió el video"
 
 #### Scenario: Ya coordinada
 - **WHEN** el proceso de Ana pasa a Coordinada

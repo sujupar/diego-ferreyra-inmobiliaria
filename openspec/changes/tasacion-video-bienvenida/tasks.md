@@ -29,7 +29,7 @@
 - [x] 1.3 Maqueta (https://claude.ai/artifact/PDHCvmUmoyQvjXqPfJiTxX) aprobada por el dueño con ajustes, 2026-11-27
 - [x] 1.4 Auditoría de los artefactos (auditor 1): 22 hallazgos, todos incorporados (`auditoria.md`)
 - [x] 1.5 Auditor 2: 11 hallazgos (1 alto), todos incorporados (`auditoria.md`)
-- [ ] 1.6 Pre-flight de choques (skill `anticipating-implementation-conflicts`); anotarlo en el PR
+- [x] 1.6 Pre-flight de choques (`preflight.md`): PROCEDER-CON-MITIGACIONES
 - [ ] 1.7 Abrir el PR en borrador
 
 ## 2. Base de datos
@@ -40,7 +40,7 @@
 
 ## 3. Enlaces y envío
 
-- [ ] 3.1 `lib/video-bienvenida/codigo.ts`: generación y validación del código (tests: alfabeto, largo, que no se repita)
+- [x] 3.1 `lib/video-bienvenida/codigo.ts`: generación y validación del código (tests: alfabeto, largo, que no se repita)
 - [ ] 3.2 `lib/video-bienvenida/plantillas.ts`: `PLANTILLAS_CON_VIDEO`, `parametrosDelEnvio` y `esRechazoDePlantilla`; las dos plantillas en `PLANTILLAS_QUE_SOLO_AVISAN` con test de `modoDePlantilla`
 - [ ] 3.3 `lib/video-bienvenida/enlaces.ts`: `obtenerOCrearEnlace` (reusa por contacto, reintenta si el código choca, une `bv:<codigo>`)
 - [ ] 3.4 `primerWhatsappDeTasacion`: envío con enlace, `marcar_enviado`, y vuelta a `tasacion_llamada_v1` si falla el enlace o Meta rechaza la plantilla (tests del handler, incluido el límite de volumen que sigue reintentando)
