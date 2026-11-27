@@ -18,19 +18,23 @@
 - Se borra en la misma sesión.
 - La base de la vista previa es la de producción.
 
+## 0. Rama al día
+
+- [x] 0.1 Rebase sobre `origin/main` (ya trae `crm-tareas-y-campanita`); `20261128000001` sigue libre
+
 ## 1. Preparación
 
 - [x] 1.1 Propuesta con las cinco decisiones del dueño ("ok a las 5", 2026-11-27)
 - [x] 1.2 Specs y diseño; `openspec validate tasacion-video-bienvenida --strict` pasa
 - [x] 1.3 Maqueta (https://claude.ai/artifact/PDHCvmUmoyQvjXqPfJiTxX) aprobada por el dueño con ajustes, 2026-11-27
 - [x] 1.4 Auditoría de los artefactos (auditor 1): 22 hallazgos, todos incorporados (`auditoria.md`)
-- [ ] 1.4b Auditor 2 revisa los artefactos corregidos y la auditoría del 1
-- [ ] 1.5 Pre-flight de choques (skill `anticipating-implementation-conflicts`); anotarlo en el PR
-- [ ] 1.6 Abrir el PR en borrador
+- [x] 1.5 Auditor 2: 11 hallazgos (1 alto), todos incorporados (`auditoria.md`)
+- [ ] 1.6 Pre-flight de choques (skill `anticipating-implementation-conflicts`); anotarlo en el PR
+- [ ] 1.7 Abrir el PR en borrador
 
 ## 2. Base de datos
 
-- [ ] 2.1 Migración `20261128000001_video_bienvenida` (tabla, CHECK, UNIQUE, RLS, las tres RPC con REVOKE, RPC de la cartera y filtro `bienvenida-%` en `get_panel_video`); revisar antes la numeración de todas las ramas
+- [ ] 2.1 Migración `20261128000001_video_bienvenida` (tabla, CHECK, UNIQUE, RLS, las tres RPC con REVOKE, RPC de la cartera sin tocar `get_panel_video`); verificar antes que el número siga libre
 - [ ] 2.2 `scripts/apply-video-bienvenida-pg.ts` con las verificaciones de D2 en una transacción con ROLLBACK
 - [ ] 2.3 Aplicada en `mncsnastmcjdjxrehdep` y vuelta a correr (idempotente); 0 filas de prueba
 
@@ -48,8 +52,11 @@
 - [ ] 4.3 `lib/video-bienvenida/contenido.ts`, `mostrar-bloque.ts` (puro, con tests) y `app/t/[codigo]/page.tsx` (logo centrado, sin duración, bloque a los 30 s, no indexa, `no-referrer`, sin Píxel, título sin nombre, código inexistente → no encontrado)
 - [ ] 4.4 `POST /api/public/video/[codigo]` con marca por pestaña; `/t/` pública en `middleware.ts` (test)
 - [ ] 4.5 `app/t/paula.vcf/route.ts`
-- [ ] 4.7 `funnel_video_stats` (`/embudos`) excluye `bienvenida-%` (test)
-- [ ] 4.6 Video a 720p con `faststart` y póster subidos a `funnel-media/bienvenida/`; responde 206 a un pedido por rango
+- [ ] 4.7 Test de JS: filas con embudo nulo no entran en `/embudos`; `video-keys.test.ts` recorre también `app/t/`
+- [ ] 4.8 Medición apagada con sesión de la plataforma y aviso "Vista del equipo" (test)
+- [ ] 4.9 Respaldo tardío: `lib/video-bienvenida/respaldo.ts` (puro, con tests), RPC `tomar_respaldo` y el webhook de estados (test con aviso repetido)
+- [ ] 4.6 Video a 720p con `faststart` y póster subidos (TUS) a `funnel-media/bienvenida/`; responde 206 a un pedido por rango
+- [ ] 4.10 QA del `.vcf` en iOS y en Android (navegador dentro de WhatsApp)
 
 ## 5. CRM y panel
 
@@ -80,7 +87,7 @@
 
 ## 8. Despliegue
 
-- [ ] 8.1 Merge a `main`; verificar en producción que `/video/<código de prueba>` abre y que el envío sigue con la plantilla de hoy
+- [ ] 8.1 Merge a `main`; verificar en producción que `/t/<código de prueba>` abre y que el envío sigue con la plantilla de hoy
 - [ ] 8.2 Con la plantilla aprobada: `WHATSAPP_TEMPLATE_TASACION` en Netlify y `CAMBIO_DESDE` con la fecha; verificar el primer envío real en `whatsapp_messages`
 - [ ] 8.3 CLAUDE.md: sección del video de bienvenida (plantillas, clave de video, cómo cambiar el video editado); archivar el change
 

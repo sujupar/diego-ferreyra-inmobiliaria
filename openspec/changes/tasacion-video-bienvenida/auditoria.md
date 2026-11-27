@@ -38,6 +38,23 @@
 - Logo centrado.
 - Titular y subtítulo centrados.
 
-## Ronda 1b: auditor 2
+## Ronda 1b: auditor 2 (2026-11-27, sobre 82fe4cbe)
 
-Pendiente.
+11 hallazgos. Todos incorporados. Además corrige tres resoluciones del auditor 1:
+- la #3 en parte, porque 131049/131050 no llegan en el envío;
+- la #9 era exagerada, porque el embudo nulo alcanzaba;
+- la #6 quedó desactualizada, porque la migración de campanita ya está en main.
+
+| # | Sev. | Hallazgo | Resolución |
+|---|---|---|---|
+| 1 | Alta | 131049/131050 los avisa Meta minutos después por el webhook, no en el envío | `esRechazoDePlantilla` = solo 132xxx; respaldo tardío D3b, igual que la encuesta; columnas `wamid`, `envio_fallido_at` y `respaldo_at` |
+| 2 | Media | Si `marcar_enviado` lanzaba, la cola reintentaba y el WhatsApp salía dos veces | Best-effort con try/catch; escenario "No se duplica el mensaje" |
+| 3 | Media | Adelantar inflaba el % y "lo terminó", y los controles nativos muestran la duración | `vslBar`, y todas las métricas desde `watched_buckets` |
+| 4 | Media | Que el equipo abra el enlace contaba como la persona | Medición apagada con sesión de la plataforma, con aviso |
+| 5 | Media | La rama estaba atrasada respecto de main | Rebase hecho (tarea 0.1) |
+| 6 | Baja | El filtro SQL no hacía falta y arriesgaba el GRANT | Sin SQL; test de JS del embudo nulo |
+| 7 | Baja | Quedaban textos viejos (`app/video`, `funnel={null}`, `/video/` en 8.1) | Corregidos |
+| 8 | Baja | "Coordinada en adelante" sin enumerar | Lista explícita de etapas en D7 |
+| 9 | Baja | Límite del bucket y subida de 110 MB | Bucket sin límite propio (leído), subida resumible TUS |
+| 10 | Baja | "Un solo renglón" no era verificable; `.vcf` en las apps | El escenario pasa a "se ve completo y se puede tocar"; QA del `.vcf` en iOS y Android (7.4) |
+| 11 | Baja | `video-keys.test.ts` no recorre `app/t` | Se amplía el recorrido (4.7) |

@@ -136,6 +136,9 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
 | `creado_por` | `uuid` | FK `profiles(id)` ON DELETE SET NULL; NULL si lo creó la cola |
 | `created_at` | `timestamptz` | default `now()` |
 | `enviado_at` | `timestamptz` | se escribe cuando Meta acepta la plantilla con video |
+| `wamid` | `text` | id del mensaje con video que devolvió Meta; une el aviso tardío de estados con el enlace |
+| `envio_fallido_at` | `timestamptz` | Meta avisó después que ese mensaje no se entregó (`failed`) |
+| `respaldo_at` | `timestamptz` | se mandó `tasacion_llamada_v1` por ese fallo; garantiza una sola vez |
 | `primera_apertura`, `ultima_apertura` | `timestamptz` | |
 | `aperturas` | `int` NOT NULL | default 0, `CHECK (aperturas >= 0)` |
 
@@ -152,8 +155,13 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
     app reintenta con otro hasta 3 veces.
 - **RPC `video_bienvenida_registrar_apertura(p_codigo text) returns boolean`:** `UPDATE`
   atómico (`aperturas + 1`, `coalesce(primera_apertura, now())`, `ultima_apertura = now()`).
-- **RPC `video_bienvenida_marcar_enviado(p_codigo text)`:**
-  `enviado_at = coalesce(enviado_at, now())`.
+- **RPC `video_bienvenida_marcar_enviado(p_codigo text, p_wamid text)`:**
+  `enviado_at = coalesce(enviado_at, now())`, `wamid = p_wamid`.
+- **RPC `video_bienvenida_tomar_respaldo(p_wamid text) returns table(contact_id uuid, nombre text)`:**
+  `UPDATE … SET envio_fallido_at = now(), respaldo_at = now() WHERE wamid = p_wamid AND
+  respaldo_at IS NULL RETURNING …`. Es atómico: un aviso repetido de Meta no devuelve nada.
+- `obtener_o_crear` verifica, después de unir, que `anon_identity.contact_id = p_contact`
+  y deja `RAISE WARNING` si no coincide.
 - **Permisos de las tres RPC:** `REVOKE ALL … FROM PUBLIC, anon, authenticated` y
   `GRANT EXECUTE … TO service_role`. Solo las llama el servidor.
 - **Migración:** `20261128000001_video_bienvenida.sql`. Antes de crearla, revisar el
@@ -173,19 +181,40 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
   - `PLANTILLAS_CON_VIDEO`;
   - `parametrosDelEnvio(plantilla, nombre, url, codigo)`, que devuelve
     `{ bodyParams, urlButtonParam }` o `null`;
-  - `esRechazoDePlantilla(error)`: `true` para los códigos 132000–132999 (plantilla
-    pausada, deshabilitada o inexistente) y para 131049 / 131050 (frenos de marketing).
+  - `esRechazoDePlantilla(codigo)`: `true` para los códigos 132000–132999, que Meta
+    devuelve en el mismo envío (`errorCode` de `sendWhatsappTemplate`). Por ejemplo:
+    pausada 132015, deshabilitada 132016, no existe 132001. 132000 y 132012 son errores
+    nuestros de parámetros: hacen la vuelta atrás igual, pero con `console.error`.
+    - Los límites de volumen (131048, 131056, 130429, 80007) quedan fuera de ese rango, así
+      que siguen reintentando.
+    - Los frenos de marketing (131049 y 131050) **no** llegan en el envío: Meta los avisa
+      minutos después por el webhook de estados (ver D3b).
 - En `primerWhatsappDeTasacion`, si la plantilla vigente está en `PLANTILLAS_CON_VIDEO`:
   1. `obtenerOCrearEnlace` (`lib/video-bienvenida/enlaces.ts`, llama a la RPC). Si falla →
      paso 4.
   2. Envío con `bodyParams: [nombre, url]` y `urlButtonParam: codigo`.
-  3. Si Meta acepta → `marcar_enviado`. Si responde `esRechazoDePlantilla` → paso 4.
+  3. Si Meta acepta → `marcar_enviado(codigo, wamid)` en **best-effort**: con try/catch y
+     aviso por consola, y nunca lanza. Si lanzara, la cola reintentaría y el WhatsApp saldría
+     dos veces. Si Meta responde `esRechazoDePlantilla` → paso 4.
      Cualquier otro error se propaga como hoy (los límites de volumen siguen reintentando
      con la misma plantilla).
   4. Vuelta atrás: `tasacion_llamada_v1` con `[nombre]`, en el mismo intento. Queda
      visible en `whatsapp_messages.template_name` y deja `console.warn` con el motivo.
 - El mensaje cierra con "Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar."
   (decisión del dueño): lo lee todo el que lo recibe, aunque no abra la página.
+
+### D3b. Freno de marketing avisado tarde (webhook de estados)
+
+- Mismo patrón que el respaldo de la encuesta (`lib/visitas/encuesta/respaldo.ts`):
+  - `lib/video-bienvenida/respaldo.ts` (puro): `decidirRespaldo({ estado, codigoError,
+    plantillaDelMensaje })` → mandar solo si `estado='failed'`, el código es 131049 o 131050
+    y la plantilla está en `PLANTILLAS_CON_VIDEO`.
+  - En `app/api/webhooks/whatsapp/route.ts`, junto al respaldo de la encuesta:
+    `tomar_respaldo(wamid)`. Si devuelve el contacto, manda `tasacion_llamada_v1` con
+    `[nombre]`.
+  - Como mucho UNA llamada a Meta, con techo de 8 s, igual que la encuesta.
+- El panel cuenta "recibió el enlace" solo con `enviado_at` y sin `envio_fallido_at`. La
+  marca de la cartera no dice "No abrió el video" si el envío falló.
 
 ### D4. Página `app/t/[codigo]`
 
@@ -203,15 +232,23 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
   - titular y subtítulo centrados.
 - **Contenido** en `lib/video-bienvenida/contenido.ts`: `titular(nombre)`, `subtitulo`,
   `video: { src, poster, trackKey }`, `paula`, `whatsappEmpresa`.
-- **Reproductor:** `FunnelClickToPlayVideo` con `trackKey="bienvenida-tasacion-v1"`,
-  `funnel={null}`, `context="bienvenida"` y dos props nuevas:
+- **Reproductor:** `FunnelClickToPlayVideo` con `trackKey="bienvenida-tasacion-v1"`, sin
+  `funnel` (el envío ya manda `null`), `context="bienvenida"`, **`vslBar`** (la barra que ya
+  existe: no muestra la duración y no deja adelantar) y dos props nuevas:
   - `anonId="bv:<codigo>"`: no lee ni crea la cookie `df_anon`;
   - `onSegundosReproducidos(n)`: avisa cada segundo de reproducción real, contado con
     `timeupdate` mientras no está en pausa y sin sumar saltos de más de 1,5 s.
 
   Sin las props, el componente es idéntico al de hoy (test).
-- **No se muestra la duración.** El póster no lleva el chip de minutos. El reproductor
-  nativo, una vez en marcha, muestra su propia barra.
+- **No se muestra la duración.** El póster no lleva el chip de minutos y `vslBar` reemplaza
+  los controles nativos. La pantalla completa nativa de iOS todavía deja ver la duración y
+  adelantar: por eso todas las métricas salen de los tramos (`watched_buckets`), no de
+  `max_percent` ni de `completed`. El porcentaje visto son los tramos encendidos, y "lo
+  terminó" es tener 95 tramos o más.
+- **Medición apagada para el equipo:** si la página encuentra en el servidor una sesión
+  válida de la plataforma (`createClient` de `lib/supabase/server` y `getUser`), la renderiza
+  con `medir=false`. En ese caso no hay apertura, no se pasa `trackKey` y el bloque de Paula
+  se muestra fijo. Una franja chica avisa "Vista del equipo: esta visita no se mide".
 - **"Qué pasa ahora":**
   - `lib/video-bienvenida/mostrar-bloque.ts` (puro): visible si
     `segundosEnEstaVisita >= 30` o si `segundosPrevios >= 30`;
@@ -229,13 +266,20 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
     La respuesta entra al Inbox como cualquier mensaje entrante, y el agente de tasación
     no contesta;
   - el video va a `funnel-media/bienvenida/tasacion-v1.mp4`: 720p H.264 + AAC,
-    `+faststart`, ~110 MB. El póster es un JPG.
+    `+faststart`, ~110 MB, subido en modo resumible (TUS). El límite del proyecto es 500 MB y
+    el bucket no tiene límite propio (`file_size_limit: null`, leído el 2026-11-27). El
+    póster es un JPG.
 - **`VIDEO_KEYS`:** suma `'bienvenida-tasacion-v1'` sin `pagina` y con
   `nombreEnLinea: 'el video de bienvenida'`. Cuando llegue el video editado, la clave pasa a
   `-v2` y la `-v1` queda `retirada`.
-- **Fuera de los paneles de landings:** `get_panel_video` y `funnel_video_stats` excluyen
-  `video_key LIKE 'bienvenida-%'`. El cambio va en la misma migración, y hay un test de la
-  parte de JS que filtra.
+- **Fuera de los paneles de landings:** alcanza con el embudo nulo.
+  - `LandingsVideo.tsx` deja solo tasación y clase.
+  - `funnel_video_stats` convierte el nulo en `'otro'` y la ruta filtra por embudo.
+  - Las cohortes solo leen claves con `pagina`.
+
+  **No se toca SQL.** Un test de JS fija que filas con embudo nulo no entran en
+  `/embudos`.
+- `video-keys.test.ts` amplía su recorrido a `app/t/`.
 
 ### D5. Línea de tiempo
 
@@ -268,7 +312,8 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
   - llamadas (`contact_activities`, `kind='call'`, `voided_at IS NULL`).
 - **"Atendió":** `call_outcome IN ('agendo','volver_a_llamar','no_interesa')`.
 - **"Coordinó":** un proceso del embudo creado desde `enviado_at` con `scheduled_at` no nulo
-  o una `stage` de Coordinada en adelante.
+  o `stage IN ('scheduled','not_visited','visited','appraisal_sent','followup','captured')`
+  (valores de `20260506000001:29-40`). Un `lost` cuenta solo si tiene `scheduled_at`.
 - **Grupos:**
   - "Vio el video": `playback_started`;
   - "Abrió sin mirar": aperturas sin play;
@@ -291,7 +336,10 @@ Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
 
 ## Risks / Trade-offs
 
-- **Meta reclasifica la plantilla:** se cubre con la regla de D1 y la vuelta atrás de D3.
+- **Meta reclasifica la plantilla:** se cubre con la regla de D1, la vuelta atrás de D3 y el
+  respaldo tardío de D3b.
+- **El equipo abre el enlace:** no cuenta, porque la medición se apaga con sesión de la
+  plataforma.
 - **Enlace reenviado:** lo que mire otra persona suma a Ana. Se acepta: sigue siendo
   interés de ese hogar.
 - **Navegadores dentro de apps que cortan el video:** el latido y el respaldo cubren lo

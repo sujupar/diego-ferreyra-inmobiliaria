@@ -28,7 +28,7 @@ MUST conservar el mismo enlace.
 
 #### Scenario: Enlace corto en el mensaje
 - **WHEN** se mira el enlace dentro del WhatsApp en un celular de 390 px
-- **THEN** ocupa un solo renglón (`inmodf.com.ar/t/` y 10 caracteres)
+- **THEN** se ve completo, sin salirse del globo del mensaje, y se puede tocar
 
 ### Requirement: El primer WhatsApp entrega el video
 Cuando la plantilla vigente de tasación es una plantilla con video, el primer WhatsApp
@@ -55,10 +55,11 @@ el mensaje.
 - **THEN** el agente de IA de tasación no le responde, porque la plantilla con video es de las que solo avisan
 
 ### Requirement: Nadie se queda sin el primer mensaje
-Si el enlace no se puede crear, o si Meta rechaza la plantilla con video por estar pausada,
-deshabilitada o frenada por límite de marketing, el sistema MUST mandar en el mismo intento
-`tasacion_llamada_v1`. Esa vuelta atrás MUST quedar visible en `whatsapp_messages`
-(plantilla `tasacion_llamada_v1`) y el enlace, si existe, sin marca de enviado.
+Si el enlace no se puede crear, o si Meta rechaza en el envío la plantilla con video
+(pausada, deshabilitada, inexistente), el sistema MUST mandar `tasacion_llamada_v1` en el
+mismo intento. Si Meta avisa después que el mensaje con video no se entregó por freno de
+marketing, MUST mandarla una sola vez al recibir ese aviso. Cada vuelta atrás MUST quedar
+visible en `whatsapp_messages`.
 
 #### Scenario: Falla el enlace
 - **WHEN** la base no responde al crear el enlace de Ana
@@ -68,6 +69,18 @@ deshabilitada o frenada por límite de marketing, el sistema MUST mandar en el m
 - **WHEN** Meta responde que la plantilla con video está pausada
 - **THEN** Ana recibe `tasacion_llamada_v1` en ese mismo intento, sin esperar reintentos
 
+#### Scenario: Freno de marketing avisado después
+- **WHEN** Meta aceptó el mensaje con video y minutos después avisa que falló con 131049
+- **THEN** Ana recibe `tasacion_llamada_v1` una sola vez, y su enlace no cuenta como recibido en el panel
+
+#### Scenario: Aviso repetido
+- **WHEN** Meta repite el aviso de ese mismo fallo
+- **THEN** no se manda un segundo mensaje
+
+#### Scenario: No se duplica el mensaje
+- **WHEN** Meta aceptó el mensaje con video pero falla la marca de enviado en la base
+- **THEN** el trabajo termina bien y Ana recibe un solo mensaje
+
 #### Scenario: Otro error de envío
 - **WHEN** Meta responde un límite de volumen pasajero
 - **THEN** se reintenta como hoy, con la misma plantilla con video
@@ -76,7 +89,7 @@ deshabilitada o frenada por límite de marketing, el sistema MUST mandar en el m
 La página SHALL mostrar el logo de Diego Ferreyra centrado arriba; debajo, centrados, el
 titular "{Nombre}, antes de tu tasación mirá este caso" y el subtítulo; después el video,
 que arranca solo cuando la persona toca play; y un botón chico "Escribinos por WhatsApp".
-La duración del video MUST NOT mostrarse fuera del propio reproductor.
+La duración del video MUST NOT mostrarse y el reproductor MUST NOT permitir adelantar.
 
 #### Scenario: Celular
 - **WHEN** Ana abre su enlace en un celular de 390 px
@@ -87,8 +100,8 @@ La duración del video MUST NOT mostrarse fuera del propio reproductor.
 - **THEN** ve el mismo contenido centrado, con el video de no más de 960 px de ancho
 
 #### Scenario: Sin duración
-- **WHEN** Ana mira la portada del video antes de tocar play
-- **THEN** no aparece cuánto dura el video
+- **WHEN** Ana mira la portada y después el video en marcha
+- **THEN** no aparece cuánto dura el video; la barra avanza sin números y no se puede arrastrar
 
 #### Scenario: Escribir
 - **WHEN** Ana toca "Escribinos por WhatsApp"
@@ -149,12 +162,17 @@ que no existe SHALL mostrar la página de "no encontrado", sin datos de nadie.
 
 ### Requirement: Qué se mide de cada persona
 Por cada enlace el sistema SHALL guardar la primera apertura, la última y la cantidad de
-aperturas; si la persona tocó play; los minutos vistos, contados como tramos distintos del
-video que se reprodujeron; el porcentaje más alto alcanzado; y si terminó el video.
+aperturas; si la persona tocó play; y los tramos distintos del video que se reprodujeron.
+Los minutos vistos, el porcentaje y "lo terminó" MUST salir de esos tramos, nunca de la
+posición más lejana: adelantar no suma.
 
 #### Scenario: Abre y mira
 - **WHEN** Ana abre el enlace, toca play y mira de corrido los primeros 8 minutos y medio de un video de 13:30
 - **THEN** su enlace tiene 1 apertura, play sí, alrededor de 8:30 vistos y 63 % como máximo
+
+#### Scenario: Adelanta en pantalla completa
+- **WHEN** Ana mira 1 minuto y desde la pantalla completa del celular salta al final
+- **THEN** su porcentaje refleja alrededor de 1 minuto visto y no cuenta como que lo terminó
 
 #### Scenario: Cierra el navegador de golpe
 - **WHEN** Ana cierra WhatsApp con el video corriendo en el minuto 6
@@ -187,6 +205,15 @@ importar el dispositivo ni lo que ese navegador haya visitado antes.
 #### Scenario: Abre sin play
 - **WHEN** Jorge abre el enlace dos veces y nunca toca play
 - **THEN** su enlace tiene 2 aperturas y play no
+
+### Requirement: Las visitas del equipo no se miden
+Si quien abre el enlace tiene una sesión iniciada en la plataforma, la página MUST NOT
+registrar la apertura ni el video, y SHALL avisarlo con "Vista del equipo: esta visita no se
+mide".
+
+#### Scenario: Paula revisa el enlace
+- **WHEN** Paula copia el enlace de Ana desde la ficha y lo abre con su sesión iniciada
+- **THEN** ve la página con el aviso, y Ana sigue con las mismas aperturas y minutos
 
 ### Requirement: El video de bienvenida no se mezcla con el de las landings
 Las estadísticas de video que ya existen (el panel de video de `/metrics` y los bloques de

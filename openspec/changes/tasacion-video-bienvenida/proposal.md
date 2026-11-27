@@ -97,7 +97,7 @@ estudian la asistencia a llamadas coinciden en tres cosas:
 - **Código:**
   - el trabajo `whatsapp` de la cola del embudo (`primerWhatsappDeTasacion`) crea o reusa
     el enlace y lo manda en la plantilla;
-  - ruta pública `app/video/[codigo]`;
+  - ruta pública `app/t/[codigo]`;
   - API pública de apertura;
   - una clave nueva en `VIDEO_KEYS`;
   - lecturas para la ficha, la cartera y el panel.
