@@ -13,6 +13,7 @@ import 'server-only'
  * `crm_ultimos_contactos` ni `contact_activities`. Cada fila se arma campo por campo: un
  * dato con otra forma tira un error que se ve, no una pantalla con huecos.
  */
+import { marcaVideo, type MarcaVideo } from '@/lib/video-bienvenida/marca'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { rpcPaginado } from './rpc-paginado'
 import {
@@ -311,6 +312,40 @@ function asesoresDe(filas: { asesor: AsesorDeLista | null }[]): AsesorDeLista[] 
   return [...m.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
 }
 
+/**
+ * Marca del video de bienvenida por persona (tasacion-video-bienvenida, D6). Misma forma que
+ * `leerUltimos`: RPC paginada con los ids en el cuerpo. Es una fuente OPCIONAL: si falla, la
+ * cartera sale igual y sin marcas (spec "La marca no rompe la cartera").
+ */
+async function leerVideosBienvenida(cliente: SupabaseClient, contactos: string[], senal: AbortSignal): Promise<Map<string, MarcaVideo>> {
+  const marcas = new Map<string, MarcaVideo>()
+  if (contactos.length === 0) return marcas
+  try {
+    const r = await conPlazo(
+      rpcPaginado<Record<string, unknown>>(cliente, 'cartera_video_bienvenida', { p_contactos: contactos }, ['contacto_id'], {
+        senal,
+        maxPaginas: TOPE_FILAS / PAGINA,
+      }),
+      senal,
+    )
+    if (r.error) throw new Error(r.error)
+    for (const f of r.filas) {
+      const id = textoONulo(f, 'contacto_id')
+      if (!id) continue
+      const aperturas = typeof f.aperturas === 'number' ? f.aperturas : 0
+      const marca = marcaVideo(
+        { enviadoAt: textoONulo(f, 'enviado_at'), envioFallidoAt: textoONulo(f, 'envio_fallido_at'), aperturas },
+        { playbackStarted: f.playback_started === true, watchedBuckets: textoONulo(f, 'watched_buckets') },
+      )
+      if (marca) marcas.set(id, marca)
+    }
+  } catch (e) {
+    console.error('[crm] marca del video de bienvenida (la cartera sigue sin marcas):', e)
+    marcas.clear()
+  }
+  return marcas
+}
+
 /** Último contacto por persona, por la RPC paginada (los ids van en el cuerpo, no en la URL). */
 async function leerUltimos(
   cliente: SupabaseClient,
@@ -488,7 +523,8 @@ export async function cargarCartera(
     // Tanda 2, en paralelo: el último contacto de las personas de la vista y la lectura (d).
     const t2 = Date.now()
     const idsContactos = [...new Set(procesos.flatMap((p) => (p.contacto ? [p.contacto.id] : [])))]
-    const [ultimos, cerradas] = await Promise.all([
+    const idsSolicitudes = [...new Set(procesos.flatMap((p) => (p.contacto && etapaCRM(p) === 'solicitud' ? [p.contacto.id] : [])))]
+    const [ultimos, cerradas, videos] = await Promise.all([
       leerUltimos(cliente, idsContactos, senal),
       // (d) solo sirve para juntar copias de distintas coordinadoras, y eso pasa solo en la
       // vista del dueño (`deCualquiera`); en las demás cada una ve las suyas (auditoría, B1).
@@ -498,6 +534,7 @@ export async function cargarCartera(
             console.error('[crm] tareas cerradas de la coordinación:', e)
             return 'error' as const
           }),
+      leerVideosBienvenida(cliente, idsSolicitudes, senal),
     ])
     const tanda2Ms = Date.now() - t2
 
@@ -509,6 +546,9 @@ export async function cargarCartera(
     const ultimosOError = ultimoContactoOError(ultimos)
 
     const filas = armarFilasCartera({ vista, procesos, tareas, tareasCerradas, ultimos: ultimosOError, perfiles, ahora })
+    for (const f of filas) {
+      if (f.abierto && f.etapa === 'solicitud' && f.contactoId && videos.has(f.contactoId)) f.video = videos.get(f.contactoId)
+    }
 
     const verComoPermitido = (quien.role === 'admin' || quien.role === 'dueno') && !mirando
     const opcionesVerComo = verComoPermitido ? opcionesVerComoDe(perfiles) : null

@@ -62,6 +62,10 @@ function tablas(extra: Partial<Tablas> = {}): Tablas {
       { id: 'v1', contact_id: C, video_key: 'hero-tasacion', max_percent: 62, first_at: '2026-11-20T10:04:00Z', playback_started: true },
       { id: 'v2', contact_id: OTRO, video_key: 'hero-tasacion', max_percent: 10, first_at: '2026-11-20T10:04:00Z', playback_started: true },
     ],
+    video_bienvenida_enlaces: [
+      { codigo: 'k7Hq2mXb9T', contact_id: C, aperturas: 1, primera_apertura: '2026-11-20T10:30:00Z', ultima_apertura: '2026-11-20T10:30:00Z' },
+      { codigo: 'zzzzHq2mXb', contact_id: OTRO, aperturas: 3, primera_apertura: '2026-11-20T11:00:00Z', ultima_apertura: '2026-11-21T11:00:00Z' },
+    ],
     ...extra,
   }
 }
@@ -79,7 +83,7 @@ describe('leerEventosDelSistema', () => {
   it('trae solo lo de este contacto, de cada fuente', async () => {
     const r = await leer()
     expect(r.fuentesConError).toEqual([])
-    expect(ids(r)).toEqual(['etapa:2', 'registro:s1', 'tarea:t1:completada', 'tarea:t1:creada', 'video:v1', 'whatsapp:w1'].sort())
+    expect(ids(r)).toEqual(['enlace_video:k7Hq2mXb9T', 'etapa:2', 'registro:s1', 'tarea:t1:completada', 'tarea:t1:creada', 'video:v1', 'whatsapp:w1'].sort())
     const etapa = r.eventos.find((e) => e.id === 'etapa:2')!
     expect(etapa.autor).toEqual({ id: PAULA, nombre: 'Paula' })
     expect(r.eventos.find((e) => e.id === 'registro:s1')!.detalle).toBe('Anuncio de Meta · AD04 - VID08')
@@ -124,7 +128,21 @@ describe('leerEventosDelSistema', () => {
   it('perfiles, contacto y procesos se piden en el primer viaje, no encadenados', async () => {
     await leer()
     const orden = base.consultas.map((c) => c.tabla)
-    expect(orden.slice(0, 5).sort()).toEqual(['contacts', 'deals', 'funnel_lead_submissions', 'profiles', 'video_view_state'])
+    expect(orden.slice(0, 6).sort()).toEqual(['contacts', 'deals', 'funnel_lead_submissions', 'profiles', 'video_bienvenida_enlaces', 'video_view_state'])
+  })
+
+  // tasacion-video-bienvenida (D5)
+  it('suma la apertura del enlace del video de bienvenida de ESTE contacto', async () => {
+    const r = await leer()
+    const aperturas = r.eventos.filter((e) => e.clase === 'enlace_video')
+    expect(aperturas).toEqual([expect.objectContaining({ id: 'enlace_video:k7Hq2mXb9T', fecha: '2026-11-20T10:30:00Z' })])
+  })
+
+  it('si falla la lectura del enlace, el resto de la historia se ve igual', async () => {
+    usar(tablas(), { fallar: ['video_bienvenida_enlaces'] })
+    const r = await leer()
+    expect(r.fuentesConError).toEqual(['enlace_video'])
+    expect(r.eventos.some((e) => e.clase === 'video')).toBe(true)
   })
 
   it('una fuente que falla no tapa las demás', async () => {

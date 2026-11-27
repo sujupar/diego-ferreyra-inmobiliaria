@@ -28,6 +28,10 @@ export async function middleware(request: NextRequest) {
     // responde un comprador sin cuenta. Mismo criterio que `/v/`: la seguridad es el token (128
     // bits), no la sesión. Con barra final: `/encuestas` NO es pública.
     request.nextUrl.pathname.startsWith('/encuesta/') ||
+    // `/t/<código>` es la página del video de bienvenida que llega por WhatsApp a quien pidió una
+    // tasación (change tasacion-video-bienvenida). La seguridad es el código (57^10). Con barra
+    // final: `/tasks` NO es pública.
+    request.nextUrl.pathname.startsWith('/t/') ||
     publicFunnelPaths.some((p) => request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p + '/'))
   ) {
     // Rutas públicas: pasan sin tocar la sesión. Hasta el 2026-09-19 acá se dejaba

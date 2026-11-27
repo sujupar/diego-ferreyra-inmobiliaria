@@ -111,7 +111,9 @@ export const API_PUBLICAS: readonly RutaPublica[] = [
         motivo:
             'Encuesta post-visita (`/api/public/encuesta/<token>`: PATCH por paso, POST final, ' +
             '`/avisos` y `/regalo`), que responde un comprador sin cuenta desde `/encuesta/<token>`. ' +
-            'La seguridad es el token, validado por forma antes de tocar la base, más el límite por link.',
+            'La seguridad es el token, validado por forma antes de tocar la base, más el límite por link. ' +
+            'También la apertura del video de bienvenida (`POST /api/public/video/<código>`), que registra ' +
+            'quien abre su enlace desde `/t/<código>`: valida el código por forma y siempre responde lo mismo.',
     },
 
     // ── Alta de usuarios: cerrar esto deja a la gente afuera del CRM ──

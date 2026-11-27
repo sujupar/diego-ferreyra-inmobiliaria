@@ -16,6 +16,7 @@ import { leerJson } from '@/lib/crm/leer-json'
 import type { ActividadDeFicha } from '@/lib/crm/tipos'
 import { Actividad } from './Actividad'
 import { AvisoGuardado } from './AvisoGuardado'
+import { EnlaceVideoBienvenida } from './EnlaceVideoBienvenida'
 import { BloqueLista } from './BloqueLista'
 import { BotonMas } from './BotonMas'
 import { Composer, type PestanaComposer } from './Composer'
@@ -456,6 +457,7 @@ export function FichaContacto({
             altas={new Map((datos?.procesos ?? []).map((p) => [p.id, p.creado]))}
           />
           {datos && <BloqueLista ficha={datos} ahora={ahora} onDeshacerPerdido={deshacerPerdido} />}
+          {datos && <EnlaceVideoBienvenida contactoId={contactoId} />}
         </div>
       </div>
 

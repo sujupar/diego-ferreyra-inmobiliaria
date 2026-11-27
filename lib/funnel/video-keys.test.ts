@@ -12,6 +12,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { VIDEO_KEYS, videoLabel, ordenarClavesDeVideo, clavesVigentes } from './video-keys'
+import { CONTENIDO } from '@/lib/video-bienvenida/contenido'
 
 const RAIZ = join(__dirname, '..', '..')
 
@@ -28,12 +29,15 @@ function clavesEnLasLandings(): { clave: string; archivo: string }[] {
     }
   }
   recorrer(join(RAIZ, 'app', '(funnels)'))
-  return archivos.flatMap((a) =>
+  const enLandings = archivos.flatMap((a) =>
     [...sinComentarios(readFileSync(a, 'utf8')).matchAll(/\btrackKey=(?:"([^"]+)"|'([^']+)'|\{[^}]*\})/g)].map((m) => ({
       clave: m[1] ?? m[2] ?? '(dinámica)',
       archivo: relative(RAIZ, a),
     })),
   )
+  // El video de bienvenida (app/t) toma su clave del módulo de contenido, no de un literal: se
+  // suma de ahí para que también la vigile el catálogo.
+  return [...enLandings, { clave: CONTENIDO.video.trackKey, archivo: 'lib/video-bienvenida/contenido.ts' }]
 }
 
 describe('claves de video de las landings', () => {

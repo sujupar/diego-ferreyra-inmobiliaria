@@ -254,7 +254,7 @@ describe('GET — línea de tiempo completa (crm-linea-de-tiempo)', () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(acts(body)).toHaveLength(1)
-    expect(body.fuentes_con_error).toEqual(['registro', 'etapa', 'tarea', 'whatsapp', 'video'])
+    expect(body.fuentes_con_error).toEqual(['registro', 'etapa', 'tarea', 'whatsapp', 'video', 'enlace_video'])
     err.mockRestore()
   })
 

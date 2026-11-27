@@ -1,0 +1,32 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false },
+  "include": [
+    "next-env.d.ts",
+    "types/database.types.ts",
+    "lib/video-bienvenida/**/*.ts",
+    "lib/funnel/side-effect-handlers.ts",
+    "lib/funnel/video-keys.ts",
+    "lib/ai/tasacion-agent.ts",
+    "lib/crm/linea-de-tiempo.ts",
+    "lib/supabase/linea-de-tiempo*.ts",
+    "lib/supabase/cartera.ts",
+    "lib/metrics/panel/video-bienvenida*.ts",
+    "components/funnel/FunnelClickToPlayVideo.tsx",
+    "components/video-bienvenida/**/*.tsx",
+    "components/metrics/panel/VideoBienvenida.tsx",
+    "components/metrics/panel/PanelNegocio.tsx",
+    "app/api/metrics/video-bienvenida/route.ts",
+    "app/api/contacts/[id]/video-bienvenida/route.ts",
+    "components/crm/ficha/EnlaceVideoBienvenida.tsx",
+    "app/t/**/*.ts",
+    "app/t/**/*.tsx",
+    "app/api/public/video/**/*.ts",
+    "app/api/contacts/[id]/video-bienvenida/**/*.ts",
+    "middleware.ts",
+    "app/api/webhooks/whatsapp/route.ts",
+    "scripts/apply-video-bienvenida-pg.ts",
+    "scripts/create-whatsapp-template-tasacion-video.ts",
+    "scripts/probar-bienvenida-envio.ts"
+  ]
+}

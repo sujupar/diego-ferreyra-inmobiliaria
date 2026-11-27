@@ -5,6 +5,7 @@ import {
   eventosDeRegistro,
   eventosDeTareas,
   eventosDeVideo,
+  eventoDeAperturaDeEnlace,
   eventosDeWhatsapp,
   nombreEtapaHistorial,
   recortarTexto,
@@ -356,6 +357,40 @@ describe('eventosDeVideo', () => {
   })
   it('sin reproducir no aparece', () => {
     expect(eventosDeVideo([v({ playback_started: false })])).toEqual([])
+  })
+
+  // tasacion-video-bienvenida (D5): el video de bienvenida se nombra así y su porcentaje sale de
+  // los TRAMOS vistos (adelantar no suma), con el detalle "8:30 de 13:30".
+  it('video de bienvenida: nombre propio, % por tramos y minutos vistos', () => {
+    const r = eventosDeVideo([
+      v({ video_key: 'bienvenida-tasacion-v1', max_percent: 100, duration_s: 810, watched_buckets: '1'.repeat(63) + '0'.repeat(37) }),
+    ])
+    expect(r).toEqual([
+      expect.objectContaining({ titulo: 'Vio el video de bienvenida · 63 %', detalle: '8:30 de 13:30' }),
+    ])
+  })
+
+  it('video de bienvenida sin tramos todavía: 0 % y sin detalle inventado', () => {
+    const r = eventosDeVideo([v({ video_key: 'bienvenida-tasacion-v1', max_percent: 40, duration_s: null, watched_buckets: null })])
+    expect(r[0]).toMatchObject({ titulo: 'Vio el video de bienvenida · 0 %', detalle: null })
+  })
+})
+
+describe('eventoDeAperturaDeEnlace', () => {
+  const ahora = new Date('2026-11-30T15:00:00Z')
+  it('una apertura: título sin detalle, en la fecha de la primera', () => {
+    expect(eventoDeAperturaDeEnlace({ codigo: 'k7Hq2mXb9T', aperturas: 1, primera_apertura: '2026-11-30T13:05:00Z', ultima_apertura: '2026-11-30T13:05:00Z' }, ahora))
+      .toEqual({
+        id: 'enlace_video:k7Hq2mXb9T', clase: 'enlace_video', titulo: 'Abrió el enlace del video de bienvenida',
+        detalle: null, autor: null, fecha: '2026-11-30T13:05:00Z',
+      })
+  })
+  it('varias aperturas: un solo evento con "N veces · la última …"', () => {
+    const e = eventoDeAperturaDeEnlace({ codigo: 'k7Hq2mXb9T', aperturas: 2, primera_apertura: '2026-11-27T13:05:00Z', ultima_apertura: '2026-11-28T13:05:00Z' }, ahora)
+    expect(e?.detalle).toBe('2 veces · la última hace 2 días')
+  })
+  it('sin aperturas no hay evento', () => {
+    expect(eventoDeAperturaDeEnlace({ codigo: 'k7Hq2mXb9T', aperturas: 0, primera_apertura: null, ultima_apertura: null }, ahora)).toBeNull()
   })
 })
 

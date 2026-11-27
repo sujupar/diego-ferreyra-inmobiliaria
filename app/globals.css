@@ -1057,3 +1057,10 @@ html:has(.landing-root) {
 @media (prefers-reduced-motion: reduce) {
   .ficha-resaltado { animation: none; }
 }
+
+/* Video de bienvenida (app/t/[codigo]): el bloque "Qué pasa ahora" aparece a los 30 s de video.
+   Se usa con `motion-safe:`, así que con movimiento reducido aparece sin animación. */
+@keyframes bv-aparecer {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}

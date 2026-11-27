@@ -87,7 +87,13 @@ const ETAPAS_ABIERTAS = ['request', 'scheduled', 'followup']
 const PLANTILLAS_QUE_CONVERSAN = new Set(['tasacion_coordinar_util', 'tasacion_coordinar_v2'])
 
 /** Las que solo AVISAN algo y no esperan respuesta. Listadas para no confundir "no conversa" con "no la conozco". */
-const PLANTILLAS_QUE_SOLO_AVISAN = new Set(['tasacion_llamada_v1'])
+const PLANTILLAS_QUE_SOLO_AVISAN = new Set([
+  'tasacion_llamada_v1',
+  // Video de bienvenida (change tasacion-video-bienvenida): entregan el enlace al video y
+  // avisan que llama Paula. No preguntan nada.
+  'tasacion_video_caso_v1',
+  'tasacion_video_sobria_v1',
+])
 
 export type ModoDeLaPlantilla = 'conversa' | 'solo_avisa' | 'sin_plantilla' | 'desconocida'
 
