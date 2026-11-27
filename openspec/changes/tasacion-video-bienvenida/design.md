@@ -98,7 +98,7 @@ Antes de coordinar la visita, mirá este caso: la dueña de una casa terminó co
 
 Diego te lo cuenta acá: {{2}}
 
-Seguimos en contacto.
+Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
 ```
 
 Cuerpo de respaldo:
@@ -109,7 +109,7 @@ Antes de coordinar la visita, Diego Ferreyra te comparte un video donde cuenta, 
 
 Lo ves acá: {{2}}
 
-Seguimos en contacto.
+Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.
 ```
 
 - **Regla de elección.** `scripts/create-whatsapp-template-tasacion-video.ts` crea las dos y,
@@ -184,8 +184,8 @@ Seguimos en contacto.
      con la misma plantilla).
   4. Vuelta atrás: `tasacion_llamada_v1` con `[nombre]`, en el mismo intento. Queda
      visible en `whatsapp_messages.template_name` y deja `console.warn` con el motivo.
-- La línea "Te llamará Paula" queda en la página (D4) y no en el mensaje. Ver Open
-  Questions.
+- El mensaje cierra con "Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar."
+  (decisión del dueño): lo lee todo el que lo recibe, aunque no abra la página.
 
 ### D4. Página `app/t/[codigo]`
 
@@ -318,9 +318,6 @@ Seguimos en contacto.
 
 ## Open Questions
 
-- **¿Sumar al final del mensaje la línea "Te va a llamar Paula desde el +54 9 11
-  2292-6434"?** El auditor lo recomienda por dos razones: es lo que más ataca el "BUZÓN" (en
-  el mensaje lo ve todo el que lo recibe, aunque no abra la página) y ancla el mensaje a la
-  solicitud, lo que ayuda a que Meta lo deje en Utilidad. El dueño había pedido no avisar
-  la llamada de entrada. **Pendiente del dueño.**
+- ~~¿Sumar la línea de Paula al mensaje?~~ **Resuelto por el dueño (2026-11-27): sí.**
+  Reemplaza a "Seguimos en contacto." en las dos plantillas.
 - **Video editado:** cuando llegue, `tasacion-v2.mp4`, clave `-v2` y la `-v1` retirada.

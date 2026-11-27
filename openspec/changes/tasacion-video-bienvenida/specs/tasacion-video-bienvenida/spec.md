@@ -40,7 +40,7 @@ el mensaje.
 
 #### Scenario: Envío normal
 - **WHEN** Ana se registra con un celular válido y la plantilla vigente es la del video
-- **THEN** recibe "Hola Ana, recibimos tu solicitud de tasación." con su enlace en el texto y en el botón, y su enlace queda marcado como enviado
+- **THEN** recibe "Hola Ana, recibimos tu solicitud de tasación.", su enlace en el texto y en el botón, y al final "Te va a llamar Paula desde el +54 9 11 2292-6434 para coordinar.", y su enlace queda marcado como enviado
 
 #### Scenario: Plantilla sin video vigente
 - **WHEN** la plantilla vigente sigue siendo `tasacion_llamada_v1`

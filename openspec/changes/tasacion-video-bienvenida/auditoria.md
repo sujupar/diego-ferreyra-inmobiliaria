@@ -16,7 +16,7 @@
 | 8 | Media | Crear el enlace y unir `bv:` no era atómico | RPC `obtener_o_crear` que siempre llama a `link_anon_to_contact` (idempotente) |
 | 9 | Media | El video nuevo contaminaba `get_panel_video` y `/embudos` | `funnel=null` y exclusión de `bienvenida-%` en los dos lectores (D4, tareas 2.1 y 4.7) |
 | 10 | Media | La cartera trae todo el alcance: los ids por URL desbordan la cabecera | RPC con los ids en el cuerpo, como fuente opcional (D6, spec "La marca no rompe la cartera") |
-| 11 | Media | El mensaje pierde "Te llamará Paula", y faltaba la regla para cuando las dos salen MARKETING | Regla agregada (D1). La línea de Paula queda como pregunta al dueño (Open Questions) |
+| 11 | Media | El mensaje pierde "Te llamará Paula", y faltaba la regla para cuando las dos salen MARKETING | Regla agregada (D1). Línea de Paula sumada al mensaje (el dueño dijo que sí, 2026-11-27) |
 | 12 | Media | `PLANTILLAS_QUE_CONVERSAN` no se exporta, y una plantilla desconocida avisa en cada mensaje | Las dos van a `PLANTILLAS_QUE_SOLO_AVISAN`, con test de `modoDePlantilla` |
 | 13 | Media | "Coordinó" solo por `scheduled_at` se quedaba corto | `scheduled_at` o una etapa de Coordinada en adelante, en procesos creados desde el envío (D7) |
 | 14 | Media | "Recibió el enlace" no tenía dato | Columna `enviado_at`, que se escribe cuando Meta acepta |

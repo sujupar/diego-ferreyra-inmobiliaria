@@ -22,7 +22,7 @@
 
 - [x] 1.1 Propuesta con las cinco decisiones del dueño ("ok a las 5", 2026-11-27)
 - [x] 1.2 Specs y diseño; `openspec validate tasacion-video-bienvenida --strict` pasa
-- [ ] 1.3 Maqueta de la página y del mensaje (https://claude.ai/artifact/PDHCvmUmoyQvjXqPfJiTxX), aprobada por el dueño
+- [x] 1.3 Maqueta (https://claude.ai/artifact/PDHCvmUmoyQvjXqPfJiTxX) aprobada por el dueño con ajustes, 2026-11-27
 - [x] 1.4 Auditoría de los artefactos (auditor 1): 22 hallazgos, todos incorporados (`auditoria.md`)
 - [ ] 1.4b Auditor 2 revisa los artefactos corregidos y la auditoría del 1
 - [ ] 1.5 Pre-flight de choques (skill `anticipating-implementation-conflicts`); anotarlo en el PR
