@@ -2649,7 +2649,7 @@ SELECT tgname FROM pg_trigger WHERE tgname = 'trg_tasks_columnas_cadencia_solo_s
 
 ## CRM — Cartera por rol: `/crm` y `/contacts` según quién mira (PR #96, 2026-11-27)
 
-Change `openspec/changes/crm-cartera-por-rol/` (proposal, maqueta aprobada, design D1–D12 +
+Change `openspec/changes/archive/2026-11-27-crm-cartera-por-rol/` (archivado; specs vigentes en `openspec/specs/crm-cartera` y `crm-sistema-diseno`) (proposal, maqueta aprobada, design D1–D12 +
 "Diferencias con lo aprobado" + Risks, tasks, `auditoria.md`). Reemplaza la pantalla vieja de
 `/crm` (tarjetas + Kanban) y la lista de `/contacts`.
 
