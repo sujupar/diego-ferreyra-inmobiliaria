@@ -67,8 +67,8 @@
 
 ## 6. Plantillas en Meta
 
-- [ ] 6.1 `scripts/create-whatsapp-template-tasacion-video.ts`: crea A y B, y después informa estado y categoría
-- [ ] 6.2 Mandarlas a aprobación; registrar la categoría que devuelva Meta
+- [x] 6.1 `scripts/create-whatsapp-template-tasacion-video.ts`: crea A y B, y después informa estado y categoría
+- [x] 6.2 Pedidas el 2026-11-27 (ids 978556478338439 y 2431256954304362), UTILITY / PENDING; registrar la categoría con la que queden aprobadas
 - [ ] 6.3 Sincronizar los cuerpos aprobados (`scripts/sincronizar-cuerpos-plantillas.ts`)
 
 ## 7. QA
