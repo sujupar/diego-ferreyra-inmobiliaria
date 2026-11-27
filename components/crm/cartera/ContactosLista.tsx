@@ -97,12 +97,24 @@ function ListaPersonas({
     <>
       <GrupoCartera
         clave="personas"
-        meta={{ titulo: 'Personas', texto: cerrados ? 'Su proceso se cerró (captado o descartado) o nunca tuvo uno.' : null, numero: null, conTasacion: true }}
+        meta={{
+          titulo: 'Personas',
+          // El asesor solo ve sus procesos: una persona puede estar acá porque el suyo lo lleva
+          // otro asesor (auditoría B3). El texto lo admite sin decir de quién es cuál.
+          texto: cerrados
+            ? conAsesor
+              ? 'Su proceso se cerró (captado o descartado) o nunca tuvo uno.'
+              : 'Su proceso se cerró (captado o descartado), nunca tuvo uno o lo lleva otro asesor.'
+            : null,
+          numero: null,
+          conTasacion: true,
+        }}
         filas={filas}
         visibles={visibles}
         alCargarMas={() => setVisibles((v) => v + DE_A)}
         modo="contactos"
         conAsesor={conAsesor}
+        sinProcesoTexto={conAsesor ? undefined : 'Sin proceso tuyo'}
         cerrados={cerrados}
         volver={volver}
         ahora={ahora}

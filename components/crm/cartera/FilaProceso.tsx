@@ -47,7 +47,9 @@ export function CabeceraFilas({ modo, conAsesor, cerrados }: { modo: ModoFila; c
       <span>{modo === 'contactos' ? 'Persona' : 'Persona y propiedad'}</span>
       <span>{modo === 'contactos' ? 'Proceso' : 'Etapa'}</span>
       <span>Último contacto</span>
-      <span>{cerrados ? 'Cierre' : 'Próximo paso'}</span>
+      {/* En Contactos, "Sin proceso abierto" mezcla cerrados (Cierre) y personas sin proceso
+          (próximo paso): la cabecera nombra las dos (auditoría B4). La tarjeta rotula por fila. */}
+      <span>{cerrados ? (modo === 'contactos' ? 'Cierre / próximo paso' : 'Cierre') : 'Próximo paso'}</span>
       {conAsesor && <span>Asesor</span>}
       <span />
     </div>
@@ -67,6 +69,7 @@ export function FilaProceso({
   volver,
   ahora,
   seleccion,
+  sinProcesoTexto = 'Sin proceso',
 }: {
   fila: FilaComun
   modo: ModoFila
@@ -78,6 +81,8 @@ export function FilaProceso({
   ahora: Date
   /** Con "Seleccionar" activo: la fila es un botón que la marca. */
   seleccion?: SeleccionFila
+  /** Texto de la persona sin proceso (Contactos del asesor: "Sin proceso tuyo", auditoría B3). */
+  sinProcesoTexto?: string
 }) {
   const tas = conTasacion ? lineaTasacion(fila, { conAsesor }, ahora) : null
   const asesorVacio = datoAsesor(fila).tipo === 'vacio'
@@ -116,7 +121,7 @@ export function FilaProceso({
         {fila.etapa ? (
           <ChipEtapa clave={fila.etapa} etiqueta={NOMBRE_ETAPA[fila.etapa]} neutro />
         ) : (
-          <span className="text-[13px] text-texto-suave">Sin proceso</span>
+          <span className="text-[13px] text-texto-suave">{sinProcesoTexto}</span>
         )}
         {modo === 'contactos' && fila.origen && NOMBRE_ORIGEN[fila.origen] && (
           <span className="text-xs text-texto-suave">{NOMBRE_ORIGEN[fila.origen]}</span>

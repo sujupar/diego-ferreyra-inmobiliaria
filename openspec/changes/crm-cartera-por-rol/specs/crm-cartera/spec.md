@@ -665,7 +665,7 @@ la ficha. Toda la fila SHALL abrir la ficha.
 
 #### Scenario: Cabecera de Contactos
 - **WHEN** se mira la lista de Contactos a 1280 px
-- **THEN** las columnas dicen "Persona", "Proceso", "Último contacto", "Próximo paso" y, salvo para el asesor, "Asesor"
+- **THEN** las columnas dicen "Persona", "Proceso", "Último contacto", "Próximo paso" y, salvo para el asesor, "Asesor"; en "Sin proceso abierto", la cuarta dice "Cierre / próximo paso"
 
 #### Scenario: Persona sin ningún proceso
 - **WHEN** una persona no tiene ningún proceso
@@ -688,6 +688,10 @@ contacto" que abre el alta de hoy.
 #### Scenario: Sin proceso abierto
 - **WHEN** la coordinadora toca "Sin proceso abierto"
 - **THEN** ve a las personas cuyo proceso se cerró o que nunca tuvieron uno, con el texto "Su proceso se cerró (captado o descartado) o nunca tuvo uno."
+
+#### Scenario: Sin proceso abierto en los Contactos del asesor
+- **WHEN** el asesor ve en sus Contactos a una persona visible para él cuyo único proceso lleva otro asesor
+- **THEN** su fila dice "Sin proceso tuyo", aparece en "Sin proceso abierto" con el texto "Su proceso se cerró (captado o descartado), nunca tuvo uno o lo lleva otro asesor.", y no se muestra nada del proceso ajeno
 
 #### Scenario: Nuevo contacto
 - **WHEN** se toca "Nuevo contacto"
