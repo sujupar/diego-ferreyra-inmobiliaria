@@ -30,6 +30,7 @@ export default defineConfig({
       'lib/supabase/contactos*.test.ts',
       'lib/supabase/actividades*.test.ts',
       'lib/supabase/linea-de-tiempo*.test.ts',
+      'lib/supabase/agenda-tareas*.test.ts',
       'app/api/contacts/**/*.test.ts',
       'app/api/appraisals/*/contact/**/*.test.ts',
       'app/api/tasks/**/*.test.ts',
