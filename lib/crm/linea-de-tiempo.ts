@@ -20,8 +20,10 @@ export interface EventoSistema {
   fallido?: boolean
 }
 
-export type ItemLinea =
-  | { tipo: 'actividad'; actividad: ActividadDeFicha }
+/** `A` es la actividad: la fila cruda en la ruta, ya armada en la respuesta. */
+type ActividadMinima = { id: string; occurred_at: string }
+export type ItemLinea<A extends ActividadMinima = ActividadDeFicha> =
+  | { tipo: 'actividad'; actividad: A }
   | { tipo: 'evento'; evento: EventoSistema }
 
 export interface CursorLinea {
@@ -281,11 +283,11 @@ export function eventosDeVideo(filas: readonly FilaVideo[]): EventoSistema[] {
 
 // ── Unir y cortar ────────────────────────────────────────────────────
 
-export function claveItem(i: ItemLinea): string {
+export function claveItem(i: ItemLinea<ActividadMinima>): string {
   return i.tipo === 'evento' ? i.evento.id : `actividad:${i.actividad.id}`
 }
 
-export function fechaItem(i: ItemLinea): string {
+export function fechaItem(i: ItemLinea<ActividadMinima>): string {
   return i.tipo === 'evento' ? i.evento.fecha : i.actividad.occurred_at
 }
 
@@ -300,14 +302,14 @@ function comparar(a: { t: number; k: string }, b: { t: number; k: string }): num
  * estrictamente anterior a él). Cada fuente tiene que haber traído hasta `limite + 1`
  * filas desde el cursor (con `<=`, no `<`): así un empate en el corte no se pierde.
  */
-export function unirYCortar(
-  listas: readonly (readonly ItemLinea[])[],
+export function unirYCortar<A extends ActividadMinima>(
+  listas: readonly (readonly ItemLinea<A>[])[],
   cursor: CursorLinea | null,
   limite: number,
-): { items: ItemLinea[]; hayMas: boolean } {
+): { items: ItemLinea<A>[]; hayMas: boolean } {
   const c = cursor ? { t: Date.parse(cursor.fecha), k: cursor.id } : null
   const vistos = new Set<string>()
-  const todos: { item: ItemLinea; t: number; k: string }[] = []
+  const todos: { item: ItemLinea<A>; t: number; k: string }[] = []
   for (const lista of listas) {
     for (const item of lista) {
       const k = claveItem(item)

@@ -176,6 +176,8 @@ export async function listarActividades(
   filtro: FiltroActividad,
   antes: string | null,
   limite: number,
+  /** Con el cursor completo (fecha + clave) se lee hasta la fecha INCLUSIVE y el empate lo corta `unirYCortar`. */
+  opciones: { inclusivo?: boolean } = {},
 ): Promise<FilaActividad[]> {
   let query = getAdmin()
     .from('contact_activities')
@@ -183,7 +185,7 @@ export async function listarActividades(
     .eq('contact_id', contactId)
     .is('voided_at', null)
     .in('kind', TIPOS_POR_FILTRO[filtro])
-  if (antes) query = query.lt('occurred_at', antes)
+  if (antes) query = opciones.inclusivo ? query.lte('occurred_at', antes) : query.lt('occurred_at', antes)
   const { data, error } = await query
     .order('occurred_at', { ascending: false })
     .order('created_at', { ascending: false })

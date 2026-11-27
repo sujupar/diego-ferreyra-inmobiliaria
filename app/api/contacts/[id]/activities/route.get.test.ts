@@ -13,6 +13,7 @@ const m = vi.hoisted(() => ({
   llamadasNoAnuladasDelContacto: vi.fn(),
   nombresDePerfiles: vi.fn(),
   tareasCreadasPor: vi.fn(),
+  leerEventosDelSistema: vi.fn(),
 }))
 
 vi.mock('@/lib/auth/require-role', () => ({
@@ -30,6 +31,8 @@ vi.mock('@/lib/supabase/actividades', () => ({
   nombresDePerfiles: m.nombresDePerfiles,
   tareasCreadasPor: m.tareasCreadasPor,
 }))
+
+vi.mock('@/lib/supabase/linea-de-tiempo', () => ({ leerEventosDelSistema: m.leerEventosDelSistema }))
 
 import { GET } from './route'
 // Next solo deja exportar los métodos desde un route.ts: el tamaño va escrito acá.
@@ -71,7 +74,12 @@ beforeEach(() => {
   m.llamadasNoAnuladasDelContacto.mockResolvedValue([])
   m.nombresDePerfiles.mockResolvedValue(new Map([['asesor-1', 'Ana Asesora'], ['coord-1', 'Cora']]))
   m.tareasCreadasPor.mockResolvedValue(new Map())
+  m.leerEventosDelSistema.mockResolvedValue({ eventos: [], fuentesConError: [] })
 })
+
+type Item = { tipo: 'actividad'; actividad: Record<string, unknown> & { id: string } } | { tipo: 'evento'; evento: Record<string, unknown> & { id: string } }
+/** Las actividades de la respuesta, en orden (la respuesta trae `items` desde crm-linea-de-tiempo). */
+const acts = (body: { items: Item[] }) => body.items.flatMap((i) => (i.tipo === 'actividad' ? [i.actividad] : [])) as any[] // eslint-disable-line @typescript-eslint/no-explicit-any
 
 describe('GET /api/contacts/[id]/activities — permisos', () => {
   it('abogado → 403 sin leer nada', async () => {
@@ -98,20 +106,20 @@ describe('GET /api/contacts/[id]/activities — permisos', () => {
     const res = await get()
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body.actividades).toHaveLength(1)
-    expect(body.actividades[0]).toMatchObject({ autor: { id: 'coord-1', nombre: 'Cora' }, puede_editar: false, puede_anular: false })
+    expect(acts(body)).toHaveLength(1)
+    expect(acts(body)[0]).toMatchObject({ autor: { id: 'coord-1', nombre: 'Cora' }, puede_editar: false, puede_anular: false })
   })
 })
 
 describe('GET — filtros y página', () => {
   it('sin filtro → "todo", sin cursor, pide una fila de más para saber si hay más', async () => {
     await get()
-    expect(m.listarActividades).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'todo', null, TAMANO_PAGINA + 1)
+    expect(m.listarActividades).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'todo', null, TAMANO_PAGINA + 1, { inclusivo: false })
     expect(TAMANO_PAGINA).toBe(50)
   })
   it.each(['llamadas', 'notas', 'actividad'])('pasa el filtro %s a la lectura', async (filtro) => {
     await get(`?filtro=${filtro}`)
-    expect(m.listarActividades).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', filtro, null, 51)
+    expect(m.listarActividades).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', filtro, null, 51, { inclusivo: false })
   })
   it('filtro desconocido → 400', async () => {
     const res = await get('?filtro=whatsapp')
@@ -120,7 +128,7 @@ describe('GET — filtros y página', () => {
   })
   it('página 2: el cursor `antes` llega a la lectura normalizado a ISO', async () => {
     await get('?antes=2026-11-20T10:00:00Z')
-    expect(m.listarActividades).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'todo', '2026-11-20T10:00:00.000Z', 51)
+    expect(m.listarActividades).toHaveBeenCalledWith('0000000c-0000-4000-8000-000000000001', 'todo', '2026-11-20T10:00:00.000Z', 51, { inclusivo: false })
   })
   it('cursor que no es una fecha → 400', async () => {
     expect((await get('?antes=ayer')).status).toBe(400)
@@ -128,17 +136,20 @@ describe('GET — filtros y página', () => {
   it('51 filas → devuelve 50 y hay_mas verdadero; 50 → hay_mas falso', async () => {
     m.listarActividades.mockResolvedValue(Array.from({ length: 51 }, (_, i) => fila(`a-${i}`)))
     let body = await (await get()).json()
-    expect(body.actividades).toHaveLength(50)
+    expect(acts(body)).toHaveLength(50)
     expect(body.hay_mas).toBe(true)
     m.listarActividades.mockResolvedValue(Array.from({ length: 50 }, (_, i) => fila(`a-${i}`)))
     body = await (await get()).json()
-    expect(body.actividades).toHaveLength(50)
+    expect(acts(body)).toHaveLength(50)
     expect(body.hay_mas).toBe(false)
   })
   it('respeta el orden en que llega de la base (más nuevo primero)', async () => {
-    m.listarActividades.mockResolvedValue([fila('nuevo'), fila('viejo')])
+    m.listarActividades.mockResolvedValue([
+      fila('nuevo', { occurred_at: '2026-11-25T12:00:00.000Z' }),
+      fila('viejo', { occurred_at: '2026-11-24T12:00:00.000Z' }),
+    ])
     const body = await (await get()).json()
-    expect(body.actividades.map((a: { id: string }) => a.id)).toEqual(['nuevo', 'viejo'])
+    expect(acts(body).map((a) => a.id)).toEqual(['nuevo', 'viejo'])
   })
 })
 
@@ -151,38 +162,38 @@ describe('GET — intento, autor y tarea agendada sola', () => {
     ])
     m.listarActividades.mockResolvedValue([
       fila('l3', { kind: 'call', call_outcome: 'volver_a_llamar', body: null, callback_at: '2026-11-23T19:00:00Z' }),
-      fila('w1', { kind: 'whatsapp_sent', body: null }),
+      fila('w1', { kind: 'whatsapp_sent', body: null, occurred_at: '2026-11-24T12:00:00.000Z' }),
     ])
     const body = await (await get()).json()
-    expect(body.actividades[0]).toMatchObject({ intento: 3, titulo: 'Llamada 3 · Volver a llamar' })
-    expect(body.actividades[1]).toMatchObject({ intento: null, titulo: 'WhatsApp enviado' })
+    expect(acts(body)[0]).toMatchObject({ intento: 3, titulo: 'Llamada 3 · Volver a llamar' })
+    expect(acts(body)[1]).toMatchObject({ intento: null, titulo: 'WhatsApp enviado' })
   })
   it('autor borrado → autor null; perfil que no se pudo leer → nombre vacío', async () => {
-    m.listarActividades.mockResolvedValue([fila('a', { created_by: null }), fila('b', { created_by: 'fantasma' })])
+    m.listarActividades.mockResolvedValue([fila('a', { created_by: null }), fila('b', { created_by: 'fantasma', occurred_at: '2026-11-24T12:00:00.000Z' })])
     const body = await (await get()).json()
-    expect(body.actividades[0].autor).toBeNull()
-    expect(body.actividades[1].autor).toEqual({ id: 'fantasma', nombre: '' })
+    expect(acts(body)[0].autor).toBeNull()
+    expect(acts(body)[1].autor).toEqual({ id: 'fantasma', nombre: '' })
     expect(m.nombresDePerfiles).toHaveBeenCalledWith(['fantasma'])
   })
   it('la tarea que creó cada actividad viaja con ella; las demás, null', async () => {
     const tarea = { id: 't-1', title: 'Llamar a Ana', due_date: '2026-11-27', due_time: '09:00:00' }
     m.tareasCreadasPor.mockResolvedValue(new Map([['l1', tarea]]))
-    m.listarActividades.mockResolvedValue([fila('l1', { kind: 'call', call_outcome: 'no_atendio', body: null }), fila('n1')])
+    m.listarActividades.mockResolvedValue([fila('l1', { kind: 'call', call_outcome: 'no_atendio', body: null }), fila('n1', { occurred_at: '2026-11-24T12:00:00.000Z' })])
     const body = await (await get()).json()
     expect(m.tareasCreadasPor).toHaveBeenCalledWith(['l1', 'n1'])
-    expect(body.actividades[0].tarea_creada).toEqual(tarea)
-    expect(body.actividades[1].tarea_creada).toBeNull()
+    expect(acts(body)[0].tarea_creada).toEqual(tarea)
+    expect(acts(body)[1].tarea_creada).toBeNull()
   })
   it('no devuelve el client_token', async () => {
     m.listarActividades.mockResolvedValue([fila('n1')])
     const body = await (await get()).json()
-    expect(body.actividades[0]).not.toHaveProperty('client_token')
+    expect(acts(body)[0]).not.toHaveProperty('client_token')
   })
   it('puede_editar/puede_anular según quien mira: el autor asesor edita y anula su nota', async () => {
     como('asesor')
     m.listarActividades.mockResolvedValue([fila('n1')])
     const body = await (await get()).json()
-    expect(body.actividades[0]).toMatchObject({ puede_editar: true, puede_anular: true })
+    expect(acts(body)[0]).toMatchObject({ puede_editar: true, puede_anular: true })
   })
   it('falla la lectura → 500 con texto legible', async () => {
     const err = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -191,6 +202,70 @@ describe('GET — intento, autor y tarea agendada sola', () => {
     expect(res.status).toBe(500)
     expect((await res.json()).error).toMatch(/Probá de nuevo/)
     err.mockRestore()
+  })
+})
+
+describe('GET — línea de tiempo completa (crm-linea-de-tiempo)', () => {
+  const evento = (id: string, fecha: string) => ({ id, clase: 'etapa', titulo: id, detalle: null, autor: null, fecha })
+
+  it('"todo" mezcla actividades y eventos del sistema por fecha', async () => {
+    m.listarActividades.mockResolvedValue([fila('n1', { occurred_at: '2026-11-25T12:00:00.000Z' })])
+    m.leerEventosDelSistema.mockResolvedValue({
+      eventos: [evento('etapa:1', '2026-11-26T12:00:00.000Z'), evento('registro:s1', '2026-11-20T12:00:00.000Z')],
+      fuentesConError: [],
+    })
+    const body = await (await get()).json()
+    expect(body.items.map((i: Item) => (i.tipo === 'evento' ? i.evento.id : i.actividad.id))).toEqual(['etapa:1', 'n1', 'registro:s1'])
+    expect(body.fuentes_con_error).toEqual([])
+  })
+
+  it('"actividad" también lee el sistema; "llamadas" y "notas" no', async () => {
+    await get('?filtro=actividad')
+    expect(m.leerEventosDelSistema).toHaveBeenCalledTimes(1)
+    await get('?filtro=llamadas')
+    await get('?filtro=notas')
+    expect(m.leerEventosDelSistema).toHaveBeenCalledTimes(1)
+  })
+
+  it('un contacto que no se puede ver no lee eventos del sistema', async () => {
+    como('asesor')
+    m.canAccessContact.mockResolvedValue(false)
+    expect((await get()).status).toBe(404)
+    expect(m.leerEventosDelSistema).not.toHaveBeenCalled()
+  })
+
+  it('las fuentes que fallaron viajan en la respuesta', async () => {
+    m.leerEventosDelSistema.mockResolvedValue({ eventos: [], fuentesConError: ['whatsapp'] })
+    const body = await (await get()).json()
+    expect(body.fuentes_con_error).toEqual(['whatsapp'])
+  })
+
+  it('si la lectura del sistema se cae entera, se muestran las actividades y todas las fuentes quedan con error', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    m.listarActividades.mockResolvedValue([fila('n1')])
+    m.leerEventosDelSistema.mockRejectedValue(new Error('plazo'))
+    const res = await get()
+    expect(res.status).toBe(200)
+    const body = await res.json()
+    expect(acts(body)).toHaveLength(1)
+    expect(body.fuentes_con_error).toEqual(['registro', 'etapa', 'tarea', 'whatsapp', 'video'])
+    err.mockRestore()
+  })
+
+  it('cursor completo: lectura inclusiva y un empate en el corte no se repite ni se pierde', async () => {
+    const f = '2026-11-20T10:00:00.000Z'
+    m.listarActividades.mockResolvedValue([fila('n1', { occurred_at: f })])
+    m.leerEventosDelSistema.mockResolvedValue({ eventos: [evento('etapa:9', f), evento('etapa:1', f)], fuentesConError: [] })
+    // Ya se mostró `etapa:9` (la clave mayor con esa fecha): siguen `etapa:1` y la actividad.
+    const body = await (await get(`?antes=${f}&antes_id=etapa:9`)).json()
+    expect(m.listarActividades).toHaveBeenCalledWith(expect.any(String), 'todo', f, 51, { inclusivo: true })
+    expect(m.leerEventosDelSistema).toHaveBeenCalledWith(expect.any(String), { fecha: f, id: 'etapa:9' }, 50)
+    expect(body.items.map((i: Item) => (i.tipo === 'evento' ? i.evento.id : i.actividad.id))).toEqual(['etapa:1', 'n1'])
+  })
+
+  it('`antes_id` sin `antes`, o vacío → 400', async () => {
+    expect((await get('?antes_id=etapa:1')).status).toBe(400)
+    expect((await get('?antes=2026-11-20T10:00:00Z&antes_id=')).status).toBe(400)
   })
 })
 
