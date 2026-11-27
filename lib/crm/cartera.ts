@@ -192,6 +192,18 @@ function cierreDe(p: ProcesoLeido, etapa: EtapaCRM): string | null {
  * vence a las 9:00 del día hábil siguiente (o del mismo día si entró de madrugada). Sin
  * esto, toda solicitud nueva diría "Sin fecha" y quedaría al final, al revés de la urgencia.
  */
+/**
+ * La tarea de entrada nace con el vencimiento del registro, tomado del envío (unos instantes
+ * después del alta): ±5 minutos, el mismo margen que `esperaDesde` (revisión de código, 7).
+ */
+function venceCercaDelRegistro(fecha: string, hora: string, registradoEn: string): boolean {
+  try {
+    return Math.abs(instanteDesdeAR(fecha, hora).getTime() - Date.parse(registradoEn)) <= 5 * 60_000
+  } catch {
+    return false
+  }
+}
+
 function venceDePrimeraLlamada(registradoEn: string): { due_date: string; due_time: string; espera: boolean } | null {
   const r = new Date(registradoEn)
   if (Number.isNaN(r.getTime())) return null
@@ -298,7 +310,7 @@ export function proximoPaso(e: {
       if (calculado && !t.due_date) {
         vence = { due_date: calculado.due_date, due_time: calculado.due_time, all_day: false }
         if (calculado.espera) espera = { registradoEn: e.registradoEn }
-      } else if (calculado?.espera && t.due_date === calculado.due_date && horaHHMM(t.due_time) === calculado.due_time) {
+      } else if (calculado?.espera && t.due_date && t.due_time && venceCercaDelRegistro(t.due_date, horaHHMM(t.due_time)!, e.registradoEn)) {
         // Desde crm-tareas-y-campanita la tarea de entrada ya nace con esa fecha: sigue
         // siendo la que espera desde el registro.
         espera = { registradoEn: e.registradoEn }

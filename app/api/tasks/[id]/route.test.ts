@@ -184,6 +184,7 @@ describe('PUT /api/tasks/[id] — reabrir y posponer (crm-tareas-y-campanita)', 
     expect((await r.json()).error).toBe('Esa tarea cambió mientras tanto: no se pudo deshacer.')
   })
   it('completar cierra también la copia de la otra coordinadora (si falla, igual 200)', async () => {
+    m.completeTask.mockResolvedValue(true)
     m.completarCopiasDeEntrada.mockResolvedValue(1)
     expect((await put({ action: 'complete' })).status).toBe(200)
     expect(m.completarCopiasDeEntrada).toHaveBeenCalledWith(ID, 'asesor-1')
@@ -191,6 +192,15 @@ describe('PUT /api/tasks/[id] — reabrir y posponer (crm-tareas-y-campanita)', 
     m.completarCopiasDeEntrada.mockRejectedValue(new Error('x'))
     expect((await put({ action: 'complete' })).status).toBe(200)
     err.mockRestore()
+  })
+  it('si la tarea ya no estaba pendiente (doble clic), no toca las copias', async () => {
+    m.completeTask.mockResolvedValue(false)
+    expect((await put({ action: 'complete' })).status).toBe(200)
+    expect(m.completarCopiasDeEntrada).not.toHaveBeenCalled()
+  })
+  it('el "Deshacer" con una hora imposible → 400, nunca 500', async () => {
+    expect((await put({ action: 'posponer', deshacer: true, due_date: '2026-11-20', due_time: '10:75' })).status).toBe(400)
+    expect(m.posponerTarea).not.toHaveBeenCalled()
   })
   it('posponer una que ya no está pendiente → 409', async () => {
     m.posponerTarea.mockResolvedValue(false)

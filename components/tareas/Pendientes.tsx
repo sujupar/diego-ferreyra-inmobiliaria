@@ -29,7 +29,7 @@ const BOTON =
   'inline-flex items-center justify-center gap-1.5 rounded-md text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-brand disabled:opacity-60'
 const CHIP = cn(
   'inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 text-sm whitespace-nowrap',
-  'h-9 aria-pressed:border-brand aria-pressed:bg-brand-soft aria-pressed:text-brand',
+  'h-11 raton:h-9 aria-pressed:border-brand aria-pressed:bg-brand-soft aria-pressed:text-brand',
 )
 
 export function tituloDe(de: string, personas: { id: string; nombre: string }[] | null): string {
@@ -136,10 +136,17 @@ export function Pendientes() {
         setSinFechaExtra([])
         setHechas(new Set())
         setEstado('ok')
-      } else setEstado('error')
+      } else {
+        setEstado('error')
+        // Con una lista ya a la vista, el error no se ve en su lugar: se avisa (revisión, 8).
+        toast.error('No se pudieron traer las tareas. Probá de nuevo.')
+      }
     } catch (err) {
       console.error('[pendientes] no se pudieron traer las tareas', err)
-      if (v === version.current) setEstado('error')
+      if (v === version.current) {
+        setEstado('error')
+        toast.error('No se pudieron traer las tareas. Revisá la conexión.')
+      }
     }
   }, [pedir, de, tipo])
 
@@ -153,8 +160,10 @@ export function Pendientes() {
   const mas = async () => {
     if (!agenda || cargandoMas) return
     setCargandoMas(true)
+    const v = version.current
     try {
       const r = await pedir(de, tipo, agenda.sinFecha.items.length + sinFechaExtra.length)
+      if (v !== version.current) return // cambió el filtro mientras tanto
       if (r.ok) setSinFechaExtra((x) => [...x, ...r.data.sinFecha.items.filter((n) => !x.some((y) => y.id === n.id))])
       else toast.error(r.error)
     } finally {

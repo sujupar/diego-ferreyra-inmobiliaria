@@ -159,14 +159,17 @@ export async function leerAsignadoDeTarea(id: string): Promise<{ assigned_to: st
 }
 
 /** `autorId`: quién la completó (crm-linea-de-tiempo D2; la línea de tiempo lo muestra). */
-export async function completeTask(id: string, autorId: string | null) {
-  const { error } = await getAdmin()
+/** Devuelve si la completó (false si ya no estaba pendiente). */
+export async function completeTask(id: string, autorId: string | null): Promise<boolean> {
+  const { data, error } = await getAdmin()
     .from('tasks')
     .update({ status: 'completed', completed_at: new Date().toISOString(), completed_by: autorId })
     .eq('id', id)
     // Solo una pendiente: completar dos veces reescribiría quién la completó (auditoría de cierre, hallazgo 7).
     .eq('status', 'pending')
+    .select('id')
   if (error) throw error
+  return (data ?? []).length > 0
 }
 
 export async function dismissTask(id: string) {
@@ -395,7 +398,11 @@ export async function leerTareaParaCambio(id: string): Promise<TareaParaCambio |
 export async function reabrirTarea(id: string): Promise<'ok' | 'conflicto' | 'no_estaba_completada'> {
   // Una tarea que cerró una llamada se reabre deshaciendo LA LLAMADA (`undoTasksOfActivity`):
   // reabrirla acá borraría el rastro con el que la cadencia la encuentra (auditoría, 13).
-  const { data, error } = await getAdmin()
+  const db = getAdmin()
+  const { data: antes, error: e0 } = await db
+    .from('tasks').select('type, channel, deal_id, title, completed_at').eq('id', id).maybeSingle()
+  if (e0) throw new Error(`reabrirTarea (leer): ${e0.message}`)
+  const { data, error } = await db
     .from('tasks')
     .update({ status: 'pending', completed_at: null, completed_by: null })
     .eq('id', id)
@@ -404,7 +411,25 @@ export async function reabrirTarea(id: string): Promise<'ok' | 'conflicto' | 'no
     .select('id')
   if (error?.code === '23505') return 'conflicto'
   if (error) throw new Error(`reabrirTarea: ${error.message}`)
-  return (data ?? []).length > 0 ? 'ok' : 'no_estaba_completada'
+  if ((data ?? []).length === 0) return 'no_estaba_completada'
+  // Tarea de entrada: completarla cerró también la copia de la otra coordinadora en el mismo
+  // momento; el "Deshacer" la reabre (si no, la cartera esconde la reabierta: revisión, 1).
+  const a = antes as { type: string; channel: string | null; deal_id: string | null; title: string; completed_at: string | null } | null
+  if (a && a.type === 'update_contact' && a.channel === 'call' && a.deal_id && a.completed_at) {
+    const t = Date.parse(a.completed_at)
+    const { data: copias, error: e2 } = await db
+      .from('tasks').select('id')
+      .eq('deal_id', a.deal_id).eq('type', 'update_contact').eq('channel', 'call').eq('title', a.title)
+      .eq('status', 'completed').is('closed_by_activity_id', null).neq('id', id)
+      .gte('completed_at', new Date(t - 5_000).toISOString()).lte('completed_at', new Date(t + 5_000).toISOString())
+    if (e2) throw new Error(`reabrirTarea (copias): ${e2.message}`)
+    for (const { id: copia } of (copias ?? []) as { id: string }[]) {
+      const { error: e3 } = await db.from('tasks')
+        .update({ status: 'pending', completed_at: null, completed_by: null }).eq('id', copia).eq('status', 'completed')
+      if (e3 && e3.code !== '23505') throw new Error(`reabrirTarea (copia): ${e3.message}`)
+    }
+  }
+  return 'ok'
 }
 
 /**

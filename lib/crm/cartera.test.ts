@@ -561,6 +561,14 @@ describe('proximoPaso — la primera llamada sin fecha (D3)', () => {
     })
     expect(r).toMatchObject({ titulo: 'Primera llamada', espera: { registradoEn: ar('2026-12-02', '10:12') } })
   })
+  it('la entrada con fecha un minuto después del alta (el envío se toma instantes después) también espera', () => {
+    const r = proximoPaso({
+      tareas: [{ ...tarea({ deal_id: 'd', type: 'update_contact', channel: 'call', title: 'Solicitud de tasación: X', due_date: '2026-12-02', due_time: '10:13:00' }), quien: null }],
+      tasacion: null, quienTasacion: null, etapa: 'solicitud', hayContactos: false,
+      registradoEn: ar('2026-12-02', '10:12'), nombrePersona: 'X', ahora: new Date('2026-12-02T13:40:00Z'),
+    })
+    expect(r?.espera).toEqual({ registradoEn: ar('2026-12-02', '10:12') })
+  })
   it('entró a las 18:00 en punto → ya es fuera de horario', () => {
     const r = entrada(ar('2026-12-01', '18:00'), AHORA)
     expect(r?.espera).toBeNull()
