@@ -32,3 +32,25 @@ siempre acompañado de texto e ícono.
 #### Scenario: Seguimiento sin movimiento en una fila
 - **WHEN** una fila muestra un seguimiento sin movimiento
 - **THEN** el tiempo del último contacto va en rojo con un ícono de alerta y el texto "Sin movimiento", no solo en rojo
+
+### Requirement: Registrar una llamada en pocos toques
+En celular, registrar el resultado de una llamada SHALL requerir como máximo tres toques
+desde la ficha, sin escribir texto obligatorio. Los resultados SHALL ser cinco: No atendió,
+Atendió y agendó, Atendió · volver a llamar, Atendió · no le interesa y Número equivocado.
+El detalle de la cadencia vive en la spec del change `crm-ficha-y-llamadas`.
+
+#### Scenario: No atendió
+- **WHEN** en la ficha en celular se toca el botón "+", luego "Registrar llamada", luego el resultado "No atendió"
+- **THEN** la llamada queda guardada con ese tercer toque y aparece primera en la línea de tiempo
+
+#### Scenario: Los demás resultados
+- **WHEN** se elige un resultado distinto de "No atendió"
+- **THEN** queda un único botón "Guardar llamada" y la llamada no se guarda hasta tocarlo
+
+#### Scenario: Volver a llamar
+- **WHEN** se elige "Atendió · volver a llamar"
+- **THEN** se piden día y hora futuros, con tres atajos ("Hoy 13:30", "Mañana 10:00", "Mañana 13:00", dentro del horario de la coordinación), y sin ellos no se puede guardar
+
+#### Scenario: Marcar WhatsApp enviado
+- **WHEN** se toca "Marcar WhatsApp enviado"
+- **THEN** queda anotado en la línea de tiempo y el texto aclara que la plataforma no envía ningún mensaje

@@ -223,3 +223,17 @@ describe('textoToastPerdido', () => {
     expect(textoToastPerdido(true)).toBe('Proceso marcado como perdido. Se quitó la tasación agendada.')
   })
 })
+
+describe('vencimientoEnHistorial (crm-cadencia-paula)', () => {
+  it('futura: relativa; pasada: día y hora exactos; sin hora: 9:00', async () => {
+    const { vencimientoEnHistorial } = await import('./formato-fecha')
+    expect(vencimientoEnHistorial('2026-11-26', '10:00:00', ahora)).toBe('mañana 10:00')
+    expect(vencimientoEnHistorial('2026-11-25', '09:40:00', ahora)).toBe('mié 25 nov, 9:40')
+    expect(vencimientoEnHistorial('2026-11-24', null, ahora)).toBe('mar 24 nov, 9:00')
+  })
+  it('"para ahora" también con el reloj del navegador unos segundos atrás', () => {
+    const atrasado = new Date(ahora.getTime() - 20_000) // 9:59:40
+    const a = armarAviso({ ...llamada({ cadencia: cad({ tareaCreada: { id: 't', title: 'Enviar WhatsApp a María López', due_date: '2026-11-25', due_time: '10:00', channel: 'message' } }) }), ahora: atrasado })
+    expect(textos(a)).toEqual(['Se agendó Enviar WhatsApp para ahora.'])
+  })
+})

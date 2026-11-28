@@ -38,7 +38,12 @@ cambia. Posponer "Mañana a las 9:00" tampoco cambia.
 El aviso ya arma "para hoy/mañana/{día}, HH:MM" desde la tarea; con la Llamada 2 de la misma
 tarde tiene que decir "para hoy 13:30". Si la tarea ya venció al armar el aviso (el WhatsApp
 "ya", o un reintento tardío), dice "para ahora" (auditoría 1), no "para recién" ni "hace 1
-min". Lo mismo en "Tarea creada sola" de la línea de tiempo.
+min" (con 60 s de margen por el reloj del navegador). En "Tarea creada sola" de la línea de
+tiempo, que se lee días después, una tarea ya pasada muestra el día y la hora exactos
+(`vencimientoEnHistorial`), no "ahora".
+
+### D4. Atajos de "Volver a llamar"
+"Hoy 13:30", "Mañana 10:00" y "Mañana 13:00": dentro del horario de la coordinación (antes 16:00).
 
 ## Risks / Trade-offs
 

@@ -16,3 +16,16 @@
 | 10 | Baja | El WhatsApp nace vencido | Escenario: es para hacerlo ya |
 | 11 | Baja | Textos y comentarios con 9:00 / 9 a 18 | Listados en la tarea 2.4 |
 | 12 | Baja | Tests que se rompen | Listados en la tarea 2.4 |
+
+## Revisión de código (3.2)
+
+Sin bugs en el núcleo (zona horaria, comparación de horas, bordes de 12:00/14:00, madrugada,
+fin de semana, reintentos, "para ahora" solo cuando venció).
+
+| # | Sev. | Hallazgo | Qué se hizo |
+|---|---|---|---|
+| 1 | Media | "Tarea creada sola" del historial seguía diciendo "recién"/"hace N" | `vencimientoEnHistorial`: futura relativa, pasada con día y hora exactos; sin el 9:00 muerto como hora de la cadencia |
+| 2 | Baja-media | Atajos de "Volver a llamar" a las 16:00, fuera del horario | "Hoy 13:30", "Mañana 10:00", "Mañana 13:00" (D4; deltas de `crm-sistema-diseno` y `crm-registro-actividad`; el nombre del escenario vigente no se puede renombrar en un MODIFIED y queda como estaba) |
+| 3 | Baja | Tareas de entrada ya creadas con la hora vieja | Aceptado: transitorio, se ordena solo al cerrarse |
+| 4 | Baja | Comentario "un día hábil tiene 9 h" | Corregido |
+| 5 | Baja | Reloj del navegador atrasado mostraba "recién" | 60 s de margen en `paraCuando`, con test |

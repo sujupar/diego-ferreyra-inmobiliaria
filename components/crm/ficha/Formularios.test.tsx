@@ -148,12 +148,12 @@ describe('FormLlamada', () => {
     expect(screen.getByLabelText('Hora')).toHaveAttribute('aria-invalid', 'false')
   })
 
-  it('atajo "Hoy 16:00" a las 17:00: "Tiene que ser más adelante que ahora"', async () => {
+  it('atajo "Hoy 13:30" a las 17:00: "Tiene que ser más adelante que ahora"', async () => {
     const red = simularRed({})
     render(<FormLlamada contactoId={CONTACTO} onGuardado={() => {}} reloj={reloj17} />)
     const usr = u()
     await usr.click(screen.getByRole('button', { name: /volver a llamar/ }))
-    await usr.click(screen.getByRole('button', { name: 'Hoy 16:00' }))
+    await usr.click(screen.getByRole('button', { name: 'Hoy 13:30' }))
     await usr.click(screen.getByRole('button', { name: 'Guardar llamada' }))
     expect(screen.getByRole('alert')).toHaveTextContent('Tiene que ser más adelante que ahora')
     expect(red).not.toHaveBeenCalled()
@@ -164,10 +164,10 @@ describe('FormLlamada', () => {
     render(<FormLlamada contactoId={CONTACTO} onGuardado={() => {}} reloj={reloj10} />)
     const usr = u()
     await usr.click(screen.getByRole('button', { name: /volver a llamar/ }))
-    await usr.click(screen.getByRole('button', { name: 'Mañana 16:00' }))
+    await usr.click(screen.getByRole('button', { name: 'Mañana 13:00' }))
     await usr.click(screen.getByRole('button', { name: 'Guardar llamada' }))
     await waitFor(() => expect(cuerpos(red)).toHaveLength(1))
-    expect(cuerpos(red)[0]).toMatchObject({ kind: 'call', call_outcome: 'volver_a_llamar', volver_el: { fecha: '2026-11-26', hora: '16:00' } })
+    expect(cuerpos(red)[0]).toMatchObject({ kind: 'call', call_outcome: 'volver_a_llamar', volver_el: { fecha: '2026-11-26', hora: '13:00' } })
   })
 
   it('"¿Fue hace un rato?": con "Hace 30 min" lleva hace_minutos 30; con "Recién", no lo lleva', async () => {

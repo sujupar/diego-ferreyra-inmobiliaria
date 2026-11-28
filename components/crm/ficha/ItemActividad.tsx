@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { MAX_LARGO_TEXTO } from '@/lib/crm/actividades'
-import { cuandoEs } from '@/lib/crm/formato-fecha'
+import { vencimientoEnHistorial } from '@/lib/crm/formato-fecha'
 import { leerJson } from '@/lib/crm/leer-json'
 import type { ActividadDeFicha } from '@/lib/crm/tipos'
 import { cn } from '@/lib/utils'
@@ -233,7 +233,7 @@ export function ItemActividad({
             <CalendarCheck aria-hidden className="mt-0.5 size-3.5 shrink-0 text-brand" />
             <span>
               Tarea creada sola · {a.tarea_creada.title}
-              {a.tarea_creada.due_date ? `, ${cuandoEs(a.tarea_creada.due_date, a.tarea_creada.due_time ?? '09:00', ahora)}` : ''}
+              {a.tarea_creada.due_date ? `, ${vencimientoEnHistorial(a.tarea_creada.due_date, a.tarea_creada.due_time, ahora)}` : ''}
             </span>
           </p>
         )}

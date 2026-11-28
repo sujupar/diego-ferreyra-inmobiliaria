@@ -28,7 +28,7 @@ const RESULTADO: Record<ResultadoLlamada, string> = {
 
 const min = (m: number | null) => (m == null ? '—' : duracion(m))
 /**
- * Horas hábiles, sin pasar a días: un día hábil tiene 9 h, no 24, y "1 día 21 h" de una semana
+ * Horas hábiles, sin pasar a días: un día hábil tiene 4 h (de 10 a 14), no 24, y "1 día 21 h" de una semana
  * hábil entera mentiría (revisión de código 1).
  */
 export function horasHabiles(m: number | null): string {
