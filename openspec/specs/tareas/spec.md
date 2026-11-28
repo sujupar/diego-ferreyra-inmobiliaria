@@ -139,21 +139,25 @@ pasado. El aviso ofrece "Deshacer", que vuelve a la fecha anterior.
 
 ### Requirement: La tarea de entrada de un lead tiene fecha
 La tarea de entrada de una solicitud de tasación SHALL nacer con día y hora: el registro si entró en horario
-hábil (lunes a viernes, 9:00 a 17:59 de Argentina, sin feriados), ese día a las 9:00 si fue de
-madrugada, y si no, el día hábil siguiente a las 9:00. MUST completarse sola cuando el proceso
+hábil (lunes a viernes, 10:00 a 13:59 de Argentina, el horario de la coordinación, sin
+feriados), ese día a las 10:00 si fue antes, y si no, el día hábil siguiente a las 10:00. MUST completarse sola cuando el proceso
 sale de "Solicitud", con el autor de ese cambio.
 
 #### Scenario: En horario
-- **WHEN** un lead se registra un martes a las 15:10
-- **THEN** su tarea de entrada vence ese martes a las 15:10 y figura "Espera hace N min" en "Vencidas"
+- **WHEN** un lead se registra un martes a las 11:10
+- **THEN** su tarea de entrada vence ese martes a las 11:10 y figura "Espera hace N min" en "Vencidas"
 
 #### Scenario: Fuera de horario
 - **WHEN** un lead se registra un viernes a las 21:00
-- **THEN** su tarea de entrada vence el lunes a las 9:00 y el fin de semana está en "Próximas"
+- **THEN** su tarea de entrada vence el lunes a las 10:00 y el fin de semana está en "Próximas"
 
 #### Scenario: Madrugada de un día hábil
 - **WHEN** un lead se registra un martes a las 7:30
-- **THEN** su tarea de entrada vence ese martes a las 9:00
+- **THEN** su tarea de entrada vence ese martes a las 10:00
+
+#### Scenario: Después del horario de la coordinación
+- **WHEN** un lead se registra un martes a las 15:10
+- **THEN** su tarea de entrada vence el miércoles a las 10:00
 
 #### Scenario: Se coordina o se descarta
 - **WHEN** la coordinadora coordina o descarta el proceso de un lead

@@ -72,8 +72,8 @@ ya se llamó y se les marcó un WhatsApp en la racha actual, y que no tienen nin
 pendiente, ni del proceso ni de la persona. Si no hay ninguna, el bloque no se muestra.
 
 #### Scenario: Fila
-- **WHEN** a Gustavo se lo llamó dos veces sin que atienda y se le marcó el WhatsApp hace 2 días
-- **THEN** se lee "WhatsApp enviado hace 2 días · 2 llamadas sin atender", "Se registró 26 nov · {propiedad}", el teléfono y "Registrar"
+- **WHEN** a Gustavo se lo llamó tres veces sin que atienda y se le marcó el WhatsApp hace 2 días
+- **THEN** se lee "WhatsApp enviado hace 2 días · 3 llamadas sin atender", "Se registró 26 nov · {propiedad}", el teléfono y "Registrar"
 
 #### Scenario: Tiene una tarea
 - **WHEN** a esa persona se le agendó una tarea para el viernes
@@ -136,7 +136,7 @@ hace 2 días o más sin entregar ("Entregar la tasación") o entregados hace 5 d
 "Leads sin primer contacto" SHALL listar las solicitudes desde el 26/11 sin primer contacto,
 con "Espera hace X de reloj · Y hábiles · la llama la coordinación". "Tiempo medio a la
 primera llamada" SHALL promediar, para los leads registrados desde el lunes (y desde el 26/11),
-el tiempo hasta su primera llamada en horas de reloj y hábiles (lunes a viernes de 9 a 18),
+el tiempo hasta su primera llamada en horas de reloj y hábiles (lunes a viernes de 10 a 14, el horario de la coordinación),
 con la cantidad de leads, "Pocos casos" debajo de 20 y cuántos siguen sin llamar.
 
 #### Scenario: Pocos casos

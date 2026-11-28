@@ -67,7 +67,7 @@ El detalle de la cadencia vive en la spec del change `crm-ficha-y-llamadas`.
 
 #### Scenario: Volver a llamar
 - **WHEN** se elige "Atendió · volver a llamar"
-- **THEN** se piden día y hora futuros, con tres atajos ("Hoy 16:00", "Mañana 10:00", "Mañana 16:00"), y sin ellos no se puede guardar
+- **THEN** se piden día y hora futuros, con tres atajos ("Hoy 13:30", "Mañana 10:00", "Mañana 13:00", dentro del horario de la coordinación), y sin ellos no se puede guardar
 
 #### Scenario: Marcar WhatsApp enviado
 - **WHEN** se toca "Marcar WhatsApp enviado"
@@ -165,8 +165,8 @@ siempre acompañado de texto e ícono.
 - **THEN** dice "Espera hace 28 min" con ícono de reloj, contando desde que se registró, y figura en el grupo Vencidas
 
 #### Scenario: Primera llamada de un lead que entró fuera de horario
-- **WHEN** la persona se registró fuera de horario, su primera llamada quedó para las 9:00 del día hábil siguiente y esa hora ya pasó
-- **THEN** dice "Vencida hace 1 h", contando desde las 9:00 y no desde que se registró, y figura en el grupo Vencidas
+- **WHEN** la persona se registró fuera de horario, su primera llamada quedó para las 10:00 del día hábil siguiente y esa hora ya pasó
+- **THEN** dice "Vencida hace 1 h", contando desde las 10:00 y no desde que se registró, y figura en el grupo Vencidas
 
 #### Scenario: Etapa en una lista
 - **WHEN** se muestra un proceso en Coordinada en una fila del CRM o de Contactos
