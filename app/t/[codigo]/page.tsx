@@ -9,6 +9,7 @@ import { segundosVistos } from '@/lib/video-bienvenida/tramos'
 import { esVisitaDelEquipo } from '@/lib/video-bienvenida/equipo'
 import { CONTENIDO } from '@/lib/video-bienvenida/contenido'
 import { PaginaVideo } from '@/components/video-bienvenida/PaginaVideo'
+import { getActiveTestimonials } from '@/lib/funnel/testimonials'
 
 /**
  * Página personal del video de bienvenida (change tasacion-video-bienvenida, D4). Pública por
@@ -39,7 +40,10 @@ export default async function PaginaDelVideo({ params }: { params: Promise<{ cod
   const sesion = await leerSesion(createClient(almacen))
   const medir = !esVisitaDelEquipo({ haySesionValida: !!sesion, nombresDeCookies: almacen.getAll().map((c) => c.name) })
 
-  const previos = medir ? await leerTramosPrevios(codigo) : null
+  const [previos, testimonios] = await Promise.all([
+    medir ? leerTramosPrevios(codigo) : Promise.resolve(null),
+    getActiveTestimonials(),
+  ])
   const segundosPrevios = previos ? segundosVistos(previos.watchedBuckets, previos.durationS) : 0
 
   return (
@@ -48,6 +52,7 @@ export default async function PaginaDelVideo({ params }: { params: Promise<{ cod
       titular={CONTENIDO.titular(enlace.nombre)}
       medir={medir}
       segundosPrevios={segundosPrevios}
+      testimonios={testimonios}
     />
   )
 }

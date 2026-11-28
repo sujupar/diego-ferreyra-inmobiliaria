@@ -6,8 +6,8 @@ import {
 import { modoDePlantilla } from '@/lib/ai/tasacion-agent'
 
 describe('plantillas con video', () => {
-  it('son la del caso y la sobria; la de respaldo es tasacion_llamada_v1', () => {
-    expect(PLANTILLAS_CON_VIDEO).toEqual(['tasacion_video_caso_v1', 'tasacion_video_sobria_v1'])
+  it('son la del ahorro, la del caso y la sobria; la de respaldo es tasacion_llamada_v1', () => {
+    expect(PLANTILLAS_CON_VIDEO).toEqual(['tasacion_video_ahorro_v1', 'tasacion_video_caso_v1', 'tasacion_video_sobria_v1'])
     expect(PLANTILLA_SIN_VIDEO).toBe('tasacion_llamada_v1')
     expect(esPlantillaConVideo('tasacion_video_caso_v1')).toBe(true)
     expect(esPlantillaConVideo('tasacion_llamada_v1')).toBe(false)

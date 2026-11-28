@@ -13,6 +13,8 @@
 import Image from 'next/image'
 import { useEffect, useState } from 'react'
 import { FunnelClickToPlayVideo } from '@/components/funnel/FunnelClickToPlayVideo'
+import { TestimonialCard } from '@/components/funnel/TestimonialCard'
+import type { FunnelTestimonial } from '@/lib/funnel/testimonials'
 import { CONTENIDO } from '@/lib/video-bienvenida/contenido'
 import { mostrarQuePasaAhora, UMBRAL_SEGUNDOS } from '@/lib/video-bienvenida/mostrar-bloque'
 
@@ -21,9 +23,11 @@ export interface PaginaVideoProps {
   titular: string
   medir: boolean
   segundosPrevios: number
+  /** Testimonios reales (`funnel_testimonials`). Sin ellos la sección no se muestra. */
+  testimonios?: FunnelTestimonial[]
 }
 
-export function PaginaVideo({ codigo, titular, medir, segundosPrevios }: PaginaVideoProps) {
+export function PaginaVideo({ codigo, titular, medir, segundosPrevios, testimonios = [] }: PaginaVideoProps) {
   const [segundos, setSegundos] = useState(0)
   const visible = !medir || mostrarQuePasaAhora({ segundosEnEstaVisita: segundos, segundosPrevios })
 
@@ -40,6 +44,10 @@ export function PaginaVideo({ codigo, titular, medir, segundosPrevios }: PaginaV
   }, [codigo, medir])
 
   const c = CONTENIDO
+  const orden = c.referencias.orden as readonly string[]
+  const referencias = [...testimonios]
+    .filter((t) => orden.includes(t.key))
+    .sort((a, b) => orden.indexOf(a.key) - orden.indexOf(b.key))
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#F8F9FA] font-[family-name:var(--font-funnel-body)] text-[#152238]">
       {!medir && (
@@ -100,6 +108,48 @@ export function PaginaVideo({ codigo, titular, medir, segundosPrevios }: PaginaV
               </svg>
               {c.quePasaAhora.boton}
             </a>
+          </section>
+        )}
+
+        <section className="flex w-full max-w-[760px] flex-col items-center gap-5 px-5 pt-4 sm:px-0">
+          <h2 className="m-0 text-center font-[family-name:var(--font-funnel-head)] text-[24px] font-extrabold text-[#0d2d49] sm:text-[30px]">
+            {c.valor.titulo}
+          </h2>
+          <ol className="m-0 flex w-full list-none flex-col gap-3 p-0">
+            {c.valor.items.map((it, i) => (
+              <li key={it.titulo} className="flex items-start gap-4 rounded-[14px] border border-[#E3E6EA] bg-white px-5 py-4 text-left">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0d2d49] font-[family-name:var(--font-funnel-head)] text-[16px] font-bold text-white">
+                  {i + 1}
+                </span>
+                <span className="flex flex-col gap-1">
+                  <span className="font-[family-name:var(--font-funnel-head)] text-[17px] font-bold text-[#0d2d49]">{it.titulo}</span>
+                  <span className="text-[15px] leading-relaxed text-[#4A5561]">{it.texto}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {referencias.length > 0 && (
+          <section className="flex w-full flex-col items-center gap-5 px-5 pt-4 sm:px-0">
+            <div className="flex flex-col items-center gap-1.5 text-center">
+              <h2 className="m-0 font-[family-name:var(--font-funnel-head)] text-[24px] font-extrabold text-[#0d2d49] sm:text-[30px]">
+                {c.referencias.titulo}
+              </h2>
+              <p className="m-0 text-[15px] text-[#555]">{c.referencias.bajada}</p>
+            </div>
+            <div className="grid w-full gap-6 sm:grid-cols-3">
+              {referencias.map((t) => (
+                <div key={t.key} className="flex flex-col gap-2">
+                  {c.referencias.miedo[t.key] && (
+                    <p className="m-0 text-center text-[14px] font-bold uppercase tracking-wide text-[#b42318]">
+                      {c.referencias.miedo[t.key]}
+                    </p>
+                  )}
+                  <TestimonialCard t={t} />
+                </div>
+              ))}
+            </div>
           </section>
         )}
 

@@ -12,11 +12,34 @@ import { funnelMediaUrl } from '@/lib/funnel/media'
 export const CONTENIDO = {
   titular(nombre: string | null): string {
     const n = nombre?.trim()
-    return n ? `${n}, antes de tu tasación mirá este caso` : 'Antes de tu tasación, mirá este caso'
+    return n
+      ? `${n}, lo que vale tu propiedad no es lo que te queda al venderla`
+      : 'Lo que vale tu propiedad no es lo que te queda al venderla'
   },
   subtitulo:
-    'Cómo vendimos una casa en Villa del Parque y la dueña se quedó con USD 16.606 más en mano. ' +
-    'Es lo mismo que vamos a mirar con tu propiedad: no solo cuánto vale, sino cuánto te queda.',
+    'Entre impuestos, costos y negociación se pueden ir miles de dólares. En este video, Diego te ' +
+    'cuenta cómo una propietaria de Villa del Parque lo evitó y se quedó con USD 16.606 más en mano.',
+  /** Lo concreto que se lleva de la tasación (valor). Se ve siempre, aunque no toque play. */
+  valor: {
+    titulo: 'Lo que te llevás de la tasación',
+    items: [
+      { titulo: 'El precio al que conviene salir', texto: 'Con propiedades comparables reales de tu zona, no con lo que piden los avisos.' },
+      { titulo: 'Cuánto te queda en mano', texto: 'Lo que te queda después de impuestos, comisiones y gastos de la venta, antes de decidir nada.' },
+      { titulo: 'Un plan para vender en tiempo', texto: 'Para no quedar meses publicado y terminar bajando el precio.' },
+    ],
+  },
+  /** Referencias: testimonios REALES de `funnel_testimonials`, cada uno atado al miedo que resolvió.
+   *  Los rótulos salen de lo que dice cada uno en su testimonio: no ponerles palabras que no dijeron. */
+  referencias: {
+    titulo: 'Propietarios que ya pasaron por esto',
+    bajada: 'Tocá cada foto para ver su testimonio.',
+    orden: ['claudia', 'federico', 'pablo'],
+    miedo: {
+      claudia: 'El miedo: la desconfianza y el estrés de vender',
+      federico: 'El riesgo: quedar meses publicado',
+      pablo: 'El desafío: vender dos para comprar una',
+    } as Record<string, string>,
+  },
   firma: { titulo: 'Te lo cuenta Diego Ferreyra', bajada: 'Un caso real, paso a paso' },
   video: {
     src: funnelMediaUrl('bienvenida/tasacion-v1.mp4'),

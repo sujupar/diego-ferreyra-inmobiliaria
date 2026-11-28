@@ -12,7 +12,15 @@
  * mensaje aunque no abra la página, y ata el mensaje a la solicitud (ayuda a quedar en UTILIDAD).
  */
 
-export const CUERPOS_PEDIDOS: Record<'tasacion_video_caso_v1' | 'tasacion_video_sobria_v1', string> = {
+export const CUERPOS_PEDIDOS: Record<'tasacion_video_ahorro_v1' | 'tasacion_video_caso_v1' | 'tasacion_video_sobria_v1', string> = {
+  // Texto final del dueño (2026-11-28). Cierra con la firma porque Meta rechaza un cuerpo que
+  // TERMINA en una variable, y el enlace es la última idea del mensaje.
+  tasacion_video_ahorro_v1:
+    'Hola {{1}}, recibimos tu solicitud de tasación.\n' +
+    'Paula, desde el +54 9 11 2292-6434, te llamará para coordinar.\n\n' +
+    'Si te interesa ahorrar miles de dólares en impuestos y costos, mirá este video corto:\n' +
+    '{{2}}\n\n' +
+    'Diego Ferreyra Inmobiliaria',
   tasacion_video_caso_v1:
     'Hola {{1}}, recibimos tu solicitud de tasación.\n\n' +
     'Antes de coordinar la visita, mirá este caso: la dueña de una casa terminó con USD 16.606 más en mano por cómo se publicó, cómo se negoció y cómo se calcularon los impuestos de la venta.\n\n' +

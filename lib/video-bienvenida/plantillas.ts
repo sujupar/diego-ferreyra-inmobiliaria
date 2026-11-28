@@ -1,13 +1,14 @@
 /**
  * Las plantillas del primer WhatsApp con video (D1 y D3). Puro.
  *
- * Cuál sale lo decide `WHATSAPP_TEMPLATE_TASACION` en Netlify. La regla es usar la del caso
- * si Meta la aprobó como UTILITY, si no la sobria, y si ninguna quedó como UTILITY seguir con
+ * Cuál sale lo decide `WHATSAPP_TEMPLATE_TASACION` en Netlify. La regla es usar la del ahorro
+ * (texto final del dueño, 2026-11-28), si no la del caso, si no la sobria, siempre que Meta la haya
+ * aprobado como UTILITY, y si ninguna quedó como UTILITY seguir con
  * `tasacion_llamada_v1`. Las dos están también en `PLANTILLAS_QUE_SOLO_AVISAN`
  * (lib/ai/tasacion-agent.ts): no preguntan nada, así que el agente de tasación no contesta.
  */
 
-export const PLANTILLAS_CON_VIDEO = ['tasacion_video_caso_v1', 'tasacion_video_sobria_v1'] as const
+export const PLANTILLAS_CON_VIDEO = ['tasacion_video_ahorro_v1', 'tasacion_video_caso_v1', 'tasacion_video_sobria_v1'] as const
 
 /** La plantilla de siempre: la vuelta atrás cuando el video no se puede mandar. */
 export const PLANTILLA_SIN_VIDEO = 'tasacion_llamada_v1'

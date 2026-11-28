@@ -3,12 +3,12 @@ import { CONTENIDO, vcardDePaula } from './contenido'
 
 describe('contenido de la página del video', () => {
   it('titular con el nombre de pila', () => {
-    expect(CONTENIDO.titular('Ana')).toBe('Ana, antes de tu tasación mirá este caso')
+    expect(CONTENIDO.titular('Ana')).toBe('Ana, lo que vale tu propiedad no es lo que te queda al venderla')
   })
 
   it('sin nombre, el titular no queda con una coma colgando', () => {
-    expect(CONTENIDO.titular(null)).toBe('Antes de tu tasación, mirá este caso')
-    expect(CONTENIDO.titular('   ')).toBe('Antes de tu tasación, mirá este caso')
+    expect(CONTENIDO.titular(null)).toBe('Lo que vale tu propiedad no es lo que te queda al venderla')
+    expect(CONTENIDO.titular('   ')).toBe('Lo que vale tu propiedad no es lo que te queda al venderla')
   })
 
   it('no menciona la duración del video (pedido del dueño)', () => {

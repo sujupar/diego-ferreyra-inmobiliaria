@@ -2,14 +2,15 @@
  * Plantillas del primer WhatsApp CON VIDEO a quien pide una tasación (change OpenSpec
  * `tasacion-video-bienvenida`, design.md D1). Son dos, y se piden las dos a la vez:
  *
- *   - `tasacion_video_caso_v1`  (la elegida por el dueño): cuenta el caso de los USD 16.606.
+ *   - `tasacion_video_ahorro_v1` (texto final del dueño, 2026-11-28): ahorro en impuestos y costos.
+ *   - `tasacion_video_caso_v1`  (primera elegida; Meta la pasó a MARKETING): cuenta el caso de los USD 16.606.
  *   - `tasacion_video_sobria_v1` (respaldo): mismo esqueleto, sin cifras.
  *
  * Las dos se piden como UTILITY. Meta decide la categoría al aprobar, y en esta cuenta ya
  * reclasificó a MARKETING plantillas con vocabulario de venta (CLAUDE.md, § "Meta reclasifica
  * la plantilla a MARKETING por el vocabulario"). Un mensaje de marketing tiene tope por persona y
  * puede no llegar: por eso la regla es
- *   la del caso si quedó UTILITY → si no, la sobria si quedó UTILITY → si no, tasacion_llamada_v1.
+ *   la del ahorro si quedó UTILITY → si no, la del caso → si no, la sobria, cada una solo si quedó UTILITY → si no, tasacion_llamada_v1.
  * Este script, sin flags, la aplica y dice cuál poner en WHATSAPP_TEMPLATE_TASACION.
  *
  * Los textos salen de `lib/video-bienvenida/cuerpos.ts` (un test compara lo pedido con lo
@@ -27,7 +28,7 @@ import { CUERPOS_PEDIDOS, TEXTO_DEL_BOTON, URL_DEL_BOTON } from '../lib/video-bi
 
 const API_VERSION = process.env.WHATSAPP_API_VERSION ?? 'v21.0'
 const LANGUAGE = 'es_AR'
-const ORDEN = ['tasacion_video_caso_v1', 'tasacion_video_sobria_v1'] as const
+const ORDEN = ['tasacion_video_ahorro_v1', 'tasacion_video_caso_v1', 'tasacion_video_sobria_v1'] as const
 const SIN_VIDEO = 'tasacion_llamada_v1'
 const CODIGO_EJEMPLO = 'k7Hq2mXb9T'
 

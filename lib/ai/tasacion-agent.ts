@@ -91,6 +91,7 @@ const PLANTILLAS_QUE_SOLO_AVISAN = new Set([
   'tasacion_llamada_v1',
   // Video de bienvenida (change tasacion-video-bienvenida): entregan el enlace al video y
   // avisan que llama Paula. No preguntan nada.
+  'tasacion_video_ahorro_v1',
   'tasacion_video_caso_v1',
   'tasacion_video_sobria_v1',
 ])
