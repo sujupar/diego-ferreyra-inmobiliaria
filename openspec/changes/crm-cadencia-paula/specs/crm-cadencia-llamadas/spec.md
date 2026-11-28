@@ -6,13 +6,15 @@
 Cuando la llamada "No atendió" que se registra es la tercera o posterior seguida del
 proceso, el sistema SHALL crear la tarea "Enviar WhatsApp a {nombre}", de tipo mensaje, en
 lugar de otra tarea de llamada, salvo en las excepciones de «Qué regla gana cuando se cruzan
-dos». Vence en el momento del registro si fue un día hábil entre las 10:00 y las 14:00 de
-Argentina (se manda ya); antes de las 10:00 de un día hábil, ese día a las 10:00; si no, el
-día hábil siguiente a las 10:00.
+dos». Vence según «Cuándo vence el WhatsApp».
 
 #### Scenario: Tercera no atendida en horario
 - **WHEN** después de dos "No atendió" seguidas se registra un miércoles a las 10:20 "Llamada 3 · No atendió"
-- **THEN** existe una tarea pendiente "Enviar WhatsApp a María López" de tipo mensaje que vence ese miércoles a las 10:20, y no se creó ninguna tarea "Llamada 4"
+- **THEN** existe una tarea pendiente "Enviar WhatsApp a María López" de tipo mensaje que vence ese miércoles a las 10:20, el aviso dice "Se agendó Enviar WhatsApp para ahora." y no se creó ninguna tarea "Llamada 4"
+
+#### Scenario: El WhatsApp se ve para hacer ya
+- **WHEN** se crea esa tarea en horario
+- **THEN** en la ficha, en Pendientes y en la campanita figura entre las vencidas ("Vencida hace 1 min" o similar): es para hacer en ese momento
 
 #### Scenario: Tercera no atendida fuera de horario
 - **WHEN** la tercera "No atendió" seguida se registra un miércoles a las 16:00
@@ -30,17 +32,120 @@ día hábil siguiente a las 10:00.
 - **WHEN** se registra la tercera "No atendió" seguida y el proceso tiene pendiente una tarea de tipo mensaje creada a mano con "+ Tarea"
 - **THEN** igual se crea la tarea "Enviar WhatsApp a {nombre}" de la cadencia
 
+### Requirement: Cuándo vence el WhatsApp
+La tarea "Enviar WhatsApp" de la cadencia SHALL vencer en el momento en que se cargó la
+llamada si fue un día hábil de 10:00 a 13:59 de Argentina (se manda ya); antes de las 10:00
+de un día hábil, ese día a las 10:00; si no, el día hábil siguiente a las 10:00. Es la misma
+regla que el vencimiento de la tarea de entrada de un lead.
+
+#### Scenario: Antes del horario
+- **WHEN** la tercera "No atendió" seguida se carga un miércoles a las 8:30
+- **THEN** la tarea "Enviar WhatsApp" vence ese miércoles a las 10:00
+
 ## MODIFIED Requirements
+
+### Requirement: El WhatsApp marcado termina la secuencia
+Marcar "WhatsApp enviado" SHALL NOT crear ninguna tarea, y una llamada "No atendió"
+registrada después de ese WhatsApp, dentro de la misma racha, tampoco. Los avisos MUST decir
+solo cosas que son verdad en la plataforma de hoy: el bloque «Sin respuesta» del Inicio
+todavía no existe (llega con el change `crm-inicio`), así que hasta entonces no se nombra.
+
+#### Scenario: Marcar el WhatsApp
+- **WHEN** después de tres "No atendió" se marca "WhatsApp enviado"
+- **THEN** no se crea ninguna tarea y el aviso dice "La secuencia termina acá: no se crea ninguna tarea más." y "Si no contesta y querés seguirla, agendá una con «+ Tarea»."
+
+#### Scenario: Intento posterior al WhatsApp
+- **WHEN** después de ese WhatsApp marcado se registra otra llamada "No atendió"
+- **THEN** la llamada se guarda con su número, no se crea ninguna tarea y el aviso dice "Ya se le mandó WhatsApp: no se crea otra tarea. Si querés seguirla, agendá una con «+ Tarea»."
+
+#### Scenario: WhatsApp marcado sin llamadas previas
+- **WHEN** en un proceso sin ninguna llamada se marca "WhatsApp enviado" y después se registra una llamada "No atendió"
+- **THEN** la llamada se guarda como "Llamada 1", no se crea ninguna tarea y el aviso dice "Ya se le mandó WhatsApp: no se crea otra tarea. Si querés seguirla, agendá una con «+ Tarea»."
+
+#### Scenario: Atendió, después WhatsApp, después no atendió
+- **WHEN** el historial es "Atendió · volver a llamar", WhatsApp marcado, y se registra una "No atendió"
+- **THEN** no se crea ninguna tarea, porque el WhatsApp es posterior a la última vez que atendió y sigue dentro de la racha
+
+#### Scenario: No se nombra una pantalla que no existe
+- **WHEN** se leen todos los avisos de la ficha antes de que exista el Inicio nuevo
+- **THEN** ninguno menciona «Sin respuesta» del Inicio
+
+#### Scenario: La solicitud sigue a la vista
+- **WHEN** una solicitud termina la secuencia y queda sin ninguna tarea pendiente
+- **THEN** el proceso sigue en etapa Solicitud y sigue apareciendo en la columna Solicitud del CRM
+
+### Requirement: Registrar una llamada cierra lo pendiente de ese proceso
+Al registrar una llamada, con cualquier resultado, el sistema SHALL completar las tareas
+pendientes del proceso (o ligadas solo al contacto) que esa llamada resuelve: las de
+"actualizar contacto" sin tasación vinculada, las de llamada de la cadencia, las de llamada
+de cualquier coordinador y las de quien registra. Si la llamada fue atendida, SHALL
+completar además la tarea "Enviar WhatsApp" de la cadencia, salvo en las dos excepciones
+de «Cuándo un registro no cierra tareas».
+
+#### Scenario: Tarea de entrada de todos los coordinadores
+- **WHEN** entra un lead que genera una tarea de entrada para cada uno de los dos coordinadores, y uno de ellos registra la primera llamada
+- **THEN** las dos tareas de entrada quedan completadas, también la del coordinador que no llamó
+
+#### Scenario: Tarea creada por el agente de tasación
+- **WHEN** el proceso tiene pendiente la tarea "Llamar para coordinar tasación: María López" que creó el agente de WhatsApp para cada coordinador, y se registra una llamada
+- **THEN** esas tareas quedan completadas y el aviso nombra cada una
+
+#### Scenario: Tarea de "actualizar contacto" ligada a una tasación
+- **WHEN** el proceso tiene pendiente la tarea "Actualizar contacto" que se crea cuando el asesor arma una tasación, y se registra una llamada
+- **THEN** esa tarea sigue pendiente
+
+#### Scenario: Tarea de la cadencia de otra persona
+- **WHEN** la tarea "Llamada 2" la creó la cadencia para la coordinadora A y la llamada la registra la coordinadora B
+- **THEN** la tarea de A queda completada y, si corresponde una nueva, queda asignada a B
+
+#### Scenario: Llamada que otra coordinadora se agendó a mano
+- **WHEN** la coordinadora A tiene una tarea de llamada creada a mano sobre ese proceso y la coordinadora B registra una llamada
+- **THEN** la tarea de A queda completada
+
+#### Scenario: Se avisa qué se cerró
+- **WHEN** una llamada completa una tarea
+- **THEN** el aviso dice "Se completó sola la tarea «…»." por cada una
+
+#### Scenario: La llamada que un asesor se agendó a mano no se toca
+- **WHEN** un asesor tiene una tarea de llamada que creó él a mano sobre ese proceso y la coordinadora registra una llamada
+- **THEN** la tarea del asesor sigue pendiente
+
+#### Scenario: Atendió con la tarea de WhatsApp pendiente
+- **WHEN** después de tres "No atendió" existe la tarea "Enviar WhatsApp a María López" de la cadencia y se registra "Atendió · volver a llamar"
+- **THEN** esa tarea queda completada, el aviso lo dice, y queda pendiente solo la tarea "Llamar a María López"
+
+#### Scenario: No atendió con la tarea de WhatsApp pendiente
+- **WHEN** existe esa misma tarea y se registra otra "No atendió"
+- **THEN** la tarea "Enviar WhatsApp" sigue pendiente
+
+#### Scenario: Tareas de otro tipo
+- **WHEN** el proceso tiene pendientes una tarea de visita y una de documentación y se registra una llamada
+- **THEN** esas dos tareas siguen pendientes
+
+#### Scenario: Tareas de otro proceso
+- **WHEN** el contacto tiene tareas de llamada pendientes en otro proceso y se registra una llamada en el proceso activo
+- **THEN** las tareas del otro proceso siguen pendientes
+
+#### Scenario: Dos solicitudes abiertas de la misma persona
+- **WHEN** la persona mandó dos veces el formulario de tasación, tiene dos solicitudes abiertas, cada una con su tarea de entrada para cada coordinador, y se registra una llamada
+- **THEN** la llamada queda ligada a la solicitud más nueva y se completan las tareas de entrada de esa; las de la solicitud anterior siguen pendientes y esa solicitud sigue abierta, listada en "Procesos" para coordinarla o descartarla desde ahí
+
+#### Scenario: El proceso se cierra con tareas de la cadencia pendientes
+- **WHEN** un proceso con la tarea "Llamada 2" pendiente se descarta o se capta, desde la ficha o desde la pantalla del proceso
+- **THEN** esa tarea sigue pendiente y se sigue viendo en el bloque Tareas de la ficha hasta que alguien la complete a mano; cerrar un proceso no completa ni descarta tareas
 
 ### Requirement: Una llamada no atendida agenda la siguiente
 Cuando se registra una llamada "No atendió" y es la primera o la segunda no atendida seguida
 del proceso, el sistema SHALL crear una tarea de llamada titulada "Llamada N+1 a {nombre}",
 asignada a quien registró la llamada y ligada al proceso y al contacto, salvo en las
 excepciones de «Qué regla gana cuando se cruzan dos». Es el proceso de la coordinación
-(dueño, 2026-11-28): tres llamadas antes del WhatsApp, en su horario de 10 a 14. La Llamada 2
-SHALL quedar para ese mismo día a las 13:30 si la Llamada 1 se registró un día hábil antes de
-las 12:00 de Argentina; si no, para el día hábil siguiente a las 10:00. La Llamada 3 SHALL
-quedar para el día hábil siguiente a las 10:00.
+(dueño, 2026-11-28): tres llamadas antes del WhatsApp, en su horario de 10 a 14. Se cuenta
+por la racha (no por el número de la llamada): la llamada que sigue a la primera no atendida
+de la racha SHALL quedar para ese mismo día a las 13:30 si esa no atendida se cargó un día
+hábil antes de las 12:00 de Argentina, y si no, para el día hábil siguiente a las 10:00; la
+que sigue a la segunda no atendida seguida SHALL quedar para el día hábil siguiente a las
+10:00. Se decide con la hora en que se CARGÓ el intento (como toda la cadencia: un reintento
+agenda igual que el guardado original), no con la hora corregida.
 
 #### Scenario: Primera llamada no atendida
 - **WHEN** una coordinadora registra un martes a las 13:00 la primera llamada a María López como "No atendió"
@@ -62,6 +167,26 @@ quedar para el día hábil siguiente a las 10:00.
 - **WHEN** la coordinadora registra un martes a las 10:40 la Llamada 1 como "No atendió"
 - **THEN** la tarea "Llamada 2" queda para ese martes a las 13:30 y el aviso dice "Se agendó Llamada 2 para hoy 13:30."
 
+#### Scenario: A las 12:00 justas
+- **WHEN** la Llamada 1 "No atendió" se carga un martes a las 12:00
+- **THEN** la Llamada 2 queda para el miércoles a las 10:00
+
+#### Scenario: Sábado a la mañana
+- **WHEN** la Llamada 1 "No atendió" se carga un sábado a las 10:30
+- **THEN** la Llamada 2 queda para el lunes a las 10:00
+
+#### Scenario: Madrugada de un día hábil
+- **WHEN** la Llamada 1 "No atendió" se carga un martes a las 7:30
+- **THEN** la Llamada 2 queda para ese martes a las 13:30
+
+#### Scenario: Hora corregida
+- **WHEN** a las 12:30 se carga una Llamada 1 "No atendió" con la hora corregida a las 11:00
+- **THEN** la Llamada 2 queda para el día hábil siguiente a las 10:00 (manda la hora de carga)
+
+#### Scenario: Racha nueva después de atender
+- **WHEN** el historial es "No atendió", "No atendió", "Atendió · volver a llamar", y un martes a las 10:40 se registra otra "No atendió"
+- **THEN** es la primera no atendida de la racha: se crea "Llamada 5 a {nombre}" para ese martes a las 13:30
+
 #### Scenario: Segunda no atendida
 - **WHEN** después de "Llamada 1 · No atendió" se registra un martes a las 13:30 "Llamada 2 · No atendió"
 - **THEN** existe la tarea "Llamada 3 a María López" para el miércoles a las 10:00, y no una de WhatsApp
@@ -69,8 +194,9 @@ quedar para el día hábil siguiente a las 10:00.
 ### Requirement: Día hábil siguiente en hora de Argentina
 El "día hábil siguiente" SHALL ser el próximo día de lunes a viernes posterior al día en
 que se registra el intento, calculado con el calendario de Argentina, sin tener en cuenta
-feriados. La hora de la tarea SHALL ser las 10:00 de Argentina, el inicio del horario de la coordinación
-(10 a 14).
+feriados. Cuando una tarea de la cadencia va al día hábil siguiente, SHALL quedar a las 10:00 de
+Argentina, el inicio del horario de la coordinación (10 a 14). La Llamada 2 de la misma tarde
+y el WhatsApp que vence en el momento siguen sus propias reglas.
 
 #### Scenario: Viernes
 - **WHEN** se registra una "No atendió" un viernes
