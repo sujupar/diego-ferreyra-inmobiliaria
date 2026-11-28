@@ -22,3 +22,18 @@ adelantó a esta auditoría; sus hallazgos se aplicaron también al código ya e
 | 13 | Orden y piso de la lectura | Orden por `id` (único); piso por `created_at` desde el día anterior al período |
 | 14 | Período en curso | La fuente avisa que todavía pueden avanzar |
 | 15 | Escenarios imprecisos | Horas concretas; "Pocos casos" en el reparto; clase e históricas afuera |
+
+## Revisión de código (4.2)
+
+Sin bugs de lógica (exclusiones, orden, mediana, horas hábiles, frontera de la medición,
+paginación, fallas aisladas, divisiones y plurales verificados).
+
+| # | Hallazgo | Qué se hizo |
+|---|---|---|
+| 1 | Horas hábiles mostradas en días de 24 h ("1 día 21 h" para una semana hábil) | `horasHabiles`: solo horas y minutos ("45 h"), con test |
+| 2 | Llamada sin resultado entraría en el total y en ninguna fila | No aplica: el CHECK `contact_activities_outcome_solo_llamadas_check` y `_outcome_check` exigen uno de los cinco resultados en toda llamada |
+| 3 | Persona sin su proceso en `deals` se saltea | No aplica: las personas salen de esas mismas filas de `deals` |
+
+Script de reglas sobre la base real (`_qa-llamadas-reglas.ts`, dentro de una transacción que se
+deshace): 6 casos `[TEST]` (agendó en la 1, agendó en la 2 con una anulada, sin proceso, solo
+WhatsApp, nada, hora corregida antes del registro) → los números esperados; 0 filas después.

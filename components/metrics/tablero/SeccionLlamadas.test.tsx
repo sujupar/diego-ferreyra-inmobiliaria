@@ -5,7 +5,7 @@ import '@testing-library/jest-dom/vitest'
 import { cleanup, fireEvent, render as renderCrudo, screen } from '@testing-library/react'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { metricasLlamadas, type IntentoMedido } from '@/lib/crm/metricas-llamadas'
-import { SeccionLlamadas } from './SeccionLlamadas'
+import { SeccionLlamadas, horasHabiles } from './SeccionLlamadas'
 
 afterEach(cleanup)
 // En la app el layout pone el TooltipProvider (lo usa el ícono de "de dónde sale").
@@ -19,6 +19,15 @@ const llamada = (deal: string, hora: string, resultado: string): IntentoMedido =
 })
 const ok = (datos: ReturnType<typeof metricasLlamadas>, o: { medicionRecortada?: boolean; antesDeLaMedicion?: boolean } = {}) =>
   ({ ok: true as const, medicionRecortada: false, antesDeLaMedicion: false, datos, ...o })
+
+describe('horas hábiles', () => {
+  it('nunca en días: una semana hábil son 45 h', () => {
+    expect(horasHabiles(2700)).toBe('45 h')
+    expect(horasHabiles(90)).toBe('1 h 30 min')
+    expect(horasHabiles(12)).toBe('12 min')
+    expect(horasHabiles(null)).toBe('—')
+  })
+})
 
 describe('SeccionLlamadas', () => {
   it('con llamadas: los cuatro números con su base, "Pocos casos" y las tablas', () => {

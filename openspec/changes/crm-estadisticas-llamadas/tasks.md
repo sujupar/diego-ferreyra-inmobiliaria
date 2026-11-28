@@ -20,7 +20,7 @@ misma sesión. Se trabaja en `~/Dev/crm-cartera`.
 
 ## 4. Verificación
 - [x] 4.1 Suite, `tsc` de toda la app, `eslint`
-- [ ] 4.2 Revisión de código independiente
+- [x] 4.2 Revisión de código independiente
 - [ ] 4.3 Script de las reglas sobre filas `[TEST]` reales; QA en la vista previa a 390, 1024 y 1280 px como admin (estado real de la sección, resto del Tablero intacto, tiempo de respuesta) y rechazo como coordinación y asesor; 0 errores de consola
 
 ## 5. Cierre
