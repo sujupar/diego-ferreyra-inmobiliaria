@@ -27,6 +27,17 @@ const RESULTADO: Record<ResultadoLlamada, string> = {
 }
 
 const min = (m: number | null) => (m == null ? '—' : duracion(m))
+/**
+ * Horas hábiles, sin pasar a días: un día hábil tiene 9 h, no 24, y "1 día 21 h" de una semana
+ * hábil entera mentiría (revisión de código 1).
+ */
+export function horasHabiles(m: number | null): string {
+  if (m == null) return '—'
+  const t = Math.max(0, Math.floor(m))
+  if (t < 60) return `${t} min`
+  const h = Math.floor(t / 60), r = t % 60
+  return r ? `${h} h ${r} min` : `${h} h`
+}
 const pocos = (n: number) => (n > 0 && n < POCOS_CASOS ? ' · Pocos casos' : '')
 const casos = (n: number, palabra = 'solicitud') => `${num(n)} ${n === 1 ? palabra : palabra === 'solicitud' ? 'solicitudes' : palabra + 's'}`
 
@@ -74,8 +85,8 @@ function Cuerpo({ s, onReintentar }: { s: DatosSeccion; onReintentar: () => void
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Cuadro
           titulo="Primera llamada (mediana hábil)"
-          valor={min(m.primeraLlamada.medianaHabiles)}
-          sub={`Promedio ${min(m.primeraLlamada.promedioHabiles)} hábiles · reloj: mediana ${min(m.primeraLlamada.medianaReloj)}, promedio ${min(m.primeraLlamada.promedioReloj)}`}
+          valor={horasHabiles(m.primeraLlamada.medianaHabiles)}
+          sub={`Promedio ${horasHabiles(m.primeraLlamada.promedioHabiles)} hábiles · reloj: mediana ${min(m.primeraLlamada.medianaReloj)}, promedio ${min(m.primeraLlamada.promedioReloj)}`}
           antes={`Sobre ${casos(m.primeraLlamada.n)}${pocos(m.primeraLlamada.n)}${m.primeraLlamada.sinCaso ? ` · ${num(m.primeraLlamada.sinCaso)} todavía sin llamar no ${m.primeraLlamada.sinCaso === 1 ? 'entra' : 'entran'} en la cuenta` : ''}`}
         />
         <Proporcion titulo="Atendieron una llamada" x={m.contactados} />
@@ -103,7 +114,7 @@ function Segunda({ t }: { t: Tiempo }) {
   if (t.n === 0) return <p className="text-sm text-muted-foreground">Todavía sin casos</p>
   return (
     <p className="text-sm tabular-n">
-      Hábiles: mediana <strong>{min(t.medianaHabiles)}</strong>, promedio {min(t.promedioHabiles)} · reloj: mediana {min(t.medianaReloj)}, promedio {min(t.promedioReloj)}
+      Hábiles: mediana <strong>{horasHabiles(t.medianaHabiles)}</strong>, promedio {horasHabiles(t.promedioHabiles)} · reloj: mediana {min(t.medianaReloj)}, promedio {min(t.promedioReloj)}
       <span className="text-muted-foreground"> · sobre {casos(t.n)}{pocos(t.n)}</span>
     </p>
   )
