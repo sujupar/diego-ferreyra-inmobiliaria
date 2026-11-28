@@ -92,7 +92,8 @@ export interface CuentaARevisar {
  * Semillas primero, después las inmobiliarias, y dentro de cada grupo la revisada hace más
  * tiempo (nunca = primera). Empate (p. ej. dos nunca revisadas): la que llegó antes. NUNCA por
  * nombre: eso dejaba sin turno para siempre a las cuentas del final del alfabeto.
- * Es el mismo orden que arma la consulta de `cuentasParaRevisar` (acá, para las pruebas y el seco).
+ * Es el mismo orden de grupos que arma `cuentasParaRevisar` (acá, para las pruebas y el seco);
+ * el techo de semillas de esa consulta no se aplica acá.
  */
 export function ordenarCuentas(cuentas: CuentaARevisar[]): CuentaARevisar[] {
   const grupo = (c: CuentaARevisar) => (c.origen === 'semilla' ? 0 : c.rubro === 'inmobiliario' ? 1 : 2)
@@ -172,23 +173,27 @@ export async function yaCorrioHoy(ahora: Date = new Date(), sb: SupabaseClient =
 
 // ---------- cuentas ----------
 
+/** Fracción máxima del tope que se llevan las semillas: el resto es para las descubiertas. */
+export const FRACCION_SEMILLAS = 0.6
+
 /**
  * Activas y con menos de 3 descartes a mano, en el orden de revisión, hasta `tope`.
  * El orden y el límite van EN LA CONSULTA (no en JS): PostgREST corta en 1000 filas, y
  * ordenar en memoria sobre un subconjunto arbitrario dejaba afuera semillas e inmobiliarias.
- * Tres consultas ordenadas, una por grupo (semilla → inmobiliario → otro), llenando el tope.
+ *
+ * Consultas ordenadas por grupo: semillas (hasta ceil(60 % del tope)) → inmobiliarias
+ * descubiertas → otras. Sin ese techo, con 30+ semillas y un tope de 25 las cuentas que
+ * descubre el radar no se revisarían nunca. Si los grupos de después no llenan el tope,
+ * el sobrante vuelve a las semillas (cuarta consulta): un cupo vacío no sirve a nadie.
  */
 export async function cuentasParaRevisar(tope: number, sb: SupabaseClient = sb0()): Promise<CuentaARevisar[]> {
   const NO_SEMILLA = 'origen.is.null,origen.neq.semilla'
-  const grupos: Array<(q: any) => any> = [ // eslint-disable-line @typescript-eslint/no-explicit-any
-    (q) => q.eq('origen', 'semilla'),
-    (q) => q.eq('rubro', 'inmobiliario').or(NO_SEMILLA),
-    (q) => q.or('rubro.is.null,rubro.neq.inmobiliario').or(NO_SEMILLA),
-  ]
+  const SEMILLAS = (q: any) => q.eq('origen', 'semilla') // eslint-disable-line @typescript-eslint/no-explicit-any
+  const topeSemillas = Math.ceil(tope * FRACCION_SEMILLAS)
   const out: CuentaARevisar[] = []
-  for (const filtrar of grupos) {
-    const resta = tope - out.length
-    if (resta <= 0) break
+
+  const leer = async (filtrar: (q: any) => any, limite: number) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (limite <= 0) return
     const base = sb
       .from('radar_cuentas')
       .select('usuario, origen, rubro, veces_revisada, destacados, ultima_revision_at, created_at')
@@ -197,7 +202,7 @@ export async function cuentasParaRevisar(tope: number, sb: SupabaseClient = sb0(
     const { data, error } = await filtrar(base)
       .order('ultima_revision_at', { ascending: true, nullsFirst: true })
       .order('created_at', { ascending: true })
-      .limit(resta)
+      .limit(limite)
     falla('no se pudo leer radar_cuentas', error)
     for (const f of (data ?? []) as Array<{
       usuario: string
@@ -208,6 +213,7 @@ export async function cuentasParaRevisar(tope: number, sb: SupabaseClient = sb0(
       ultima_revision_at: string | null
       created_at: string | null
     }>) {
+      if (out.length >= tope) break
       if (out.some((c) => c.usuario === f.usuario)) continue
       out.push({
         usuario: f.usuario,
@@ -219,6 +225,15 @@ export async function cuentasParaRevisar(tope: number, sb: SupabaseClient = sb0(
         creadaAt: f.created_at,
       })
     }
+  }
+
+  await leer(SEMILLAS, Math.min(topeSemillas, tope))
+  const semillasLeidas = out.length
+  await leer((q) => q.eq('rubro', 'inmobiliario').or(NO_SEMILLA), tope - out.length)
+  await leer((q) => q.or('rubro.is.null,rubro.neq.inmobiliario').or(NO_SEMILLA), tope - out.length)
+  // Sobrante → más semillas. Solo si el techo las cortó (si vinieron menos, no hay más).
+  if (out.length < tope && semillasLeidas >= topeSemillas) {
+    await leer(SEMILLAS, semillasLeidas + (tope - out.length))
   }
   return out.slice(0, tope)
 }

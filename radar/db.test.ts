@@ -152,19 +152,48 @@ describe('cuentasParaRevisar', () => {
     })
     const r = await cuentasParaRevisar(5, sb)
     expect(r.map((c) => c.usuario)).toEqual(['s1', 's2', 'i1', 'i2', 'o1'])
-    expect(consultas).toHaveLength(3)
+    expect(consultas).toHaveLength(3) // 2 semillas < techo de 3: no hay más que pedir
     for (const q of consultas) {
       expect(q).toContainEqual(['eq', ['activa', true]])
       expect(q).toContainEqual(['lt', ['descartes_manuales', 3]])
       expect(q).toContainEqual(['order', ['ultima_revision_at', { ascending: true, nullsFirst: true }]])
       expect(q).toContainEqual(['order', ['created_at', { ascending: true }]])
     }
-    expect(consultas.map((q) => q.find(([op]) => op === 'limit')![1][0])).toEqual([5, 3, 1])
+    expect(consultas.map((q) => q.find(([op]) => op === 'limit')![1][0])).toEqual([3, 3, 1])
   })
 
   it('si las semillas llenan el tope, no consulta los otros grupos', async () => {
     const { sb, consultas } = sbCuentas({ semilla: [fila('s1'), fila('s2'), fila('s3')] })
-    expect((await cuentasParaRevisar(2, sb)).map((c) => c.usuario)).toEqual(['s1', 's2'])
+    expect((await cuentasParaRevisar(1, sb)).map((c) => c.usuario)).toEqual(['s1'])
     expect(consultas).toHaveLength(1)
+  })
+
+  const muchas = (p: string, n: number) => Array.from({ length: n }, (_, i) => fila(`${p}${i + 1}`))
+
+  it('las semillas se llevan como mucho ceil(60 % del tope): el resto es para las descubiertas', async () => {
+    const { sb, consultas } = sbCuentas({ semilla: muchas('s', 30), inmobiliario: muchas('i', 20), otro: muchas('o', 5) })
+    const r = await cuentasParaRevisar(25, sb)
+    expect(r).toHaveLength(25)
+    expect(r.filter((c) => c.usuario.startsWith('s'))).toHaveLength(15)
+    expect(r.map((c) => c.usuario).slice(15)).toEqual(muchas('i', 10).map((f) => f.usuario))
+    expect(consultas.map((q) => q.find(([op]) => op === 'limit')![1][0])).toEqual([15, 10])
+  })
+
+  it('si las descubiertas no llenan su parte, el sobrante vuelve a las semillas', async () => {
+    const { sb, consultas } = sbCuentas({ semilla: muchas('s', 30), inmobiliario: muchas('i', 3), otro: muchas('o', 2) })
+    const r = await cuentasParaRevisar(25, sb)
+    expect(r.map((c) => c.usuario)).toEqual([
+      ...muchas('s', 15).map((f) => f.usuario),
+      'i1', 'i2', 'i3', 'o1', 'o2',
+      's16', 's17', 's18', 's19', 's20',
+    ])
+    expect(consultas).toHaveLength(4)
+    expect(consultas.map((q) => q.find(([op]) => op === 'limit')![1][0])).toEqual([15, 10, 7, 20])
+  })
+
+  it('con pocas semillas no hay cuarta consulta aunque sobre lugar', async () => {
+    const { sb, consultas } = sbCuentas({ semilla: muchas('s', 4), inmobiliario: muchas('i', 2) })
+    expect((await cuentasParaRevisar(25, sb)).map((c) => c.usuario)).toEqual(['s1', 's2', 's3', 's4', 'i1', 'i2'])
+    expect(consultas).toHaveLength(3)
   })
 })
