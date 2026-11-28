@@ -315,8 +315,8 @@ dueño, el asesor. Toda la fila SHALL ser un solo enlace a la ficha de contacto 
 y la etapa SHALL ir como chip neutro: en las filas el color queda para lo vencido y lo de hoy.
 
 #### Scenario: Fila de una solicitud con una llamada sin atender
-- **WHEN** la coordinadora mira a Sofía Lanús, una solicitud de un PH de 4 ambientes en Colegiales, Conesa 1250, a la que llamó hace una hora sin que atienda y que tiene la "Llamada 2" para mañana a las 9:00
-- **THEN** la fila dice "Sofía Lanús", "PH 4 amb · Colegiales · Conesa 1250", la etapa "Solicitud", el último contacto "hace 1 h" con "Llamada · no atendió", y el próximo paso "Llamada 2" con "Mañana 9:00"
+- **WHEN** la coordinadora mira a Sofía Lanús, una solicitud de un PH de 4 ambientes en Colegiales, Conesa 1250, a la que llamó hace una hora sin que atienda y que tiene la "Llamada 2" para mañana a las 10:00
+- **THEN** la fila dice "Sofía Lanús", "PH 4 amb · Colegiales · Conesa 1250", la etapa "Solicitud", el último contacto "hace 1 h" con "Llamada · no atendió", y el próximo paso "Llamada 2" con "Mañana 10:00"
 
 #### Scenario: Proceso sin tipo de propiedad
 - **WHEN** un proceso no tiene cargado el tipo de propiedad ni los ambientes, y es de Villa Crespo, Thames 640

@@ -17,7 +17,7 @@ vitest acotado, `tsc`, `eslint`. Datos de prueba solo `[TEST]`, borrados en la m
 ## 3. Verificación
 - [x] 3.1 Suite, `tsc`, `eslint`
 - [x] 3.2 Revisión de código independiente
-- [ ] 3.3 QA en la vista previa con un `[TEST]`: tres "No atendió" seguidas → Llamada 2 a las 13:30 o al otro día a las 10:00, Llamada 3, WhatsApp; avisos; borrar los datos
+- [x] 3.3 QA en la vista previa con un `[TEST]`: tres "No atendió" seguidas → Llamada 2 a las 13:30 o al otro día a las 10:00, Llamada 3, WhatsApp; avisos; borrar los datos
 
 ## 4. Cierre
-- [ ] 4.1 Merge, humo en producción, `CLAUDE.md`, archivar y avisar al dueño con dónde mirarlo
+- [x] 4.1 Merge, humo en producción, `CLAUDE.md`, archivar y avisar al dueño con dónde mirarlo

@@ -29,3 +29,11 @@ fin de semana, reintentos, "para ahora" solo cuando venció).
 | 3 | Baja | Tareas de entrada ya creadas con la hora vieja | Aceptado: transitorio, se ordena solo al cerrarse |
 | 4 | Baja | Comentario "un día hábil tiene 9 h" | Corregido |
 | 5 | Baja | Reloj del navegador atrasado mostraba "recién" | 60 s de margen en `paraCuando`, con test |
+
+## QA en la vista previa (3.3, deploy-preview-109, sábado 28/11)
+
+Contacto y solicitud `[TEST]` (sin email, origin vacío), tres "No atendió" como coordinación
+por `POST /api/contacts/[id]/activities`: Llamada 1 → "Llamada 2" lun 30/11 10:00; Llamada 2 →
+"Llamada 3" lun 10:00 (la 2 se completó sola); Llamada 3 → "Enviar WhatsApp" lun 10:00 (la 3
+se completó sola). La ficha muestra "Enviar WhatsApp …, lun 30 nov, 10:00". Borrado: 0 filas.
+El caso "esa tarde a las 13:30" no se puede ver un sábado: lo cubren los tests de `cadencia.ts`.

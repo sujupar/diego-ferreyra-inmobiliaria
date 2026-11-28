@@ -134,7 +134,7 @@ rojo en cuanto se completan.
 - **THEN** responde 400 y no se guarda la llamada ni se crea ninguna tarea
 
 #### Scenario: Atajo "Hoy 16:00" cuando ya pasaron las 16:00
-- **WHEN** a las 17:00 se elige "Atendió · volver a llamar", se toca el atajo "Hoy 16:00" y se toca "Guardar llamada"
+- **WHEN** a las 17:00 se elige "Atendió · volver a llamar", se toca el atajo de hoy ("Hoy 13:30" desde crm-cadencia-paula) y se toca "Guardar llamada"
 - **THEN** se lee "Tiene que ser más adelante que ahora" y no se guarda nada
 
 #### Scenario: El día y la hora pedidos quedan guardados con la llamada

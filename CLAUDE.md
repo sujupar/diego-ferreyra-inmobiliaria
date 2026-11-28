@@ -2788,6 +2788,14 @@ Change archivado en `openspec/changes/archive/2026-11-27-crm-inicio/` (auditorí
 - **Otra métrica parecida:** el Inicio del dueño tiene "Tiempo medio a la primera llamada" (semana, procesos del embudo, solo promedio). No es la misma población; unificarlas queda para cuando el dueño lo pida.
 - **Al 28/11/2026 no había NINGUNA llamada registrada** en producción: la sección dice "todavía no hay llamadas registradas" hasta que la coordinación registre.
 
+## CRM — Cadencia de la coordinación y horario 10 a 14 (PR #109, 2026-11-28)
+
+- **El proceso real de Paula (dueño, 2026-11-28):** tres llamadas antes del WhatsApp; la primera lo antes posible; trabaja de **10 a 14** (Argentina).
+- **Reglas (`lib/crm/cadencia.ts`, `cuandoLaSiguienteLlamada`):** por RACHA, no por número. Tras la 1.ª no atendida cargada un día hábil antes de las 12:00 → la siguiente esa tarde a las **13:30**; si no → día hábil siguiente 10:00. Tras la 2.ª → día hábil siguiente 10:00. Tras la 3.ª → "Enviar WhatsApp" que vence **ya** si es horario (`enHorarioOProximo`, compartida con la tarea de entrada de un lead). Siempre con la hora de CARGA (`created_at`), no la corregida.
+- **`HORARIO_LABORAL` = 10:00–14:00** para todo: tarea de entrada, día hábil siguiente, `minutosHabilesEntre` (esperas del Inicio/CRM y "horas hábiles" de Métricas: un día hábil = 4 h). **Excepción:** las tareas "todo el día" avisan desde las 9:00 (`HORA_AVISO_TODO_EL_DIA` en `lib/tareas/agenda.ts`) y "Posponer · Mañana a las 9:00" no cambió.
+- **Avisos:** "para ahora" si la tarea ya venció (60 s de margen por el reloj del navegador); el historial ("Tarea creada sola") muestra día y hora exactos si ya pasó (`vencimientoEnHistorial`). Atajos de "Volver a llamar": Hoy 13:30 · Mañana 10:00 · Mañana 13:00.
+- **Las tareas creadas con la regla vieja (9–18, WhatsApp tras 2) no se migraron:** se ordenan solas al cerrarse.
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.
