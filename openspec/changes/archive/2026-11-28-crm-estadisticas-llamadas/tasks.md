@@ -25,5 +25,5 @@ misma sesión. Se trabaja en `~/Dev/crm-cartera`.
 
 ## 5. Cierre
 - [x] 5.1 Auditoría de cierre; corregir y anotar
-- [ ] 5.2 Merge con `--rebase`, deploy y humo en producción
-- [ ] 5.3 Limpieza, `CLAUDE.md`, archivar y avisar al dueño
+- [x] 5.2 Merge con `--rebase`, deploy y humo en producción
+- [x] 5.3 Limpieza, `CLAUDE.md`, archivar y avisar al dueño
