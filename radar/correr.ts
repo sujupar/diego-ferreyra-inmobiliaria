@@ -30,6 +30,11 @@ export const MAX_CLASIFICACIONES = 40
 export const MAX_TERMINOS = 6
 /** Cuentas nuevas que se toman de cada término. */
 export const CUENTAS_POR_TERMINO = 5
+/**
+ * Tope de cuentas NUEVAS registradas por corrida (búsquedas + explorar). Sin esto entraban
+ * ~45–60 por día contra 25 revisadas: la cola crecía sin fin y nunca se vaciaba.
+ */
+export const MAX_CUENTAS_NUEVAS = 15
 /** Cuántos resultados se piden a la búsqueda para quedarse con 5 que no conozcamos. */
 const RESULTADOS_BUSQUEDA = 15
 const REELS_EXPLORAR = 30
@@ -245,12 +250,14 @@ export async function correr(
     const sumarNuevas = async (usuarios: string[], origen: 'busqueda' | 'explorar', max: number) => {
       const limpios = [...new Set(usuarios.map(sinArroba).filter(Boolean))]
       const conocidas = await db.cuentasConocidas(limpios)
-      const libres = limpios.filter((u) => !conocidas.has(u) && !nuevas.some((n) => n.usuario === u)).slice(0, max)
+      const cupo = Math.max(0, MAX_CUENTAS_NUEVAS - nuevas.length)
+      const libres = limpios.filter((u) => !conocidas.has(u) && !nuevas.some((n) => n.usuario === u)).slice(0, Math.min(max, cupo))
       nuevas.push(...libres.map((usuario) => ({ usuario, origen })))
       return libres
     }
     const terminos = await db.busquedasDeHoy(topeTerminos, !seco)
     for (const [i, termino] of terminos.entries()) {
+      if (nuevas.length >= MAX_CUENTAS_NUEVAS) break
       if (i > 0) await deps.pausaEntreCuentas()
       try {
         const libres = await sumarNuevas(await cliente.buscarCuentas(termino, RESULTADOS_BUSQUEDA), 'busqueda', CUENTAS_POR_TERMINO)
@@ -261,15 +268,19 @@ export async function correr(
         log(`búsqueda "${termino}" falló: ${msg(e)}`)
       }
     }
-    try {
-      await deps.pausaEntreCuentas()
-      const reels = await cliente.explorar(REELS_EXPLORAR)
-      const libres = await sumarNuevas(reels.map((r) => r.cuenta), 'explorar', REELS_EXPLORAR)
-      log(`explorar: ${reels.length} reels, ${libres.length} cuentas nuevas`)
-    } catch (e) {
-      if (e instanceof BloqueoInstagram) throw e
-      anotar(`explorar: ${msg(e)}`)
-      log(`explorar falló: ${msg(e)}`)
+    if (nuevas.length < MAX_CUENTAS_NUEVAS) {
+      try {
+        await deps.pausaEntreCuentas()
+        const reels = await cliente.explorar(REELS_EXPLORAR)
+        // De explorar solo interesan autores cuyo reel ya juega en la liga de los candidatos.
+        const fuertes = reels.filter((r) => (r.vistas ?? 0) >= cfg.vistasMin)
+        const libres = await sumarNuevas(fuertes.map((r) => r.cuenta), 'explorar', REELS_EXPLORAR)
+        log(`explorar: ${reels.length} reels (${fuertes.length} con ≥ ${cfg.vistasMin} vistas), ${libres.length} cuentas nuevas`)
+      } catch (e) {
+        if (e instanceof BloqueoInstagram) throw e
+        anotar(`explorar: ${msg(e)}`)
+        log(`explorar falló: ${msg(e)}`)
+      }
     }
     if (!seco) {
       for (const origen of ['busqueda', 'explorar'] as const) {
@@ -286,7 +297,7 @@ export async function correr(
       const enLista = new Set(cuentas.map((c) => c.usuario))
       const extra: CuentaARevisar[] = nuevas
         .filter((n) => !enLista.has(n.usuario))
-        .map((n) => ({ usuario: n.usuario, origen: n.origen, rubro: 'otro', vecesRevisada: 0, destacados: 0, ultimaRevisionAt: null }))
+        .map((n) => ({ usuario: n.usuario, origen: n.origen, rubro: 'otro', vecesRevisada: 0, destacados: 0, ultimaRevisionAt: null, creadaAt: null }))
       cuentas = [...cuentas, ...extra].slice(0, topeCuentas)
     }
     const candidatos: Candidato[] = []

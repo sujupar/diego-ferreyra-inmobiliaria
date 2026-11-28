@@ -84,13 +84,22 @@ export interface CuentaARevisar {
   vecesRevisada: number
   destacados: number
   ultimaRevisionAt: string | null
+  /** Alta en radar_cuentas: desempata las nunca revisadas por orden de llegada (FIFO). */
+  creadaAt: string | null
 }
 
-/** Semillas primero, después las inmobiliarias, y dentro de cada grupo la revisada hace más tiempo (nunca = primera). */
+/**
+ * Semillas primero, después las inmobiliarias, y dentro de cada grupo la revisada hace más
+ * tiempo (nunca = primera). Empate (p. ej. dos nunca revisadas): la que llegó antes. NUNCA por
+ * nombre: eso dejaba sin turno para siempre a las cuentas del final del alfabeto.
+ * Es el mismo orden que arma la consulta de `cuentasParaRevisar` (acá, para las pruebas y el seco).
+ */
 export function ordenarCuentas(cuentas: CuentaARevisar[]): CuentaARevisar[] {
   const grupo = (c: CuentaARevisar) => (c.origen === 'semilla' ? 0 : c.rubro === 'inmobiliario' ? 1 : 2)
-  const t = (c: CuentaARevisar) => (c.ultimaRevisionAt ? new Date(c.ultimaRevisionAt).getTime() : -Infinity)
-  return [...cuentas].sort((a, b) => grupo(a) - grupo(b) || t(a) - t(b) || a.usuario.localeCompare(b.usuario))
+  const t = (x: string | null) => (x ? new Date(x).getTime() : -Infinity)
+  return [...cuentas].sort(
+    (a, b) => grupo(a) - grupo(b) || t(a.ultimaRevisionAt) - t(b.ultimaRevisionAt) || t(a.creadaAt) - t(b.creadaAt),
+  )
 }
 
 /** Rotación de búsquedas: `n` términos desde el cursor, dando la vuelta. Devuelve el cursor siguiente. */
@@ -163,32 +172,55 @@ export async function yaCorrioHoy(ahora: Date = new Date(), sb: SupabaseClient =
 
 // ---------- cuentas ----------
 
-/** Activas y con menos de 3 descartes a mano (la consulta lo garantiza), en el orden de revisión. */
+/**
+ * Activas y con menos de 3 descartes a mano, en el orden de revisión, hasta `tope`.
+ * El orden y el límite van EN LA CONSULTA (no en JS): PostgREST corta en 1000 filas, y
+ * ordenar en memoria sobre un subconjunto arbitrario dejaba afuera semillas e inmobiliarias.
+ * Tres consultas ordenadas, una por grupo (semilla → inmobiliario → otro), llenando el tope.
+ */
 export async function cuentasParaRevisar(tope: number, sb: SupabaseClient = sb0()): Promise<CuentaARevisar[]> {
-  const { data, error } = await sb
-    .from('radar_cuentas')
-    .select('usuario, origen, rubro, veces_revisada, destacados, ultima_revision_at')
-    .eq('activa', true)
-    .lt('descartes_manuales', 3)
-  falla('no se pudo leer radar_cuentas', error)
-  const filas = (data ?? []) as Array<{
-    usuario: string
-    origen: OrigenCuenta | null
-    rubro: 'inmobiliario' | 'otro' | null
-    veces_revisada: number | null
-    destacados: number | null
-    ultima_revision_at: string | null
-  }>
-  return ordenarCuentas(
-    filas.map((f) => ({
-      usuario: f.usuario,
-      origen: f.origen,
-      rubro: f.rubro,
-      vecesRevisada: f.veces_revisada ?? 0,
-      destacados: f.destacados ?? 0,
-      ultimaRevisionAt: f.ultima_revision_at,
-    })),
-  ).slice(0, tope)
+  const NO_SEMILLA = 'origen.is.null,origen.neq.semilla'
+  const grupos: Array<(q: any) => any> = [ // eslint-disable-line @typescript-eslint/no-explicit-any
+    (q) => q.eq('origen', 'semilla'),
+    (q) => q.eq('rubro', 'inmobiliario').or(NO_SEMILLA),
+    (q) => q.or('rubro.is.null,rubro.neq.inmobiliario').or(NO_SEMILLA),
+  ]
+  const out: CuentaARevisar[] = []
+  for (const filtrar of grupos) {
+    const resta = tope - out.length
+    if (resta <= 0) break
+    const base = sb
+      .from('radar_cuentas')
+      .select('usuario, origen, rubro, veces_revisada, destacados, ultima_revision_at, created_at')
+      .eq('activa', true)
+      .lt('descartes_manuales', 3)
+    const { data, error } = await filtrar(base)
+      .order('ultima_revision_at', { ascending: true, nullsFirst: true })
+      .order('created_at', { ascending: true })
+      .limit(resta)
+    falla('no se pudo leer radar_cuentas', error)
+    for (const f of (data ?? []) as Array<{
+      usuario: string
+      origen: OrigenCuenta | null
+      rubro: 'inmobiliario' | 'otro' | null
+      veces_revisada: number | null
+      destacados: number | null
+      ultima_revision_at: string | null
+      created_at: string | null
+    }>) {
+      if (out.some((c) => c.usuario === f.usuario)) continue
+      out.push({
+        usuario: f.usuario,
+        origen: f.origen,
+        rubro: f.rubro,
+        vecesRevisada: f.veces_revisada ?? 0,
+        destacados: f.destacados ?? 0,
+        ultimaRevisionAt: f.ultima_revision_at,
+        creadaAt: f.created_at,
+      })
+    }
+  }
+  return out.slice(0, tope)
 }
 
 /** De estos usuarios, cuáles ya están en `radar_cuentas` (activos o no: una desactivada no se re-descubre). */

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { CuentaARevisar } from './db'
-import { candadoArchivo, correr, estadoTrasRevision, MAX_CLASIFICACIONES, MENSAJE_SESION, type ClienteIG, type DbRadar, type Deps } from './correr'
+import { candadoArchivo, correr, estadoTrasRevision, MAX_CLASIFICACIONES, MAX_CUENTAS_NUEVAS, MENSAJE_SESION, type ClienteIG, type DbRadar, type Deps } from './correr'
 import { BloqueoInstagram } from './instagram/bloqueo'
 import type { Analisis, Clasificacion, ConfigRadar, CuentaPerfil, ReelCrudo } from './tipos'
 
@@ -50,6 +50,7 @@ const cuenta = (usuario: string, extra: Partial<CuentaARevisar> = {}): CuentaARe
   vecesRevisada: 0,
   destacados: 0,
   ultimaRevisionAt: null,
+  creadaAt: null,
   ...extra,
 })
 
@@ -292,11 +293,27 @@ describe('correr', () => {
     db.busquedasDeHoy.mockResolvedValue(['alquileres'])
     cliente.buscarCuentas.mockResolvedValue(['a1', 'a2', 'conocida', 'a3', 'a4', 'a5', 'a6'])
     db.cuentasConocidas.mockResolvedValue(new Set(['conocida']))
-    cliente.explorar.mockResolvedValue(reelsDe('expl', []).slice(0, 2))
+    const [fuerte, flojo] = reelsDe('expl', ['E1']).slice(0, 2) // 51.000 y 10.000 vistas
+    cliente.explorar.mockResolvedValue([fuerte, { ...flojo, cuenta: 'floja' }])
     await correr(OPTS, deps)
     expect(db.busquedasDeHoy).toHaveBeenCalledWith(6, true)
     expect(db.registrarCuentas).toHaveBeenCalledWith(['a1', 'a2', 'a3', 'a4', 'a5'], 'busqueda')
+    // De explorar solo el autor con un reel de ≥ vistasMin (20.000).
     expect(db.registrarCuentas).toHaveBeenCalledWith(['expl'], 'explorar')
+  })
+
+  it(`registra como mucho ${MAX_CUENTAS_NUEVAS} cuentas nuevas por corrida (búsquedas + explorar)`, async () => {
+    const { deps, db, cliente } = armar()
+    db.busquedasDeHoy.mockResolvedValue(['t1', 't2', 't3', 't4', 't5', 't6'])
+    let n = 0
+    cliente.buscarCuentas.mockImplementation(async () => Array.from({ length: 15 }, () => `u${n++}`))
+    cliente.explorar.mockResolvedValue(reelsDe('expl', ['E1']).slice(0, 1))
+    await correr(OPTS, deps)
+    const registradas = db.registrarCuentas.mock.calls.flatMap((c) => c[0])
+    expect(registradas).toHaveLength(MAX_CUENTAS_NUEVAS)
+    expect(cliente.buscarCuentas).toHaveBeenCalledTimes(3) // 5 + 5 + 5: corta ahí
+    expect(cliente.explorar).not.toHaveBeenCalled()
+    expect(db.registrarCuentas).not.toHaveBeenCalledWith(expect.anything(), 'explorar')
   })
 
   it('una cuenta descubierta clasificada como inmobiliaria pasa a rubro inmobiliario', async () => {

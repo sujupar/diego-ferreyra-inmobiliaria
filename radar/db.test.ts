@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { configDesdeFilas, diaBA, ordenarCuentas, rotarBusquedas, soloMetricas, upsertVideoRef, yaCorrioHoy, type CuentaARevisar } from './db'
+import { configDesdeFilas, cuentasParaRevisar, diaBA, ordenarCuentas, rotarBusquedas, soloMetricas, upsertVideoRef, yaCorrioHoy, type CuentaARevisar } from './db'
 
 describe('diaBA', () => {
   it('usa el día de Buenos Aires, no el UTC', () => {
@@ -27,8 +27,16 @@ describe('configDesdeFilas', () => {
 })
 
 describe('ordenarCuentas', () => {
-  const c = (usuario: string, origen: CuentaARevisar['origen'], rubro: CuentaARevisar['rubro'], ultima: string | null): CuentaARevisar => ({
-    usuario, origen, rubro, vecesRevisada: 0, destacados: 0, ultimaRevisionAt: ultima,
+  const c = (usuario: string, origen: CuentaARevisar['origen'], rubro: CuentaARevisar['rubro'], ultima: string | null, creada: string | null = null): CuentaARevisar => ({
+    usuario, origen, rubro, vecesRevisada: 0, destacados: 0, ultimaRevisionAt: ultima, creadaAt: creada,
+  })
+  it('las nunca revisadas se desempatan por orden de llegada (FIFO), no por nombre', () => {
+    const orden = ordenarCuentas([
+      c('aaa-nueva', 'explorar', 'otro', null, '2026-11-20T00:00:00Z'),
+      c('zzz-vieja', 'explorar', 'otro', null, '2026-11-01T00:00:00Z'),
+      c('mmm', 'busqueda', 'otro', null, '2026-11-10T00:00:00Z'),
+    ]).map((x) => x.usuario)
+    expect(orden).toEqual(['zzz-vieja', 'mmm', 'aaa-nueva'])
   })
   it('semillas, después inmobiliarias, y la revisada hace más tiempo primero', () => {
     const orden = ordenarCuentas([
@@ -102,5 +110,61 @@ describe('yaCorrioHoy', () => {
     expect(await yaCorrioHoy(new Date('2026-11-28T12:00:00Z'), sb)).toBe(false)
     const { sb: sb2 } = sbFalso({ select: [{ inicio: '2026-11-28T11:00:00Z' }] })
     expect(await yaCorrioHoy(new Date('2026-11-28T12:00:00Z'), sb2)).toBe(true)
+  })
+})
+
+describe('cuentasParaRevisar', () => {
+  /** Doble que registra la cadena de cada consulta y responde por grupo. */
+  function sbCuentas(porGrupo: Record<string, Array<Record<string, unknown>>>) {
+    const consultas: Array<Array<[string, unknown[]]>> = []
+    const sb = {
+      from: () => {
+        const cadena: Array<[string, unknown[]]> = []
+        consultas.push(cadena)
+        const b: Record<string, unknown> = {}
+        for (const op of ['select', 'eq', 'lt', 'or', 'order', 'limit']) {
+          b[op] = (...args: unknown[]) => {
+            cadena.push([op, args])
+            return b
+          }
+        }
+        b.then = (ok: (v: unknown) => unknown) => {
+          const grupo = cadena.some(([op, a]) => op === 'eq' && a[0] === 'origen')
+            ? 'semilla'
+            : cadena.some(([op, a]) => op === 'eq' && a[0] === 'rubro')
+              ? 'inmobiliario'
+              : 'otro'
+          const limite = cadena.find(([op]) => op === 'limit')![1][0] as number
+          return ok({ data: (porGrupo[grupo] ?? []).slice(0, limite), error: null })
+        }
+        return b
+      },
+    } as unknown as SupabaseClient
+    return { sb, consultas }
+  }
+  const fila = (usuario: string) => ({ usuario, origen: null, rubro: null, veces_revisada: 0, destacados: 0, ultima_revision_at: null, created_at: null })
+
+  it('semillas → inmobiliarias → otras, con orden y límite en la consulta, llenando el tope', async () => {
+    const { sb, consultas } = sbCuentas({
+      semilla: [fila('s1'), fila('s2')],
+      inmobiliario: [fila('i1'), fila('i2')],
+      otro: [fila('o1'), fila('o2'), fila('o3')],
+    })
+    const r = await cuentasParaRevisar(5, sb)
+    expect(r.map((c) => c.usuario)).toEqual(['s1', 's2', 'i1', 'i2', 'o1'])
+    expect(consultas).toHaveLength(3)
+    for (const q of consultas) {
+      expect(q).toContainEqual(['eq', ['activa', true]])
+      expect(q).toContainEqual(['lt', ['descartes_manuales', 3]])
+      expect(q).toContainEqual(['order', ['ultima_revision_at', { ascending: true, nullsFirst: true }]])
+      expect(q).toContainEqual(['order', ['created_at', { ascending: true }]])
+    }
+    expect(consultas.map((q) => q.find(([op]) => op === 'limit')![1][0])).toEqual([5, 3, 1])
+  })
+
+  it('si las semillas llenan el tope, no consulta los otros grupos', async () => {
+    const { sb, consultas } = sbCuentas({ semilla: [fila('s1'), fila('s2'), fila('s3')] })
+    expect((await cuentasParaRevisar(2, sb)).map((c) => c.usuario)).toEqual(['s1', 's2'])
+    expect(consultas).toHaveLength(1)
   })
 })
