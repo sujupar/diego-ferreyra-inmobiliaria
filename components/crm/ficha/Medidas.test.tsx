@@ -73,7 +73,7 @@ describe('44 px en todo lo tocable', () => {
     for (const r of [/No atendió/, /agendó/, /volver a llamar/, /no le interesa/, /equivocado/]) tactil(screen.getByRole('button', { name: r }))
     const usr = userEvent.setup()
     await usr.click(screen.getByRole('button', { name: /volver a llamar/ }))
-    for (const a of ['Hoy 16:00', 'Mañana 10:00', 'Mañana 16:00']) tactil(screen.getByRole('button', { name: a }))
+    for (const a of ['Hoy 13:30', 'Mañana 10:00', 'Mañana 13:00']) tactil(screen.getByRole('button', { name: a }))
     for (const c of [screen.getByLabelText('Día'), screen.getByLabelText('Hora'), screen.getByLabelText(/Comentario/)]) {
       expect(c.className).toMatch(/(^|\s)text-base(\s|$)/)
       expect(c.className).toContain('raton:text-sm')

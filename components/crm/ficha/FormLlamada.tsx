@@ -31,11 +31,12 @@ const ATRASOS: { valor: Atraso; etiqueta: string }[] = [
   { valor: '60', etiqueta: 'Hace 1 hora' },
 ]
 
-type Atajo = 'hoy16' | 'manana10' | 'manana16'
+// Dentro del horario de la coordinación, 10 a 14 (crm-cadencia-paula).
+type Atajo = 'hoy1330' | 'manana10' | 'manana13'
 const ATAJOS: { valor: Atajo; etiqueta: string; dias: number; hora: string }[] = [
-  { valor: 'hoy16', etiqueta: 'Hoy 16:00', dias: 0, hora: '16:00' },
+  { valor: 'hoy1330', etiqueta: 'Hoy 13:30', dias: 0, hora: '13:30' },
   { valor: 'manana10', etiqueta: 'Mañana 10:00', dias: 1, hora: '10:00' },
-  { valor: 'manana16', etiqueta: 'Mañana 16:00', dias: 1, hora: '16:00' },
+  { valor: 'manana13', etiqueta: 'Mañana 13:00', dias: 1, hora: '13:00' },
 ]
 
 /** Fecha de Argentina de hoy + N días de calendario. */

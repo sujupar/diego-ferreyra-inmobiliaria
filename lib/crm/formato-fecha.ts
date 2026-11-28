@@ -73,11 +73,27 @@ export function cuandoEs(fecha: string, hora: string, ahora: Date): string {
  */
 export function paraCuando(fecha: string, hora: string, ahora: Date): string {
   try {
-    if (instanteDesdeAR(fecha, hora.slice(0, 5)).getTime() <= ahora.getTime()) return 'ahora'
+    // 60 s de margen: el reloj del navegador puede ir unos segundos atrás del servidor.
+    if (instanteDesdeAR(fecha, hora.slice(0, 5)).getTime() <= ahora.getTime() + 60_000) return 'ahora'
   } catch {
     // lo resuelve cuandoEs con su texto de respaldo
   }
   return cuandoEs(fecha, hora, ahora)
+}
+
+/**
+ * "Tarea creada sola · …" en la línea de tiempo, que se lee días después: futura → "mañana
+ * 10:00"; ya pasada → el día y la hora exactos ("mié 25 nov, 10:20"), nunca "ahora" ni "hace
+ * N" (crm-cadencia-paula, revisión de código 1). Sin hora: desde las 9:00 (todo el día).
+ */
+export function vencimientoEnHistorial(fecha: string, hora: string | null, ahora: Date): string {
+  const h = (hora ?? '09:00').slice(0, 5)
+  try {
+    if (instanteDesdeAR(fecha, h).getTime() > ahora.getTime()) return cuandoEs(fecha, h, ahora)
+  } catch {
+    return `${fecha} ${h}`
+  }
+  return `${diaCorto(fecha)}, ${horaCorta(h)}`
 }
 
 export type EstadoVencimiento = 'vencida' | 'hoy' | 'proxima' | 'sinfecha'
