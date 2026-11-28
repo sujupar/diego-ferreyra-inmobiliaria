@@ -159,9 +159,9 @@ describe('calcularTrabado — lo general', () => {
 })
 
 describe('textoEspera', () => {
-  it('16 h 20 min de reloj, 1 h 40 min hábiles (entró martes 16:20, ahora miércoles 8:40)', () => {
-    expect(textoEspera(ar('2026-11-24', '16:20'), new Date(ar('2026-11-25', '08:40')))).toBe(
-      'Espera hace 16 h 20 min de reloj · 1 h 40 min hábiles',
+  it('18 h 20 min de reloj, 40 min hábiles (entró martes 16:20, ahora miércoles 10:40; horario 10 a 14)', () => {
+    expect(textoEspera(ar('2026-11-24', '16:20'), new Date(ar('2026-11-25', '10:40')))).toBe(
+      'Espera hace 18 h 20 min de reloj · 40 min hábiles',
     )
   })
   it('sin diferencia (esperó solo en horario): "Espera hace 28 min"', () => {

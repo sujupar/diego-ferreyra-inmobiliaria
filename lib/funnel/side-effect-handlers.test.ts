@@ -259,16 +259,16 @@ describe('tarea de coordinación con fecha (crm-tareas-y-campanita)', () => {
   it('en horario: vence en el momento del registro, como llamada', async () => {
     await ejecutarTrabajo('coordinator_task', {
       funnel: 'tasacion', dealId: 'deal-1', contactId: 'contacto-1', nombre: 'Ana Pérez',
-      registradoEn: '2026-11-24T18:10:00.000Z', // martes 15:10 de Argentina
+      registradoEn: '2026-11-24T14:10:00.000Z', // martes 11:10 de Argentina (horario 10 a 14)
     })
-    expect(espias.tareas.at(-1)).toMatchObject({ due_date: '2026-11-24', due_time: '15:10', all_day: false, channel: 'call' })
+    expect(espias.tareas.at(-1)).toMatchObject({ due_date: '2026-11-24', due_time: '11:10', all_day: false, channel: 'call' })
   })
-  it('fuera de horario: el día hábil siguiente a las 9:00', async () => {
+  it('fuera de horario: el día hábil siguiente a las 10:00', async () => {
     await ejecutarTrabajo('coordinator_task', {
       funnel: 'tasacion', dealId: 'deal-1', contactId: 'contacto-1', nombre: 'Ana Pérez',
       registradoEn: '2026-11-28T00:00:00.000Z', // viernes 21:00 de Argentina
     })
-    expect(espias.tareas.at(-1)).toMatchObject({ due_date: '2026-11-30', due_time: '09:00', all_day: false })
+    expect(espias.tareas.at(-1)).toMatchObject({ due_date: '2026-11-30', due_time: '10:00', all_day: false })
   })
   it('la clase gratuita no: nace sin fecha y sin canal (no suena)', async () => {
     await ejecutarTrabajo('coordinator_task', {

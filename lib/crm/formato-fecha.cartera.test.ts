@@ -159,38 +159,38 @@ describe('textoVencimiento — textos de la spec "Próximo paso"', () => {
   })
 })
 
-describe('minutosHabilesEntre (lunes a viernes, 9:00 a 18:00 de Argentina)', () => {
+describe('minutosHabilesEntre (lunes a viernes, 10:00 a 14:00 de Argentina, crm-cadencia-paula)', () => {
   const ar = (fecha: string, hora: string) => new Date(`${fecha}T${hora}:00-03:00`)
-  it('el horario termina a las 18:00 (respuesta 3 del dueño) y empieza a las 9:00 como siempre', () => {
-    expect(HORARIO_LABORAL.fin).toBe('18:00')
-    expect(HORARIO_LABORAL.inicio).toBe('09:00')
+  it('el horario es el de la coordinación: de 10:00 a 14:00 (dueño, 2026-11-28)', () => {
+    expect(HORARIO_LABORAL.fin).toBe('14:00')
+    expect(HORARIO_LABORAL.inicio).toBe('10:00')
   })
   it('dentro del horario: 28 minutos', () => {
     expect(minutosHabilesEntre(ar('2026-11-25', '10:12'), ar('2026-11-25', '10:40'))).toBe(28)
   })
-  it('cruzando la noche: de las 16:20 a las 8:40 del día siguiente son 1 h 40 min hábiles', () => {
-    expect(minutosHabilesEntre(ar('2026-11-24', '16:20'), ar('2026-11-25', '08:40'))).toBe(100)
+  it('cruzando la noche: de las 13:20 a las 10:40 del día siguiente son 1 h 20 min hábiles', () => {
+    expect(minutosHabilesEntre(ar('2026-11-24', '13:20'), ar('2026-11-25', '10:40'))).toBe(80)
   })
-  it('cruzando la noche hasta las 10:00 suma la mañana', () => {
-    expect(minutosHabilesEntre(ar('2026-11-24', '17:00'), ar('2026-11-25', '10:00'))).toBe(120)
+  it('cruzando la noche hasta las 12:00 suma la mañana', () => {
+    expect(minutosHabilesEntre(ar('2026-11-24', '17:00'), ar('2026-11-25', '12:00'))).toBe(120)
   })
-  it('de viernes 17:00 a lunes 9:30: 1 h 30 min', () => {
-    expect(minutosHabilesEntre(ar('2026-11-27', '17:00'), ar('2026-11-30', '09:30'))).toBe(90)
+  it('de viernes 13:00 a lunes 10:30: 1 h 30 min', () => {
+    expect(minutosHabilesEntre(ar('2026-11-27', '13:00'), ar('2026-11-30', '10:30'))).toBe(90)
   })
   it('un sábado entero no suma nada', () => {
     expect(minutosHabilesEntre(ar('2026-11-28', '00:00'), ar('2026-11-29', '00:00'))).toBe(0)
   })
-  it('después de las 18:00 no suma', () => {
-    expect(minutosHabilesEntre(ar('2026-11-25', '18:00'), ar('2026-11-25', '23:00'))).toBe(0)
+  it('después de las 14:00 no suma', () => {
+    expect(minutosHabilesEntre(ar('2026-11-25', '14:00'), ar('2026-11-25', '23:00'))).toBe(0)
   })
-  it('un día hábil completo son 540 minutos', () => {
-    expect(minutosHabilesEntre(ar('2026-11-25', '00:00'), ar('2026-11-26', '00:00'))).toBe(540)
+  it('un día hábil completo son 240 minutos', () => {
+    expect(minutosHabilesEntre(ar('2026-11-25', '00:00'), ar('2026-11-26', '00:00'))).toBe(240)
   })
   it('hasta antes que desde → 0', () => {
     expect(minutosHabilesEntre(ar('2026-11-25', '12:00'), ar('2026-11-25', '10:00'))).toBe(0)
   })
   it('una semana entera (lunes a lunes) son 5 días hábiles', () => {
-    expect(minutosHabilesEntre(ar('2026-11-23', '00:00'), ar('2026-11-30', '00:00'))).toBe(5 * 540)
+    expect(minutosHabilesEntre(ar('2026-11-23', '00:00'), ar('2026-11-30', '00:00'))).toBe(5 * 240)
   })
   it('instantes inválidos → 0', () => {
     expect(minutosHabilesEntre(new Date('x'), ar('2026-11-25', '10:00'))).toBe(0)

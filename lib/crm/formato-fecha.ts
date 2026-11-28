@@ -66,6 +66,20 @@ export function cuandoEs(fecha: string, hora: string, ahora: Date): string {
   }
 }
 
+/**
+ * Para cuándo quedó una tarea recién agendada: "ahora" si ya venció o vence en este minuto
+ * (el WhatsApp de la cadencia que "se manda ya", o un reintento tardío), y si no "hoy 13:30",
+ * "mañana 10:00"... Nunca "recién" ni "hace 1 min" (crm-cadencia-paula, auditoría 1).
+ */
+export function paraCuando(fecha: string, hora: string, ahora: Date): string {
+  try {
+    if (instanteDesdeAR(fecha, hora.slice(0, 5)).getTime() <= ahora.getTime()) return 'ahora'
+  } catch {
+    // lo resuelve cuandoEs con su texto de respaldo
+  }
+  return cuandoEs(fecha, hora, ahora)
+}
+
 export type EstadoVencimiento = 'vencida' | 'hoy' | 'proxima' | 'sinfecha'
 
 /**

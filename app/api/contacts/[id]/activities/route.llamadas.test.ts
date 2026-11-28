@@ -48,6 +48,7 @@ import { POST } from './route'
 
 const TOKEN = '3f2b8c1e-4d5a-4b6c-9d7e-8f9a0b1c2d3e'
 const TOKEN_2 = '4a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
+const TOKEN_3 = '5b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e'
 const AHORA = new Date('2026-11-25T15:00:00.000Z') // miércoles 12:00 de Argentina
 
 const post = (body: unknown, id = '0000000c-0000-4000-8000-000000000001') =>
@@ -370,11 +371,12 @@ describe('POST — guardado repetido y fallo parcial (tarea 6.3)', () => {
     expect(b.tareas.filter((t) => t.source_activity_id !== null)).toHaveLength(1)
   })
 
-  it('la segunda "No atendió" con el token repetido → misma respuesta, con "Enviar WhatsApp" creada y sin motivo', async () => {
+  it('la tercera "No atendió" con el token repetido → misma respuesta, con "Enviar WhatsApp" creada y sin motivo', async () => {
     await post(llamada('no_atendio'))
-    const primera = await (await post(llamada('no_atendio', {}, TOKEN_2))).json()
+    await post(llamada('no_atendio', {}, TOKEN_2))
+    const primera = await (await post(llamada('no_atendio', {}, TOKEN_3))).json()
     expect(primera.cadencia.tareaCreada?.title).toBe('Enviar WhatsApp a [TEST] Ana')
-    const repetida = await post(llamada('no_atendio', {}, TOKEN_2))
+    const repetida = await post(llamada('no_atendio', {}, TOKEN_3))
     expect(repetida.status).toBe(200)
     const body = await repetida.json()
     expect(body).toEqual(primera)

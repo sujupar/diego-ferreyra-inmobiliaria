@@ -7,6 +7,7 @@ import {
   esDiaHabil,
   siguienteDiaHabil,
   diasDeCalendarioEntre,
+  enHorarioOProximo,
 } from './horario-laboral'
 
 // Argentina es UTC−3 todo el año (sin horario de verano): 12:00 UTC = 09:00 AR.
@@ -16,9 +17,10 @@ describe('constantes del horario laboral', () => {
   it('la zona es la de Buenos Aires', () => {
     expect(ZONA_AR).toBe('America/Argentina/Buenos_Aires')
   })
-  it('los días hábiles son de lunes a viernes desde las 9:00', () => {
+  it('los días hábiles son de lunes a viernes, de 10 a 14 (el horario de la coordinación)', () => {
     expect(HORARIO_LABORAL.dias).toEqual([1, 2, 3, 4, 5])
-    expect(HORARIO_LABORAL.inicio).toBe('09:00')
+    expect(HORARIO_LABORAL.inicio).toBe('10:00')
+    expect(HORARIO_LABORAL.fin).toBe('14:00')
   })
 })
 
@@ -89,26 +91,26 @@ describe('esDiaHabil', () => {
 
 describe('siguienteDiaHabil', () => {
   it('el viernes pasa al lunes', () => {
-    expect(siguienteDiaHabil(new Date('2026-11-27T15:00:00Z'))).toEqual({ fecha: '2026-11-30', hora: '09:00' })
+    expect(siguienteDiaHabil(new Date('2026-11-27T15:00:00Z'))).toEqual({ fecha: '2026-11-30', hora: '10:00' })
   })
   it('el sábado pasa al lunes', () => {
-    expect(siguienteDiaHabil(new Date('2026-11-28T15:00:00Z'))).toEqual({ fecha: '2026-11-30', hora: '09:00' })
+    expect(siguienteDiaHabil(new Date('2026-11-28T15:00:00Z'))).toEqual({ fecha: '2026-11-30', hora: '10:00' })
   })
   it('el domingo pasa al lunes', () => {
-    expect(siguienteDiaHabil(new Date('2026-11-29T15:00:00Z'))).toEqual({ fecha: '2026-11-30', hora: '09:00' })
+    expect(siguienteDiaHabil(new Date('2026-11-29T15:00:00Z'))).toEqual({ fecha: '2026-11-30', hora: '10:00' })
   })
   it('el miércoles pasa al jueves', () => {
-    expect(siguienteDiaHabil(new Date('2026-11-25T15:00:00Z'))).toEqual({ fecha: '2026-11-26', hora: '09:00' })
+    expect(siguienteDiaHabil(new Date('2026-11-25T15:00:00Z'))).toEqual({ fecha: '2026-11-26', hora: '10:00' })
   })
   it('el martes a las 22:30 de Argentina (ya miércoles en UTC) pasa al miércoles', () => {
-    expect(siguienteDiaHabil(new Date('2026-11-25T01:30:00Z'))).toEqual({ fecha: '2026-11-25', hora: '09:00' })
+    expect(siguienteDiaHabil(new Date('2026-11-25T01:30:00Z'))).toEqual({ fecha: '2026-11-25', hora: '10:00' })
   })
   it('el 31 de diciembre pasa al año siguiente', () => {
     // 2026-12-31 es jueves → viernes 2027-01-01 (los feriados no se consideran)
-    expect(siguienteDiaHabil(new Date('2026-12-31T15:00:00Z'))).toEqual({ fecha: '2027-01-01', hora: '09:00' })
+    expect(siguienteDiaHabil(new Date('2026-12-31T15:00:00Z'))).toEqual({ fecha: '2027-01-01', hora: '10:00' })
   })
   it('el viernes 31 de diciembre de 2027 pasa al lunes 3 de enero de 2028', () => {
-    expect(siguienteDiaHabil(new Date('2027-12-31T15:00:00Z'))).toEqual({ fecha: '2028-01-03', hora: '09:00' })
+    expect(siguienteDiaHabil(new Date('2027-12-31T15:00:00Z'))).toEqual({ fecha: '2028-01-03', hora: '10:00' })
   })
 })
 
@@ -134,5 +136,20 @@ describe('diasDeCalendarioEntre', () => {
   })
   it('hacia atrás da negativo', () => {
     expect(diasDeCalendarioEntre(new Date('2026-11-25T15:00:00Z'), new Date('2026-11-23T15:00:00Z'))).toBe(-2)
+  })
+})
+
+describe('enHorarioOProximo (crm-cadencia-paula, D2)', () => {
+  const ar = (f: string, h: string) => new Date(`${f}T${h}:00-03:00`)
+  it('en horario: ese momento', () => {
+    expect(enHorarioOProximo(ar('2026-11-24', '10:00'))).toEqual({ fecha: '2026-11-24', hora: '10:00' })
+    expect(enHorarioOProximo(ar('2026-11-24', '13:59'))).toEqual({ fecha: '2026-11-24', hora: '13:59' })
+  })
+  it('antes de las 10 de un día hábil: ese día a las 10', () => {
+    expect(enHorarioOProximo(ar('2026-11-24', '07:30'))).toEqual({ fecha: '2026-11-24', hora: '10:00' })
+  })
+  it('desde las 14 o fin de semana: el día hábil siguiente a las 10', () => {
+    expect(enHorarioOProximo(ar('2026-11-24', '14:00'))).toEqual({ fecha: '2026-11-25', hora: '10:00' })
+    expect(enHorarioOProximo(ar('2026-11-28', '11:00'))).toEqual({ fecha: '2026-11-30', hora: '10:00' })
   })
 })

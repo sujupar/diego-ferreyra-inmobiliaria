@@ -16,7 +16,7 @@ import { Caja, Cuadro, Seccion, Subtitulo, tabla, td, tdR, th } from './ui'
 const FUENTE =
   'Las solicitudes de tasación que cuenta el Tablero (una por persona, sin pruebas, colegas ni pedidos repetidos), creadas desde el 26/11/2026 a las 21:04. ' +
   'Llamadas y WhatsApp marcados en la ficha, sin anulados; los mensajes del Inbox, las plantillas y el agente de IA no entran. ' +
-  'Horas hábiles: lunes a viernes de 9 a 18. Las solicitudes del período en curso todavía pueden avanzar.'
+  'Horas hábiles: lunes a viernes de 10 a 14, el horario de la coordinación. Las solicitudes del período en curso todavía pueden avanzar.'
 
 const RESULTADO: Record<ResultadoLlamada, string> = {
   no_atendio: 'No atendió',

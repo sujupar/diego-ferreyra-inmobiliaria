@@ -73,7 +73,7 @@ describe('colaParaLlamar', () => {
 
   it('sin primer contacto y sin tarea: espera desde el registro', () => {
     const [x] = colaParaLlamar([fila({})], [], new Map(), AHORA)
-    expect(x.estado).toEqual({ texto: 'Espera hace 16 h 20 min de reloj · 1 h 40 min hábiles', tipo: 'espera' })
+    expect(x.estado).toEqual({ texto: 'Espera hace 16 h 20 min de reloj · 40 min hábiles', tipo: 'espera' })
   })
 
   it('no entran: cerrados, colegas, clases, mensajes ni llamadas que todavía no vencen de quien ya tuvo contacto', () => {
@@ -133,7 +133,7 @@ describe('tasaciones, leads y procesos', () => {
 
   it('leads sin primer contacto con la espera y quién llama', () => {
     const [x] = leadsSinPrimerContacto([fila({})], AHORA)
-    expect(x.espera).toBe('Espera hace 16 h 20 min de reloj · 1 h 40 min hábiles · la llama la coordinación')
+    expect(x.espera).toBe('Espera hace 16 h 20 min de reloj · 40 min hábiles · la llama la coordinación')
     expect(leadsSinPrimerContacto([fila({ colega: true })], AHORA)).toEqual([])
   })
 
@@ -173,7 +173,7 @@ describe('tiempo medio a la primera llamada', () => {
         { creadoEn: ar('2026-11-25', '10:00').toISOString(), primeraLlamada: null },
       ],
     )
-    expect(r).toEqual({ n: 2, sinLlamar: 1, reloj: '1 h', habiles: '1 h', pocos: true })
+    expect(r).toEqual({ n: 2, sinLlamar: 1, reloj: '1 h', habiles: '15 min', pocos: true })
   })
   it('sin casos', () => {
     expect(tiempoMedio([{ creadoEn: AHORA.toISOString(), primeraLlamada: null }])).toEqual({ n: 0, sinLlamar: 1, reloj: null, habiles: null, pocos: true })

@@ -92,17 +92,18 @@ describe('metricasLlamadas', () => {
   })
 
   it('tiempo a la primera llamada: mediana y promedio, reloj y hábiles, sobre las que tienen llamada', () => {
-    // a: 60 min reloj / 60 hábiles · b: 180 / 180 · c: 16 h 30 = 990 reloj / 90 hábiles (17-18 y 9-9:30)
+    // Horario 10 a 14. a: 60 reloj / 60 hábiles · b: 180 / 180 · c: 990 reloj / 0 hábiles
+    // (entró 17:00, llamada 9:30 del día siguiente: todo fuera de horario)
     expect(m.primeraLlamada).toEqual({
       n: 3, sinCaso: 2,
       medianaReloj: 180, promedioReloj: (60 + 180 + 990) / 3,
-      medianaHabiles: 90, promedioHabiles: (60 + 180 + 90) / 3,
+      medianaHabiles: 60, promedioHabiles: (60 + 180 + 0) / 3,
     })
   })
 
   it('de la primera a la segunda llamada', () => {
-    // b: lunes 13:00 → martes 10:00 = 21 h reloj; hábiles 13-18 (300) + 9-10 (60) = 360
-    expect(m.primeraASegunda).toEqual({ n: 1, sinCaso: 2, medianaReloj: 1260, promedioReloj: 1260, medianaHabiles: 360, promedioHabiles: 360 })
+    // b: lunes 13:00 → martes 10:00 = 21 h reloj; hábiles 13-14 (60) + nada antes de las 10 = 60
+    expect(m.primeraASegunda).toEqual({ n: 1, sinCaso: 2, medianaReloj: 1260, promedioReloj: 1260, medianaHabiles: 60, promedioHabiles: 60 })
   })
 
   it('contactados y agendados, con el intento', () => {

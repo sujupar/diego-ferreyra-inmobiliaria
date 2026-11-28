@@ -46,6 +46,22 @@ describe('armarAviso: tarea agendada', () => {
     expect(acciones(a)).toEqual(['ver_tareas'])
     expect(a.toast).toBe('Llamada 1 guardada. Se agendó Llamada 2 para mañana 9:00.')
   })
+  it('crm-cadencia-paula: la Llamada 2 de esa misma tarde dice "para hoy 13:30"', () => {
+    const a = armarAviso(
+      llamada({ cadencia: cad({ tareaCreada: { id: 't', title: 'Llamada 2 a María López', due_date: '2026-11-25', due_time: '13:30:00', channel: 'call' } }) }),
+    )
+    expect(textos(a)).toEqual(['Se agendó Llamada 2 para hoy 13:30.'])
+  })
+
+  it('crm-cadencia-paula: el WhatsApp que vence ya dice "para ahora", no "recién" ni "hace 1 min"', () => {
+    for (const hora of ['10:00:00', '09:59:00', '09:40:00']) {
+      const a = armarAviso(
+        llamada({ cadencia: cad({ tareaCreada: { id: 't', title: 'Enviar WhatsApp a María López', due_date: '2026-11-25', due_time: hora, channel: 'message' } }) }),
+      )
+      expect(textos(a)).toEqual(['Se agendó Enviar WhatsApp para ahora.'])
+    }
+  })
+
   it('un viernes dice "lun 30 nov, 9:00"', () => {
     const a = armarAviso(
       llamada({

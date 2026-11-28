@@ -4,7 +4,7 @@
 // día siguiente agenda igual que lo habría hecho el guardado original.
 import { esUltimoIntento, intentosHasta } from './actividades'
 import type { SituacionProceso } from './deal-activo'
-import { siguienteDiaHabil } from './horario-laboral'
+import { enArgentina, enHorarioOProximo, esDiaHabil, siguienteDiaHabil } from './horario-laboral'
 import type { Intento } from './tipos'
 
 /**
@@ -12,6 +12,15 @@ import type { Intento } from './tipos'
  * uno anulado se cuela se descarta acá: contarlo movería la racha y el orden.
  */
 export type IntentoDeCadencia = Intento & { voided_at?: string | null }
+
+/**
+ * El proceso de la coordinación (dueño, 2026-11-28, crm-cadencia-paula): tres llamadas antes
+ * del WhatsApp; si la primera no atendida de la racha se cargó un día hábil antes de las
+ * 12:00, la siguiente va esa misma tarde a las 13:30.
+ */
+export const LLAMADAS_ANTES_DEL_WHATSAPP = 3
+export const CORTE_MISMA_TARDE = '12:00'
+export const HORA_MISMA_TARDE = '13:30'
 
 const vivos = <T extends IntentoDeCadencia>(xs: T[]): T[] => xs.filter((i) => !i.voided_at)
 const instante = (iso: string) => Date.parse(iso)
@@ -170,17 +179,17 @@ function siguienteDeNoAtendio(e: EntradaCadencia): { tarea: TareaACrear | null; 
   const racha = estadoCadencia(intentosHasta(e.evaluado, vivos(e.intentosDelProceso)))
   if (racha.whatsappEnLaRacha) return sinTarea('whatsapp_ya_enviado')
 
-  // Día hábil siguiente al día de Argentina en que se cargó, a la hora de inicio.
-  const { fecha, hora } = siguienteDiaHabil(e.cargadoEn)
   // Con una tarea "Enviar WhatsApp" de la cadencia todavía pendiente, el próximo paso ya
   // existe: no se crea otra tarea, sea cual sea la racha (spec, "Qué regla gana cuando se
   // cruzan dos"). Pasa con racha 1 si, por ejemplo, un asesor registró "Atendió" sobre un
   // proceso ajeno y no cerró la tarea de la coordinación: crear "Llamada N+1" le dejaría a
   // la coordinadora dos tareas para la misma persona.
   if (e.hayTareaWhatsappDeCadenciaPendiente) return sinTarea('whatsapp_ya_pendiente')
-  if (racha.noAtendioSeguidas >= 2) {
+  if (racha.noAtendioSeguidas >= LLAMADAS_ANTES_DEL_WHATSAPP) {
     // Una tarea "Enviar WhatsApp" completada con el tilde no cuenta: el tilde no prueba que
     // el mensaje salió, así que mientras nadie lo marque cada "No atendió" lo vuelve a pedir.
+    // Vence ya si es horario de la coordinación (D2).
+    const { fecha, hora } = enHorarioOProximo(e.cargadoEn)
     return {
       tarea: { title: `Enviar WhatsApp a ${e.nombreContacto}`, channel: 'message', due_date: fecha, due_time: hora },
       motivoSinTarea: null,
@@ -190,6 +199,7 @@ function siguienteDeNoAtendio(e: EntradaCadencia): { tarea: TareaACrear | null; 
   if (e.numeroDeIntento === null) {
     throw new Error(`"No atendió" sin número de intento (actividad ${e.evaluado.id})`)
   }
+  const { fecha, hora } = cuandoLaSiguienteLlamada(e.cargadoEn, racha.noAtendioSeguidas)
   return {
     tarea: {
       title: `Llamada ${e.numeroDeIntento + 1} a ${e.nombreContacto}`,
@@ -199,6 +209,19 @@ function siguienteDeNoAtendio(e: EntradaCadencia): { tarea: TareaACrear | null; 
     },
     motivoSinTarea: null,
   }
+}
+
+/**
+ * Cuándo va la llamada siguiente (D2), por la racha y no por el número: tras la primera no
+ * atendida cargada un día hábil antes de las 12:00, esa tarde a las 13:30; si no, el día
+ * hábil siguiente a las 10:00. Siempre con la hora de CARGA (un reintento agenda igual).
+ */
+export function cuandoLaSiguienteLlamada(cargadoEn: Date, noAtendioSeguidas: number): { fecha: string; hora: string } {
+  const a = enArgentina(cargadoEn)
+  if (noAtendioSeguidas === 1 && esDiaHabil(a.fecha) && a.hora.slice(0, 5) < CORTE_MISMA_TARDE) {
+    return { fecha: a.fecha, hora: HORA_MISMA_TARDE }
+  }
+  return siguienteDiaHabil(cargadoEn)
 }
 
 export function decidirCadencia(e: EntradaCadencia): DecisionCadencia {

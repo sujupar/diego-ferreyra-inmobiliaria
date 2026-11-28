@@ -44,7 +44,7 @@ async function tareaDeCoordinacion(p: Record<string, unknown>): Promise<Resultad
   const { createTaskForRole } = await import('@/lib/supabase/tasks')
   const { vencimientoDeEntrada } = await import('@/lib/tareas/agenda')
   // Nace con fecha para sonar en la campanita (crm-tareas-y-campanita, D4): el momento del
-  // registro si entró en horario hábil; si no, el día hábil siguiente a las 9:00. Sin el
+  // registro si entró en el horario de la coordinación (10 a 14); si no, a las 10:00 que correspondan. Sin el
   // dato (trabajos encolados antes del cambio), el momento en que corre el trabajo.
   // Solo la solicitud de TASACIÓN: un registro a la clase gratuita no es un lead esperando una
   // llamada, y su proceso nace en `clase_gratuita` (no en Solicitud), así que el cierre

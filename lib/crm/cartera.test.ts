@@ -541,17 +541,17 @@ describe('proximoPaso — la primera llamada sin fecha (D3)', () => {
       instante: ar('2026-12-02', '10:12'),
     })
   })
-  it('entró a las 22:00 del martes → vence el miércoles 9:00, sin espera', () => {
+  it('entró a las 22:00 del martes → vence el miércoles 10:00, sin espera', () => {
     const r = entrada(ar('2026-12-01', '22:00'), AHORA)
-    expect(r).toMatchObject({ vence: { due_date: '2026-12-02', due_time: '09:00' }, espera: null })
+    expect(r).toMatchObject({ vence: { due_date: '2026-12-02', due_time: '10:00' }, espera: null })
   })
-  it('entró un viernes a las 19:00 → vence el lunes 9:00', () => {
+  it('entró un viernes a las 19:00 → vence el lunes 10:00', () => {
     const r = entrada(ar('2026-12-04', '19:00'), new Date('2026-12-05T13:00:00Z'))
-    expect(r?.vence).toMatchObject({ due_date: '2026-12-07', due_time: '09:00' })
+    expect(r?.vence).toMatchObject({ due_date: '2026-12-07', due_time: '10:00' })
   })
-  it('entró un día hábil a las 7:30 → vence ese mismo día a las 9:00', () => {
+  it('entró un día hábil a las 7:30 → vence ese mismo día a las 10:00', () => {
     const r = entrada(ar('2026-12-02', '07:30'), AHORA)
-    expect(r).toMatchObject({ vence: { due_date: '2026-12-02', due_time: '09:00' }, espera: null })
+    expect(r).toMatchObject({ vence: { due_date: '2026-12-02', due_time: '10:00' }, espera: null })
   })
   it('la tarea de entrada que ya nace con fecha (crm-tareas-y-campanita) sigue esperando', () => {
     const r = proximoPaso({
