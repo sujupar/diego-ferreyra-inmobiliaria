@@ -33,14 +33,16 @@ export function elegirPublicables(
   const inmobHoy = Math.min(inmob.length, cfg.topeDiario)
   if (inmobHoy === 0) return [] // sin inmobiliario no se publica nada
 
-  // Mayor k con (otras + k) / (total semana + inmobHoy + k) <= 20 %.
+  // Mayor k (con el tope diario ya aplicado al total real del día) tal que
+  // (otras + k) / (total semana + inmobiliarios que realmente entran + k) <= 20 %.
+  const kMax = Math.min(otros.length, cfg.topeDiario - 1)
   let k = 0
-  while (
-    k < otros.length &&
-    (semana.otras + k + 1) / (semana.inmobiliarias + semana.otras + inmobHoy + k + 1) <= PROPORCION_MAX_OTRAS
-  ) k++
+  for (let c = 1; c <= kMax; c++) {
+    const inmobReal = Math.min(inmobHoy, cfg.topeDiario - c)
+    if ((semana.otras + c) / (semana.inmobiliarias + semana.otras + inmobReal + c) <= PROPORCION_MAX_OTRAS) k = c
+  }
   // Mínimo diario: si hay inmobiliario publicable, entra al menos 1 otro (si hay).
-  k = Math.min(Math.max(k, 1), otros.length, cfg.topeDiario - 1)
+  k = Math.min(Math.max(k, 1), kMax)
 
   // Tope diario: se reservan los lugares de otros y se recortan los inmobiliarios.
   const nInmob = Math.min(inmobHoy, cfg.topeDiario - k)

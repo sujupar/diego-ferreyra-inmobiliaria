@@ -54,4 +54,15 @@ describe('elegirPublicables', () => {
     const r = elegirPublicables([otro, ar, fuerte], { inmobiliarias: 0, otras: 0 }, cfg)
     expect(r.map((a) => a.shortcode)).toEqual([fuerte.shortcode, ar.shortcode, otro.shortcode])
   })
+
+  it('con semana cargada y el tope diario recortando, la proporción semanal real no pasa 20 %', () => {
+    const semana = { inmobiliarias: 8, otras: 2 }
+    const r = elegirPublicables([...lote('inmobiliario_ar', 12), ...lote('formato_otro_rubro', 5)], semana, cfg)
+    const otros = r.filter((a) => !esInmob(a)).length
+    const inmob = r.length - otros
+    expect(r).toHaveLength(10)
+    expect(inmob).toBe(8)
+    expect(otros).toBe(2)
+    expect((semana.otras + otros) / (semana.inmobiliarias + semana.otras + r.length)).toBeLessThanOrEqual(0.2)
+  })
 })
