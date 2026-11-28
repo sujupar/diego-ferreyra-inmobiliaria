@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { analizar, entradaAnalisis, parsearAnalisis, promptAnalisis } from './analizar'
+import { analizar, asegurarMultiplicador, entradaAnalisis, parsearAnalisis, promptAnalisis, verificarCitas } from './analizar'
 import type { PedidoIA } from './motor'
 import type { CuentaPerfil, ReelCrudo } from '../tipos'
 
@@ -121,5 +121,51 @@ describe('analizar', () => {
     const pedir = vi.fn(async (_: PedidoIA) => JSON.stringify(valido))
     const r = await analizar({ frames: [], transcripcion: 'a'.repeat(5000) }, reel, 1000, perfil, [], { pedir })
     expect(r.transcripcion.length).toBe(4000)
+  })
+})
+
+describe('verificarCitas', () => {
+  const coms = ['¿Y si soy monotributista? Me pasó lo mismo', 'Cómo me gusta este ciclo de entrevistas!!']
+  it('deja una cita textual (sin importar mayúsculas, tildes ni espacios)', () => {
+    const t = 'Preguntan "y si soy  MONOTRIBUTISTA" y elogian "como me gusta este ciclo".'
+    expect(verificarCitas(t, coms)).toBe(t)
+  })
+  it('reemplaza una cita parafraseada o inventada', () => {
+    expect(verificarCitas('Dicen "quiero vender mi depto ya" y listo.', coms)).toBe('Dicen [cita no verificada] y listo.')
+  })
+  it('maneja comillas curvas, angulares y simples', () => {
+    expect(verificarCitas('“me pasó lo mismo” y «esto nadie lo dijo» y \'otra frase falsa\'', coms)).toBe(
+      '“me pasó lo mismo” y [cita no verificada] y [cita no verificada]',
+    )
+  })
+  it('no toca palabras cortas entre comillas', () => {
+    const t = 'El formato "pizarra" y el "gancho".'
+    expect(verificarCitas(t, coms)).toBe(t)
+  })
+})
+
+describe('asegurarMultiplicador', () => {
+  it('si ya trae ×N,N no lo toca', () => {
+    expect(asegurarMultiplicador('Hizo ×6,2 porque…', 6.2, 12_345, 'inmo_ar')).toBe('Hizo ×6,2 porque…')
+  })
+  it('si falta, antepone la frase armada en código', () => {
+    expect(asegurarMultiplicador('Funcionó por el gancho.', 6.2, 12_345, 'inmo_ar')).toBe(
+      'Hizo ×6,2 sobre la mediana de 12.345 vistas de @inmo_ar. Funcionó por el gancho.',
+    )
+  })
+})
+
+describe('analizar verifica citas y números', () => {
+  it('reemplaza citas inventadas y antepone el multiplicador faltante', async () => {
+    const pedir = vi.fn(async (_: PedidoIA) =>
+      JSON.stringify({
+        ...valido,
+        por_que: 'Arranca con "Hola, mirá esto" y funcionó.',
+        comentarios_analisis: 'Piden "mandame la planilla por favor" y "gracias, re claro".',
+      }),
+    )
+    const r = await analizar({ frames: [], transcripcion: 'Hola, mirá esto' }, reel, 12_345, perfil, ['Gracias, re claro'], { pedir })
+    expect(r.comentarios_analisis).toBe('Piden [cita no verificada] y "gracias, re claro".')
+    expect(r.por_que).toBe('Hizo ×6,2 sobre la mediana de 12.345 vistas de @inmo_ar. Arranca con "Hola, mirá esto" y funcionó.')
   })
 })

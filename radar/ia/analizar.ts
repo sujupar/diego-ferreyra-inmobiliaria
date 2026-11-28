@@ -11,8 +11,47 @@ const MAX_TRANSCRIPCION = 4000
 const CAMPOS_OBLIGATORIOS = ['tema', 'gancho', 'formato', 'por_que', 'comentarios_analisis', 'adaptacion_diego'] as const
 
 const numero = (n: number) => n.toLocaleString('es-AR', { maximumFractionDigits: 0 })
-const multiplicador = (m: number) =>
+/** Multiplicador como lo muestra la pantalla: ×6,2. */
+export const formatoMultiplicador = (m: number) =>
   `×${m.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`
+const multiplicador = formatoMultiplicador
+
+const CITA_NO_VERIFICADA = '[cita no verificada]'
+const MIN_CITA = 8
+// Pares de comillas: "…", “…”, «…», '…', ‘…’.
+const RE_CITAS = /"([^"\n]+)"|“([^”\n]+)”|«([^»\n]+)»|'([^'\n]+)'|‘([^’\n]+)’/g
+
+function normalizar(t: string): string {
+  return t
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Deja solo las citas que están de verdad en las fuentes (comentarios, etc.). Una cita
+ * entre comillas de 8+ caracteres que no aparece tal cual (sin importar mayúsculas,
+ * tildes ni espacios) se reemplaza por "[cita no verificada]". Las palabras cortas entre
+ * comillas no se tocan.
+ */
+export function verificarCitas(texto: string, fuentes: string[]): string {
+  const base = fuentes.map(normalizar)
+  return texto.replace(RE_CITAS, (entera, ...grupos: unknown[]) => {
+    const cita = grupos.slice(0, 5).find((g): g is string => typeof g === 'string') ?? ''
+    if (cita.trim().length < MIN_CITA) return entera
+    const n = normalizar(cita)
+    return base.some((f) => f.includes(n)) ? entera : CITA_NO_VERIFICADA
+  })
+}
+
+/** Si `por_que` no trae el multiplicador real, se lo antepone una frase armada en código. */
+export function asegurarMultiplicador(porQue: string, mult: number, base: number, cuenta: string): string {
+  const m = formatoMultiplicador(mult)
+  if (porQue.includes(m)) return porQue
+  return `Hizo ${m} sobre la mediana de ${numero(base)} vistas de @${cuenta}. ${porQue}`
+}
 
 export function promptAnalisis(): string {
   return `Sos el analista de contenido de Diego Ferreyra, asesor inmobiliario y martillero en CABA (Argentina). Su audiencia son PROPIETARIOS que quieren vender o alquilar. Te paso un reel de Instagram que a su cuenta le fue mucho mejor que lo habitual: tenés que explicar POR QUÉ funcionó y cómo lo haría Diego.
@@ -107,6 +146,14 @@ export async function analizar(
     nivel: 'profundo',
     timeoutMs: 240_000,
   })
-  // Nunca la versión del modelo: la de whisper es la única que se guarda.
-  return { ...parsearAnalisis(texto), transcripcion }
+  const a = parsearAnalisis(texto)
+  // `por_que` puede citar también lo que se dice o el caption, no solo comentarios.
+  const fuentesPorQue = [...comentarios, transcripcion, reel.caption]
+  return {
+    ...a,
+    comentarios_analisis: verificarCitas(a.comentarios_analisis, comentarios),
+    por_que: asegurarMultiplicador(verificarCitas(a.por_que, fuentesPorQue), reel.multiplicador, base, perfil.usuario),
+    // Nunca la versión del modelo: la de whisper es la única que se guarda.
+    transcripcion,
+  }
 }
