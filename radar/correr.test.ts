@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { CuentaARevisar } from './db'
 import { candadoArchivo, correr, estadoTrasRevision, MAX_CLASIFICACIONES, MAX_CUENTAS_NUEVAS, MENSAJE_IA, MENSAJE_SESION, UMBRAL_FALLAS_IA, type ClienteIG, type DbRadar, type Deps } from './correr'
-import { BloqueoInstagram } from './instagram/bloqueo'
+import { BloqueoInstagram, ErrorHttpInstagram } from './instagram/bloqueo'
 import type { Analisis, Clasificacion, ConfigRadar, CuentaPerfil, ReelCrudo } from './tipos'
 
 const AHORA = new Date('2026-11-28T12:00:00Z')
@@ -389,6 +389,29 @@ describe('correr: fallas de la IA y de cuentas', () => {
     db.marcarCuentaInmobiliaria.mockRejectedValue(new Error('se cayó Supabase'))
     const r = await correr(OPTS, deps)
     expect(r).toEqual({ estado: 'ok', publicadas: 1 })
+  })
+
+  it('3 cuentas seguidas con 401/403 → error en paso "sesion" y no se anota la falla de esas cuentas', async () => {
+    const { deps, db, cliente } = armar({ cuentas: [cuenta('a'), cuenta('b'), cuenta('c'), cuenta('d')] })
+    cliente.perfil.mockRejectedValue(new ErrorHttpInstagram(401, 'forma inesperada: perfil (HTTP 401)'))
+    const r = await correr(OPTS, deps)
+    expect(r.estado).toBe('error')
+    expect(db.cerrarCorrida).toHaveBeenCalledWith('run-1', 'error', 'sesion', expect.anything(), MENSAJE_SESION)
+    expect(db.anotarFalloCuenta).not.toHaveBeenCalled()
+    expect(cliente.perfil).toHaveBeenCalledTimes(3)
+  })
+
+  it('2 × 401, un éxito y otro 401 → no escala (el éxito reinicia la cuenta)', async () => {
+    const { deps, db, cliente } = armar({ cuentas: [cuenta('a'), cuenta('b'), cuenta('c'), cuenta('d')] })
+    const perfilOk = cliente.perfil.getMockImplementation()!
+    cliente.perfil
+      .mockRejectedValueOnce(new ErrorHttpInstagram(401, 'x'))
+      .mockRejectedValueOnce(new ErrorHttpInstagram(403, 'x'))
+      .mockImplementationOnce(perfilOk)
+      .mockRejectedValueOnce(new ErrorHttpInstagram(401, 'x'))
+    const r = await correr(OPTS, deps)
+    expect(r.estado).not.toBe('error')
+    expect(cliente.perfil).toHaveBeenCalledTimes(4)
   })
 
   it('una cuenta que falla igual cuenta como revisada (no queda primera en la cola)', async () => {

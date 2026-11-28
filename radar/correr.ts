@@ -25,7 +25,7 @@ import * as dbReal from './db'
 import type { CuentaARevisar, EstadoCuenta } from './db'
 import { COLUMNAS_METRICAS } from './db'
 import { armarFilaVideoRef } from './filas'
-import { BloqueoInstagram } from './instagram/bloqueo'
+import { BloqueoInstagram, ErrorHttpInstagram } from './instagram/bloqueo'
 import { medirCuenta } from './medicion'
 import { elegirPublicables, type Aprobado } from './mezcla'
 import type { Analisis, Clasificacion, CuentaPerfil, MedicionCuenta, ReelCrudo } from './tipos'
@@ -311,6 +311,9 @@ export async function correr(
       cuentas = [...cuentas, ...extra].slice(0, topeCuentas)
     }
     const candidatos: Candidato[] = []
+    // Fallas 401/403 seguidas entre cuentas: una sola es un perfil restringido, pero varias
+    // seguidas son la sesión del servidor vencida (Instagram contesta 401/403 sin redirigir).
+    let fallasSesionSeguidas = 0
     for (const [i, c] of cuentas.entries()) {
       if (cont.reels_mirados >= cfg.topeReels) {
         log(`tope de ${cfg.topeReels} reels alcanzado: no se miran más cuentas`)
@@ -320,6 +323,7 @@ export async function correr(
       try {
         const perfil = await cliente.perfil(c.usuario)
         const reels = await cliente.reelsDeCuenta(perfil, cfg.reelsBase)
+        fallasSesionSeguidas = 0
         cont.cuentas_revisadas++
         cont.reels_mirados += reels.length
         const med = medirCuenta(reels, cfg, deps.ahora())
@@ -333,6 +337,17 @@ export async function correr(
         }
       } catch (e) {
         if (e instanceof BloqueoInstagram) throw e
+        if (e instanceof ErrorHttpInstagram && (e.status === 401 || e.status === 403)) {
+          fallasSesionSeguidas++
+          if (fallasSesionSeguidas >= 3) {
+            throw new BloqueoInstagram('login', `${fallasSesionSeguidas} cuentas seguidas con HTTP ${e.status}: la sesión del servidor venció`)
+          }
+          // No es culpa de la cuenta: no se anota su falla (así no se desactiva por esto).
+          anotar(`@${c.usuario}: ${msg(e)}`)
+          log(`@${c.usuario} falló con HTTP ${e.status} (${fallasSesionSeguidas} seguidas): ${msg(e)}`)
+          continue
+        }
+        fallasSesionSeguidas = 0
         anotar(`@${c.usuario}: ${msg(e)}`)
         // La falla cuenta como revisión (sin destacados): corre ultima_revision_at para que la
         // cuenta no quede primera en la cola para siempre, y una descubierta que falla 4 veces

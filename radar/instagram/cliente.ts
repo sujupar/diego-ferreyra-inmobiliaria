@@ -12,7 +12,7 @@
 import { writeFileSync } from 'node:fs'
 import type { BrowserContext, Page, Response } from 'playwright-core'
 import type { CuentaPerfil, ReelCrudo } from '../tipos'
-import { BloqueoInstagram, detectarBloqueo } from './bloqueo'
+import { BloqueoInstagram, detectarBloqueo, ErrorHttpInstagram } from './bloqueo'
 import { abrirContexto, cookieInstagram, pausa, tieneSesion } from './navegador'
 import {
   haySiguientePaginaGrilla,
@@ -106,7 +106,7 @@ export class InstagramCliente {
             // lectura termina en /accounts/login y eso sí frena todo.
             const tipo = detectarBloqueo({ url: res.url(), status: res.status(), cuerpo })
             if (tipo) error ??= new BloqueoInstagram(tipo, `Instagram frenó la lectura (${tipo}) en ${nombre}`)
-            else if (res.status() !== 200) error ??= new Error(`forma inesperada: ${nombre} (HTTP ${res.status()})`)
+            else if (res.status() !== 200) error ??= new ErrorHttpInstagram(res.status(), `forma inesperada: ${nombre} (HTTP ${res.status()})`)
             else {
               try {
                 const json: unknown = JSON.parse(cuerpo)
@@ -208,7 +208,7 @@ export class InstagramCliente {
 
   private async v1Obligatorio(ruta: string, nombre: string): Promise<unknown> {
     const { status, json } = await this.v1(ruta, nombre)
-    if (status !== 200 || json === null) throw new Error(`forma inesperada: ${nombre} (HTTP ${status})`)
+    if (status !== 200 || json === null) throw new ErrorHttpInstagram(status, `forma inesperada: ${nombre} (HTTP ${status})`)
     return json
   }
 
@@ -346,7 +346,7 @@ export class InstagramCliente {
     const pk = shortcodeAPk(shortcode)
     const { status, json } = await this.v1(`/api/v1/media/${pk}/info/`, 'media-info')
     if (status === 404 || status === 400) return null
-    if (status !== 200 || json === null) throw new Error(`forma inesperada: media-info (HTTP ${status})`)
+    if (status !== 200 || json === null) throw new ErrorHttpInstagram(status, `forma inesperada: media-info (HTTP ${status})`)
     const item = (json as { items?: Array<{ user?: { username?: string } }> }).items?.[0]
     const cuenta = item?.user?.username
     if (!cuenta) throw new Error('forma inesperada: media-info (sin autor)')

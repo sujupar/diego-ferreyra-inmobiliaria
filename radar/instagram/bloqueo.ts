@@ -13,6 +13,21 @@ export class BloqueoInstagram extends Error {
   }
 }
 
+/**
+ * Falla HTTP de UNA lectura que no es un freno confirmado (p. ej. un 401/403 pelado). Lleva el
+ * `status` para que la corrida distinga "esta cuenta es restringida" de "la sesión del servidor
+ * venció" (todas las cuentas dando 401/403 seguidas).
+ */
+export class ErrorHttpInstagram extends Error {
+  constructor(
+    public readonly status: number,
+    mensaje: string,
+  ) {
+    super(mensaje)
+    this.name = 'ErrorHttpInstagram'
+  }
+}
+
 /** Segmentos del path de la URL (sin vacíos). Una URL rota da []. */
 function segmentos(url: string): string[] {
   try {
