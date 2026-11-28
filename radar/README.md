@@ -93,7 +93,11 @@ Detalles del motor `claude` (`radar/ia/claude-cli.ts`):
 - Modelos: `RADAR_CLAUDE_MODELO_RAPIDO` / `RADAR_CLAUDE_MODELO_PROFUNDO` (default `sonnet`).
 - Corre **aislado** en `~/.radar-referencias/tmp/ia-<uuid>/` (se borra al terminar) con
   `--system-prompt` propio, `--setting-sources ''`, `--strict-mcp-config`,
-  `--disable-slash-commands`, `--no-session-persistence` y solo la herramienta `Read`.
+  `--disable-slash-commands`, `--no-session-persistence` y `--permission-mode dontAsk`.
+  Herramientas: con imágenes, solo `Read` pre-aprobada sobre `./imagen-*.jpg`; sin imágenes,
+  ninguna (`--tools ''`). Cualquier otra lectura se deniega sola (verificado en vivo: un
+  pedido de leer un archivo de `~/.radar-referencias/` volvió como `permission_denials`). El
+  texto de Instagram lo escribe cualquiera: el system prompt aclara que es dato, no orden.
   Medido el 2026-11-28: arranca con ~2–3 mil tokens de contexto (sin aislar eran ~28 mil).
   No se usa `--bare`: en ese modo solo acepta `ANTHROPIC_API_KEY`, no el plan.
 - Se le quita `ANTHROPIC_API_KEY` del entorno para que nunca facture por API sin querer.

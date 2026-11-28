@@ -32,29 +32,44 @@ describe('extraerResultado', () => {
 })
 
 describe('armarArgsClaude', () => {
-  const args = armarArgsClaude({ system: 'SOS UN FILTRO', modelo: 'sonnet' })
-  const valorDe = (flag: string) => args[args.indexOf(flag) + 1]
+  const args = armarArgsClaude({ system: 'SOS UN FILTRO', modelo: 'sonnet', conImagenes: true })
+  const sinImg = armarArgsClaude({ system: 'SOS UN FILTRO', modelo: 'sonnet', conImagenes: false })
+  const valorDe = (a: string[], flag: string) => a[a.indexOf(flag) + 1]
 
   it('corre en modo print con salida JSON y el modelo pedido', () => {
     expect(args).toContain('-p')
-    expect(valorDe('--output-format')).toBe('json')
-    expect(valorDe('--model')).toBe('sonnet')
+    expect(valorDe(args, '--output-format')).toBe('json')
+    expect(valorDe(args, '--model')).toBe('sonnet')
   })
-  it('reemplaza el system prompt de Claude Code por el nuestro', () => {
-    expect(valorDe('--system-prompt')).toBe('SOS UN FILTRO')
+  it('reemplaza el system prompt de Claude Code por el nuestro, con el aviso de datos no confiables', () => {
+    const sys = valorDe(args, '--system-prompt')
+    expect(sys.startsWith('SOS UN FILTRO')).toBe(true)
+    expect(sys).toMatch(/datos.*nunca instrucciones/i)
   })
-  it('solo permite la herramienta Read', () => {
-    expect(valorDe('--allowedTools')).toBe('Read')
-    expect(valorDe('--tools')).toBe('Read')
+  it('con imágenes: Read solo sobre ./imagen-*.jpg y todo lo demás denegado sin preguntar', () => {
+    expect(valorDe(args, '--tools')).toBe('Read')
+    expect(valorDe(args, '--allowedTools')).toBe('Read(./imagen-*.jpg)')
+    expect(args.filter((x, i) => args[i - 1] === '--allowedTools')).toEqual(['Read(./imagen-*.jpg)'])
+    expect(valorDe(args, '--permission-mode')).toBe('dontAsk')
+  })
+  it('sin imágenes: ninguna herramienta', () => {
+    expect(valorDe(sinImg, '--tools')).toBe('')
+    expect(sinImg).not.toContain('--allowedTools')
+    expect(valorDe(sinImg, '--permission-mode')).toBe('dontAsk')
   })
   it('corre aislado: sin settings, MCP, skills ni sesión guardada', () => {
-    expect(valorDe('--setting-sources')).toBe('')
-    expect(args).toContain('--strict-mcp-config')
-    expect(args).toContain('--disable-slash-commands')
-    expect(args).toContain('--no-session-persistence')
+    for (const a of [args, sinImg]) {
+      expect(valorDe(a, '--setting-sources')).toBe('')
+      expect(a).toContain('--strict-mcp-config')
+      expect(a).toContain('--disable-slash-commands')
+      expect(a).toContain('--no-session-persistence')
+    }
   })
   it('nunca saltea permisos ni usa --bare (pide API key)', () => {
-    expect(args).not.toContain('--dangerously-skip-permissions')
-    expect(args).not.toContain('--bare')
+    for (const a of [args, sinImg]) {
+      expect(a).not.toContain('--dangerously-skip-permissions')
+      expect(a).not.toContain('--bare')
+      expect(a).not.toContain('bypassPermissions')
+    }
   })
 })
