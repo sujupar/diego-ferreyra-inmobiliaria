@@ -10,7 +10,6 @@ import {
   agrupar,
   contarPorEtapa,
   filtrarFilas,
-  ordenarFilas,
   type FilaCartera,
   type FiltrosCartera,
   type Grupo,
@@ -287,9 +286,7 @@ export function VistaCartera(p: PropsVistaCartera) {
   const cerrados = conteo.captada + conteo.descartado
   const filtradas = filtrarFilas(datos.filas, filtros, ahora)
   const vista: Vista = tipo === 'dueno' ? { tipo } : { tipo, personaId: datos.vista.persona?.id ?? '' }
-  const grupos = agrupar(filtradas, vista, ahora).map((g) =>
-    g.clave === 'todos' && tipo === 'dueno' ? { ...g, filas: ordenarFilas(g.filas, filtros.orden) } : g,
-  )
+  const grupos = agrupar(filtradas, vista, ahora, filtros.orden)
   const trabado = esDuenoPropio && filtros.seg === 'abiertos' ? calcularTrabado(datos.filas, ahora) : null
   const colegas = filtrarFilas(datos.filas, { ...filtros, colegas: '1' }, ahora).filter((f) => f.colega).length
   const fuentesOk = datos.fuentes.ultimoContacto === 'ok' && datos.fuentes.tareas === 'ok'

@@ -19,6 +19,8 @@ export const TIPOS_TAREA_DE_PROCESO = ['update_contact', 'follow_up', 'new_assig
 
 /** Respuesta 2 del dueño (2026-11-26). */
 export const SIN_MOVIMIENTO_DIAS = 14
+/** Más de estos días sin movimiento: el proceso va al grupo "Trabados" (crm-lista-nuevos-primero). */
+export const TRABADO_DIAS = 30
 
 /** `createTaskForRole` inserta las copias una tras otra: entre hermanas hay milisegundos. */
 const COPIAS_MS = 60_000
@@ -528,6 +530,30 @@ export function diasSinMovimiento(f: Pick<FilaComun, 'ultimoContacto'>, ahora: D
   return diasDeCalendarioEntre(desde, ahora)
 }
 
+/**
+ * El último movimiento conocido de un proceso: cuándo entró, su último contacto y su
+ * tasación si ya pasó. `null` si el último contacto falló (no se afirma nada). Una tasación
+ * agendada a futuro cuenta como movimiento (crm-lista-nuevos-primero).
+ */
+export function ultimoMovimiento(f: Pick<FilaCartera, 'creadoEn' | 'ultimoContacto' | 'tasacion'>, ahora: Date): number | null {
+  if (f.ultimoContacto === 'error') return null
+  const xs = [Date.parse(f.creadoEn)]
+  if (f.ultimoContacto) xs.push(Date.parse(f.ultimoContacto.at))
+  if (f.tasacion) {
+    const t = Date.parse(f.tasacion.instante)
+    xs.push(t > ahora.getTime() ? ahora.getTime() : t)
+  }
+  const v = Math.max(...xs.filter((x) => !Number.isNaN(x)))
+  return Number.isFinite(v) ? v : null
+}
+
+/** Abierto y con más de `TRABADO_DIAS` días de Argentina sin ningún movimiento. */
+export function trabadoViejo(f: FilaCartera, ahora: Date): boolean {
+  if (!f.abierto) return false
+  const u = ultimoMovimiento(f, ahora)
+  return u !== null && diasDeCalendarioEntre(new Date(u), ahora) > TRABADO_DIAS
+}
+
 // ── La lista en memoria: filtros, orden y grupos (D4: el navegador no vuelve a pedir) ────
 
 /** Todo texto: `useFiltrosUrl` exige `Record<string, string>`. */
@@ -546,7 +572,7 @@ export interface FiltrosCartera {
   ver: string
 }
 
-export type ClaveGrupo = 'sin-contacto' | 'vencidas' | 'tasaciones' | 'resto' | 'hoy' | 'proximos' | 'nada' | 'todos' | 'cerrados'
+export type ClaveGrupo = 'sin-contacto' | 'vencidas' | 'tasaciones' | 'resto' | 'hoy' | 'proximos' | 'nada' | 'todos' | 'trabados' | 'cerrados'
 
 export interface Grupo {
   clave: ClaveGrupo
@@ -699,10 +725,14 @@ const porTasacion = (a: FilaCartera, b: FilaCartera) => ms(a.tasacion?.instante)
  * sí, salen del proceso), y en la vista del asesor el resto queda en una lista neutra
  * ("todos"): "Sin nada pendiente" afirmaría algo que no se sabe.
  */
-export function agrupar(f: FilaCartera[], v: Vista, ahora: Date): Grupo[] {
-  const abiertos = f.filter((x) => x.abierto)
+export function agrupar(f: FilaCartera[], v: Vista, ahora: Date, orden: FiltrosCartera['orden'] = 'proximo'): Grupo[] {
+  // Los trabados salen primero de todo y se muestran al final (antes de los cerrados): un
+  // proceso parado hace meses no compite con lo nuevo (crm-lista-nuevos-primero).
+  const trabados = f.filter((x) => trabadoViejo(x, ahora))
+  const abiertos = f.filter((x) => x.abierto && !trabadoViejo(x, ahora))
   const cerrados = f.filter((x) => !x.abierto)
   const grupos: Grupo[] = []
+  const general = COMPARAR[orden] ?? compararProximo
   let quedan = abiertos
   const tomar = (clave: ClaveGrupo, cumple: (x: FilaCartera) => boolean, orden: (a: FilaCartera, b: FilaCartera) => number, urgente = false) => {
     const filas = quedan.filter(cumple).sort(orden)
@@ -715,15 +745,20 @@ export function agrupar(f: FilaCartera[], v: Vista, ahora: Date): Grupo[] {
     // La tasación pasada es tarea del asesor: no cuenta como llamada vencida de la coordinación.
     tomar('vencidas', (x) => proximoVencido(x, ahora) && x.proximo !== 'error' && x.proximo?.clase === 'tarea', compararProximo, true)
     tomar('tasaciones', (x) => tasacionFutura(x, ahora, [0, 1]), porTasacion)
-    tomar('resto', () => true, compararProximo)
+    tomar('resto', () => true, general)
   } else if (v.tipo === 'asesor') {
     tomar('hoy', (x) => tasacionFutura(x, ahora, [0]), porTasacion)
     tomar('vencidas', (x) => proximoVencido(x, ahora), compararProximo, true)
-    tomar('proximos', (x) => !!x.proximo && x.proximo !== 'error', compararProximo)
-    tomar('nada', (x) => x.proximo === null, compararProximo)
-    tomar('todos', () => true, compararProximo)
+    tomar('proximos', (x) => !!x.proximo && x.proximo !== 'error', general)
+    tomar('nada', (x) => x.proximo === null, general)
+    tomar('todos', () => true, general)
   } else {
-    tomar('todos', () => true, compararProximo)
+    tomar('todos', () => true, general)
+  }
+
+  if (trabados.length > 0) {
+    const mov = (x: FilaCartera) => ultimoMovimiento(x, ahora) ?? 0
+    grupos.push({ clave: 'trabados', filas: [...trabados].sort((a, b) => mov(b) - mov(a) || a.id.localeCompare(b.id)), urgente: false })
   }
 
   if (cerrados.length > 0) {

@@ -360,3 +360,45 @@ describe('contarPorEtapa', () => {
     expect(contarPorEtapa(lista, filtros({ colegas: '1' }), AHORA).descartado).toBe(2)
   })
 })
+
+describe('crm-lista-nuevos-primero', () => {
+  it('trabados: abiertos con más de 30 días sin movimiento van a un grupo propio, al final (antes de los cerrados)', () => {
+    // Coordinada con la tasación del 2 de junio y nada después (el caso Alejandra Migeli).
+    const junio = fila({
+      id: 'junio', etapa: 'coordinada', creadoEn: ar('2026-06-01', '10:00'), ultimoContacto: null, anteriorAlRegistro: true,
+      tasacion: tasacionEn('2026-06-02', '11:00'),
+      proximo: { clase: 'tasacion', titulo: 'Cargar el resultado de la tasación', vence: { due_date: '2026-06-02', due_time: '11:00', all_day: false }, quien: null, espera: null, instante: ar('2026-06-02', '11:00') },
+    })
+    // Entró hace 2 meses pero la llamaron ayer: se movió, no está trabado.
+    const llamadoAyer = fila({ id: 'ayer', etapa: 'seguimiento', creadoEn: ar('2026-10-01', '10:00'), ultimoContacto: { at: ar('2026-12-01', '12:00'), que: 'llamada', resultado: 'no_atendio' } })
+    // Justo 30 días: todavía no.
+    const treinta = fila({ id: 'treinta', etapa: 'seguimiento', creadoEn: ar('2026-11-02', '11:00'), ultimoContacto: null, anteriorAlRegistro: true })
+    const cerrado = fila({ id: 'cerrado', etapa: 'descartado', creadoEn: ar('2026-05-01', '10:00'), cerradoEn: '2026-11-30T12:00:00Z' })
+    expect(claves(agrupar([junio, llamadoAyer, treinta, cerrado], DUENO, AHORA, 'nuevos'))).toEqual([
+      ['todos', ['treinta', 'ayer']],
+      ['trabados', ['junio']],
+      ['cerrados', ['cerrado']],
+    ])
+  })
+  it('una tasación agendada a futuro no está trabada aunque el proceso sea viejo', () => {
+    const f = fila({ id: 'f', etapa: 'coordinada', creadoEn: ar('2026-06-01', '10:00'), ultimoContacto: null, anteriorAlRegistro: true, tasacion: tasacionEn('2026-12-10', '11:00') })
+    expect(claves(agrupar([f], DUENO, AHORA, 'nuevos'))).toEqual([['todos', ['f']]])
+  })
+  it('con el último contacto en error no se afirma que esté trabado', () => {
+    const f = fila({ id: 'e', etapa: 'seguimiento', creadoEn: ar('2026-06-01', '10:00'), ultimoContacto: 'error' })
+    expect(claves(agrupar([f], DUENO, AHORA, 'nuevos'))).toEqual([['todos', ['e']]])
+  })
+  it('los trabados van del que se movió más recientemente al más viejo', () => {
+    const a = fila({ id: 'a', etapa: 'seguimiento', creadoEn: ar('2026-03-01', '10:00'), ultimoContacto: null })
+    const b = fila({ id: 'b', etapa: 'seguimiento', creadoEn: ar('2026-08-01', '10:00'), ultimoContacto: null })
+    expect(claves(agrupar([a, b], DUENO, AHORA, 'nuevos'))).toEqual([['trabados', ['b', 'a']]])
+  })
+  it('el orden elegido manda en los grupos generales de cada vista (más nuevos primero)', () => {
+    const viejo = fila({ id: 'viejo', creadoEn: ar('2026-11-20', '10:00'), proximo: tareaEn('2026-12-03', '09:00') })
+    const nuevo = fila({ id: 'nuevo', creadoEn: ar('2026-12-01', '10:00'), proximo: tareaEn('2026-12-05', '09:00') })
+    expect(claves(agrupar([viejo, nuevo], COORD, AHORA, 'nuevos'))).toEqual([['resto', ['nuevo', 'viejo']]])
+    expect(claves(agrupar([viejo, nuevo], DUENO, AHORA, 'nuevos'))).toEqual([['todos', ['nuevo', 'viejo']]])
+    expect(claves(agrupar([viejo, nuevo], ASESOR, AHORA, 'nuevos'))).toEqual([['proximos', ['nuevo', 'viejo']]])
+    expect(claves(agrupar([viejo, nuevo], COORD, AHORA, 'proximo'))).toEqual([['resto', ['viejo', 'nuevo']]])
+  })
+})

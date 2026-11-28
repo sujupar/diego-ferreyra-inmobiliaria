@@ -102,7 +102,7 @@ describe('grupos de cada vista', () => {
       'Nadie las llamó todavía. Primero la que más espera.',
       'Tenían una tarea para antes de ahora.',
       'Para confirmar el horario con la persona y con el asesor.',
-      'Ordenadas por el próximo paso. Al final, las que no tienen nada agendado.',
+      'En el orden elegido arriba.',
     ])
       expect(screen.getByText(t)).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: /^Abrir la ficha de/ })).toHaveLength(4)
@@ -118,7 +118,7 @@ describe('grupos de cada vista', () => {
     montar(carteraAsesor(), { rol: 'asesor' })
     expect(screen.getByText('Tus procesos, ordenados por el próximo paso.')).toBeInTheDocument()
     expect(grupos()).toEqual(['Tasaciones de hoy', 'Tareas vencidas', 'Con próximo paso', 'Sin nada pendiente'])
-    for (const t of ['Las que tenés hoy, por hora.', 'Tenían que estar hechas antes de ahora.', 'Ordenados por fecha.', 'No tienen ninguna tarea ni visita. Poneles un próximo paso o cerrá el proceso.'])
+    for (const t of ['Las que tenés hoy, por hora.', 'Tenían que estar hechas antes de ahora.', 'En el orden elegido arriba.', 'No tienen ninguna tarea ni visita. Poneles un próximo paso o cerrá el proceso.'])
       expect(screen.getByText(t)).toBeInTheDocument()
     const hoy = screen.getByRole('region', { name: 'Tasaciones de hoy' })
     expect(within(hoy).getAllByRole('link').map((a) => a.getAttribute('data-fila'))).toEqual(['hoy-1230', 'hoy-1530'])

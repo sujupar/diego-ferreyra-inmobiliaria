@@ -18,7 +18,7 @@ describe('leerFiltrosCartera', () => {
   })
   it('los filtros por defecto son todos texto', () => {
     for (const v of Object.values(FILTROS_DEFECTO)) expect(typeof v).toBe('string')
-    expect(FILTROS_DEFECTO).toMatchObject({ seg: 'abiertos', orden: 'proximo' })
+    expect(FILTROS_DEFECTO).toMatchObject({ seg: 'abiertos', orden: 'nuevos' })
   })
   it('lee cada clave válida', () => {
     const { filtros, rechazados } = leer(
