@@ -36,25 +36,26 @@ describe('mediana', () => {
 
 describe('intentosDeSolicitud', () => {
   const s = sol('d1', ar('2026-11-30', '10:00'))
-  it('del proceso, o del contacto desde que se creó la solicitud; sin anulados; por la hora en que ocurrió', () => {
+  it('del proceso, o sin proceso del mismo contacto; desde que se creó la solicitud; sin anulados ni otros procesos; por la hora', () => {
     const r = intentosDeSolicitud(s, [
       llamada('d1', 'c-d1', ar('2026-11-30', '12:00'), 'no_atendio', { id: 'segunda' }),
       llamada(null, 'c-d1', ar('2026-11-30', '11:00'), 'no_atendio', { id: 'primera' }),
       llamada(null, 'c-d1', ar('2026-11-29', '11:00'), 'agendo', { id: 'de-antes' }),
-      llamada('otro', 'c-d1', ar('2026-11-30', '13:00'), 'agendo', { id: 'tercera-otro-proceso' }),
+      llamada('otro', 'c-d1', ar('2026-11-30', '13:00'), 'agendo', { id: 'otro-proceso' }),
       llamada('d1', 'c-d1', ar('2026-11-30', '14:00'), 'agendo', { id: 'anulada', voided_at: ar('2026-11-30', '14:05') }),
       llamada(null, 'c-otro', ar('2026-11-30', '11:30'), 'agendo', { id: 'otro-contacto' }),
     ])
-    expect(r.map((x) => x.id)).toEqual(['primera', 'segunda', 'tercera-otro-proceso'])
+    expect(r.map((x) => x.id)).toEqual(['primera', 'segunda'])
   })
-  it('ligada al proceso cuenta aunque la hora corregida quede antes del registro', () => {
+  it('ligada al proceso con la hora corregida antes del registro: no cuenta', () => {
     const r = intentosDeSolicitud(s, [llamada('d1', 'c-d1', ar('2026-11-30', '09:50'), 'no_atendio', { id: 'x' })])
-    expect(r.map((x) => x.id)).toEqual(['x'])
+    expect(r).toEqual([])
   })
   it('sin contacto, solo por proceso', () => {
     const r = intentosDeSolicitud(sol('d2', ar('2026-11-30', '10:00'), null), [
       llamada('d2', 'c-z', ar('2026-11-30', '11:00'), 'agendo', { id: 'si' }),
       llamada(null, 'c-z', ar('2026-11-30', '11:00'), 'agendo', { id: 'no' }),
+      llamada('d2', 'c-z', ar('2026-11-30', '09:00'), 'agendo', { id: 'antes' }),
     ])
     expect(r.map((x) => x.id)).toEqual(['si'])
   })

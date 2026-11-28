@@ -8,15 +8,15 @@ misma sesión. Se trabaja en `~/Dev/crm-cartera`.
 ## 1. Preparación
 - [x] 1.1 Inventario del Tablero, permisos, la base y las specs; propuesta corregida (lugar, roles, datos)
 - [x] 1.2 Specs y diseño; `openspec validate --strict`
-- [ ] 1.3 Auditoría independiente de los artefactos; corregir y anotar en `auditoria.md`
+- [x] 1.3 Auditoría independiente de los artefactos; corregir y anotar en `auditoria.md`
 - [ ] 1.4 PR en borrador
 
 ## 2. Reglas y lectura
-- [ ] 2.1 `lib/crm/metricas-llamadas.ts` (D1) con sus tests
-- [ ] 2.2 Armado en `armarTablero` (D2) con sus tests
+- [x] 2.1 `lib/crm/metricas-llamadas.ts` (D1) con sus tests
+- [x] 2.2 Armado en `armarTablero` (D2) con sus tests
 
 ## 3. Pantalla
-- [ ] 3.1 `SeccionLlamadas` (D3) con sus tests y renumerar las secciones
+- [ ] 3.1 `SeccionLlamadas` (D3) con sus tests, como sección 5
 
 ## 4. Verificación
 - [ ] 4.1 Suite, `tsc` de toda la app, `eslint`
