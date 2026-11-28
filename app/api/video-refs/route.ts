@@ -47,10 +47,16 @@ export async function GET(req: Request) {
     portada_url: (r.portada_storage_path ? firmas.get(r.portada_storage_path) : null) ?? r.thumbnail_url,
   }))
 
-  let radar = null
+  // Si no se pueden leer las corridas, radar=null (la pantalla esconde el aviso) en vez de un
+  // "sin corridas" falso; la lista de referencias se sirve igual.
+  let radar: ReturnType<typeof calcularEstadoRadar> | null = null
   if (!archivo) {
-    const { ultima, ultimaOk } = await leerCorridas(db)
-    radar = calcularEstadoRadar(ultimaOk, ultima, new Date())
+    try {
+      const { ultima, ultimaOk } = await leerCorridas(db)
+      radar = calcularEstadoRadar(ultimaOk, ultima, new Date())
+    } catch (e) {
+      console.error('[video-refs] no se pudo calcular el estado del radar:', e instanceof Error ? e.message : e)
+    }
   }
 
   return NextResponse.json({ refs, radar })

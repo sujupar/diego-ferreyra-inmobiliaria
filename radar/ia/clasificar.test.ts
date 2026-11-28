@@ -20,6 +20,10 @@ describe('parsearClasificacion', () => {
   it('tira ante categoría fuera del enum', () => {
     expect(() => parsearClasificacion('{"categoria":"x","tema":"otro","puntaje":5,"razon":"r"}')).toThrow()
   })
+  it('redondea el puntaje a entero (la columna es smallint)', () => {
+    expect(parsearClasificacion('{"categoria":"inmobiliario_ar","tema":"otro","puntaje":7.5,"razon":"r"}').puntaje).toBe(8)
+    expect(parsearClasificacion('{"categoria":"inmobiliario_ar","tema":"otro","puntaje":6.2,"razon":"r"}').puntaje).toBe(6)
+  })
   it('tira ante puntaje fuera de 0–10', () => {
     expect(() => parsearClasificacion('{"categoria":"no_sirve","tema":"otro","puntaje":11,"razon":"r"}')).toThrow()
     expect(() => parsearClasificacion('{"categoria":"no_sirve","tema":"otro","puntaje":-1,"razon":"r"}')).toThrow()

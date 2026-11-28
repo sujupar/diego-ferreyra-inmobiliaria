@@ -63,6 +63,16 @@ describe('limpiarTranscripcion', () => {
   it('solo música = vacío', () => {
     expect(limpiarTranscripcion('[BLANK_AUDIO]\n[Música]\n')).toBe('')
   })
+  it('saca las alucinaciones de whisper sobre audio sin voz', () => {
+    expect(limpiarTranscripcion('Subtítulos realizados por la comunidad de Amara.org\n')).toBe('')
+    expect(limpiarTranscripcion('[Música]\nSubtítulos por la comunidad de Amara.org')).toBe('')
+    expect(limpiarTranscripcion('¡Suscríbete!\n')).toBe('')
+    expect(limpiarTranscripcion('Gracias por ver el video.\n')).toBe('')
+    expect(limpiarTranscripcion('[Música] Gracias por ver. ¡Suscríbete!')).toBe('')
+  })
+  it('las alucinaciones se van y el habla real queda', () => {
+    expect(limpiarTranscripcion('El ITI se derogó en 2024. Gracias por ver el video.')).toBe('El ITI se derogó en 2024.')
+  })
 })
 
 function carpeta() {

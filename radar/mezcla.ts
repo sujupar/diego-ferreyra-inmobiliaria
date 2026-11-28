@@ -1,12 +1,14 @@
-// Mezcla 80/20: al menos 80 % del contenido semanal tiene que ser inmobiliario.
+// Mezcla 80/20: al menos 80 % del contenido semanal tiene que ser inmobiliario ARGENTINO.
+// `inmobiliario_otro_pais` y `formato_otro_rubro` comparten el 20 % (decisión del spec:
+// "80 % argentino"). `db.semanaPublicada` cuenta con la misma regla.
 import type { Clasificacion, ConfigRadar } from './tipos'
 
 export type Aprobado = { shortcode: string; multiplicador: number; clas: Clasificacion }
 
 const PROPORCION_MAX_OTRAS = 0.2
 
-const esInmobiliario = (a: Aprobado) =>
-  a.clas.categoria === 'inmobiliario_ar' || a.clas.categoria === 'inmobiliario_otro_pais'
+/** El grupo del 80 %: solo inmobiliario argentino. */
+const esInmobiliario = (a: Aprobado) => a.clas.categoria === 'inmobiliario_ar'
 
 const score = (a: Aprobado) => a.multiplicador * a.clas.puntaje
 
@@ -31,7 +33,7 @@ export function elegirPublicables(
   const otros = ordenar(validos.filter((a) => !esInmobiliario(a)))
 
   const inmobHoy = Math.min(inmob.length, cfg.topeDiario)
-  if (inmobHoy === 0) return [] // sin inmobiliario no se publica nada
+  if (inmobHoy === 0) return [] // sin inmobiliario argentino no se publica nada
 
   // Mayor k (con el tope diario ya aplicado al total real del día) tal que
   // (otras + k) / (total semana + inmobiliarios que realmente entran + k) <= 20 %.

@@ -6,7 +6,13 @@
 // Reglas que manda este archivo (no los módulos de abajo):
 // - Un freno de Instagram (BloqueoInstagram) para TODO, en cualquier paso. No se reintenta.
 // - Un reel que falla (descarga, JSON de la IA, subida) queda `error` en radar_vistos y la
-//   corrida sigue; al final queda `parcial`.
+//   corrida sigue; al final queda `parcial`. Un `error` NO cuenta como visto durante
+//   DIAS_REINTENTO_ERROR (db.ts): las corridas siguientes lo reintentan.
+// - Cortacircuito de IA: tras UMBRAL_FALLAS_IA fallas SEGUIDAS de Claude se dejan de clasificar
+//   y de publicar reels (lo que queda se mira mañana). Si hubo candidatos y TODAS las llamadas
+//   a la IA fallaron, la corrida cierra `error` en el paso `ia` para que el vigilante avise.
+// - Una cuenta que falla (sin ser un freno) igual cuenta como revisada: no se queda primera
+//   en la cola para siempre.
 // - Presupuesto de IA del plan de Julian: como mucho MAX_CLASIFICACIONES por corrida; los
 //   candidatos que no entran NO se marcan vistos (los mira la corrida siguiente).
 // - En seco no se escribe NADA en Supabase ni se sube nada: solo se imprime lo que haría.
@@ -44,6 +50,9 @@ const FRAMES_POR_REEL = 8
 export const REVISIONES_SIN_DESTACADOS = 4
 
 export const MENSAJE_SESION = 'La sesión de Instagram venció: corré `radar login`'
+/** Fallas seguidas de la IA que cortan la clasificación y la publicación de la corrida. */
+export const UMBRAL_FALLAS_IA = 3
+export const MENSAJE_IA = 'Claude no respondió: ¿se agotó el límite del plan o se cerró la sesión de `claude`?'
 /** run_id de mentira para la corrida en seco (nunca se escribe). */
 const RUN_SECO = '00000000-0000-0000-0000-000000000000'
 
@@ -70,6 +79,7 @@ export type DbRadar = Pick<
   | 'cuentasConocidas'
   | 'registrarCuentas'
   | 'actualizarCuenta'
+  | 'anotarFalloCuenta'
   | 'marcarCuentaInmobiliaria'
   | 'busquedasDeHoy'
   | 'vistos'
@@ -131,7 +141,7 @@ const esInmobiliario = (c: Clasificacion) => c.categoria === 'inmobiliario_ar' |
  * Cómo queda la cuenta después de esta revisión. Una DESCUBIERTA (búsqueda/explorar) que
  * en 4 revisiones no dio ni un destacado se desactiva; las semillas nunca se apagan solas.
  */
-export function estadoTrasRevision(c: CuentaARevisar, med: MedicionCuenta): EstadoCuenta {
+export function estadoTrasRevision(c: CuentaARevisar, med: Pick<MedicionCuenta, 'candidatos'>): EstadoCuenta {
   const vecesRevisada = c.vecesRevisada + 1
   const destacados = c.destacados + med.candidatos.length
   const descubierta = c.origen === 'busqueda' || c.origen === 'explorar'
@@ -324,7 +334,18 @@ export async function correr(
       } catch (e) {
         if (e instanceof BloqueoInstagram) throw e
         anotar(`@${c.usuario}: ${msg(e)}`)
-        log(`@${c.usuario} falló: ${msg(e)}`)
+        // La falla cuenta como revisión (sin destacados): corre ultima_revision_at para que la
+        // cuenta no quede primera en la cola para siempre, y una descubierta que falla 4 veces
+        // se apaga sola. Las semillas nunca (estadoTrasRevision).
+        const estado = estadoTrasRevision(c, { candidatos: [] })
+        log(`@${c.usuario} falló: ${msg(e)}${estado.activa ? '' : ' → se desactiva'}`)
+        if (!seco) {
+          try {
+            await db.anotarFalloCuenta(c.usuario, estado)
+          } catch (e2) {
+            log(`@${c.usuario}: no se pudo anotar la falla (${msg(e2)})`)
+          }
+        }
       }
     }
     cont.candidatos = candidatos.length
@@ -353,8 +374,25 @@ export async function correr(
         anotar(`${c.reel.shortcode}: no se pudo marcar visto (${msg(e)})`)
       }
     }
+    // Cortacircuito de la IA (ver arriba): cuenta llamadas, fallas y fallas seguidas.
+    const ia = { llamadas: 0, fallas: 0, seguidas: 0, cortada: false }
+    const iaOk = () => {
+      ia.llamadas++
+      ia.seguidas = 0
+    }
+    const iaFallo = () => {
+      ia.llamadas++
+      ia.fallas++
+      ia.seguidas++
+      if (ia.seguidas >= UMBRAL_FALLAS_IA && !ia.cortada) {
+        ia.cortada = true
+        anotar(`IA: ${UMBRAL_FALLAS_IA} fallas seguidas, se cortó la clasificación y la publicación`)
+        log(`la IA falló ${UMBRAL_FALLAS_IA} veces seguidas: no se clasifica ni se publica más en esta corrida`)
+      }
+    }
     let usadas = 0
     for (const c of pendientes) {
+      if (ia.cortada) break // lo que queda no se marca: lo mira la próxima corrida
       if (usadas >= topeClasif) {
         log(`tope de ${topeClasif} clasificaciones: ${pendientes.length - usadas} candidatos quedan para la próxima corrida`)
         break
@@ -369,22 +407,31 @@ export async function correr(
           log(`${c.reel.shortcode}: sin comentarios (${msg(e)})`) // se clasifica igual
         }
       }
+      let clas: Clasificacion
       try {
-        const clas = await deps.clasificar(c.reel, c.perfil, comentarios, ejemplos)
-        if (esInmobiliario(clas) && c.cuenta.rubro !== 'inmobiliario' && !seco) {
-          await db.marcarCuentaInmobiliaria(c.cuenta.usuario)
-          c.cuenta.rubro = 'inmobiliario'
-        }
-        log(`${c.reel.shortcode} (@${c.perfil.usuario}, ×${c.reel.multiplicador.toFixed(1)}): ${clas.categoria} / ${clas.tema} / ${clas.puntaje} — ${clas.razon}`)
-        if (clas.categoria === 'no_sirve') await marcar(c, 'descartado_relevancia', clas.razon)
-        else if (clas.puntaje < cfg.puntajeMin) await marcar(c, 'bajo_umbral', `puntaje ${clas.puntaje}: ${clas.razon}`)
-        else aprobados.push({ ...c, clas, comentarios })
+        clas = await deps.clasificar(c.reel, c.perfil, comentarios, ejemplos)
+        iaOk()
       } catch (e) {
         if (e instanceof BloqueoInstagram) throw e
+        iaFallo()
         anotar(`${c.reel.shortcode}: clasificación (${msg(e)})`)
         log(`${c.reel.shortcode}: la clasificación falló: ${msg(e)}`)
         await marcar(c, 'error', `clasificación: ${msg(e)}`)
+        continue
       }
+      if (esInmobiliario(clas) && c.cuenta.rubro !== 'inmobiliario' && !seco) {
+        // Accesorio: si falla, se anota en el log y el reel sigue su camino.
+        try {
+          await db.marcarCuentaInmobiliaria(c.cuenta.usuario)
+          c.cuenta.rubro = 'inmobiliario'
+        } catch (e) {
+          log(`@${c.cuenta.usuario}: no se pudo marcar como inmobiliaria (${msg(e)})`)
+        }
+      }
+      log(`${c.reel.shortcode} (@${c.perfil.usuario}, ×${c.reel.multiplicador.toFixed(1)}): ${clas.categoria} / ${clas.tema} / ${clas.puntaje} — ${clas.razon}`)
+      if (clas.categoria === 'no_sirve') await marcar(c, 'descartado_relevancia', clas.razon)
+      else if (clas.puntaje < cfg.puntajeMin) await marcar(c, 'bajo_umbral', `puntaje ${clas.puntaje}: ${clas.razon}`)
+      else aprobados.push({ ...c, clas, comentarios })
     }
 
     // ---- mezcla 80/20 ----
@@ -410,6 +457,10 @@ export async function correr(
       }
     } else {
       for (const a of publicables) {
+        if (ia.cortada) {
+          log('la IA está cortada: los reels aprobados que faltan se publican en la próxima corrida')
+          break
+        }
         const codigo = a.reel.shortcode
         const dirFrames = join(deps.rutaTmp, `frames-${codigo}`)
         let mp4Local: string | null = null
@@ -424,7 +475,14 @@ export async function correr(
           mp4Local = medios.mp4Local
           const frames = await deps.extraerFrames(medios.mp4Local, dirFrames, FRAMES_POR_REEL)
           const transcripcion = await deps.transcribir(medios.mp4Local, dirFrames)
-          const an = await deps.analizar({ frames, transcripcion }, a.reel, a.base, a.perfil, a.comentarios)
+          let an: Analisis
+          try {
+            an = await deps.analizar({ frames, transcripcion }, a.reel, a.base, a.perfil, a.comentarios)
+          } catch (e) {
+            iaFallo()
+            throw e
+          }
+          iaOk()
           const fila = armarFilaVideoRef(a.reel, a.base, a.baseN, a.perfil, a.clas, an, medios, runId)
           await db.upsertVideoRef(fila)
           await marcar(a, 'publicado', null)
@@ -454,9 +512,13 @@ export async function correr(
       }
     }
 
-    const estado = errores.length ? 'parcial' : 'ok'
-    const mensaje = errores.length ? errores.slice(0, 10).join(' · ') : null
-    if (corridaAbierta) await db.cerrarCorrida(runId, estado, pasoError, cont, mensaje)
+    // Hubo con qué trabajar y la IA no respondió NUNCA: no es "parcial", es un error que
+    // alguien tiene que mirar (cupo del plan agotado, sesión de `claude` cerrada).
+    const iaMuerta = cont.candidatos > 0 && ia.llamadas > 0 && ia.fallas === ia.llamadas
+    const estado = iaMuerta ? 'error' : errores.length ? 'parcial' : 'ok'
+    const detalle = errores.length ? errores.slice(0, 10).join(' · ') : null
+    const mensaje = iaMuerta ? `${MENSAJE_IA}${detalle ? ` — ${detalle}` : ''}` : detalle
+    if (corridaAbierta) await db.cerrarCorrida(runId, estado, iaMuerta ? 'ia' : pasoError, cont, mensaje)
     log(`corrida ${estado}: ${cont.cuentas_revisadas} cuentas, ${cont.reels_mirados} reels, ${cont.candidatos} candidatos, ${cont.publicadas} publicadas${mensaje ? ` — ${mensaje}` : ''}`)
     return { estado, publicadas: cont.publicadas }
   } catch (e) {

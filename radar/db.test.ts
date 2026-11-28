@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { configDesdeFilas, cuentasParaRevisar, diaBA, ordenarCuentas, rotarBusquedas, soloMetricas, upsertVideoRef, yaCorrioHoy, type CuentaARevisar } from './db'
+import { configDesdeFilas, cuentaComoVisto, cuentasParaRevisar, diaBA, DIAS_REINTENTO_ERROR, marcarVisto, semanaPublicada, vistos, ordenarCuentas, rotarBusquedas, soloMetricas, upsertVideoRef, yaCorrioHoy, type CuentaARevisar } from './db'
 
 describe('diaBA', () => {
   it('usa el día de Buenos Aires, no el UTC', () => {
@@ -71,14 +71,14 @@ describe('soloMetricas', () => {
 
 /** Doble mínimo del query builder: registra cada operación y devuelve lo que se le pida. */
 function sbFalso(respuestas: { maybeSingle?: unknown; select?: unknown[] }) {
-  const ops: Array<{ tabla: string; op: string; arg?: unknown }> = []
+  const ops: Array<{ tabla: string; op: string; arg?: unknown; args: unknown[] }> = []
   const builder = (tabla: string) => {
     const b: Record<string, unknown> = {}
-    const encadenar = (op: string) => (arg?: unknown) => {
-      ops.push({ tabla, op, arg })
+    const encadenar = (op: string) => (...args: unknown[]) => {
+      ops.push({ tabla, op, arg: args[0], args })
       return b
     }
-    for (const op of ['select', 'eq', 'in', 'order', 'limit', 'update', 'insert']) b[op] = encadenar(op)
+    for (const op of ['select', 'eq', 'in', 'order', 'limit', 'update', 'insert', 'upsert', 'gte']) b[op] = encadenar(op)
     b.maybeSingle = async () => ({ data: respuestas.maybeSingle ?? null, error: null })
     b.then = (ok: (v: unknown) => unknown) => ok({ data: respuestas.select ?? [], error: null })
     return b
@@ -195,5 +195,53 @@ describe('cuentasParaRevisar', () => {
     const { sb, consultas } = sbCuentas({ semilla: muchas('s', 4), inmobiliario: muchas('i', 2) })
     expect((await cuentasParaRevisar(25, sb)).map((c) => c.usuario)).toEqual(['s1', 's2', 's3', 's4', 'i1', 'i2'])
     expect(consultas).toHaveLength(3)
+  })
+})
+
+describe('vistos y el reintento de errores', () => {
+  const AHORA = new Date('2026-11-28T12:00:00Z')
+  const hace = (d: number) => new Date(AHORA.getTime() - d * 86_400_000).toISOString()
+  it('publicado / descartado / bajo umbral cuentan como vistos siempre', () => {
+    for (const resultado of ['publicado', 'descartado_relevancia', 'bajo_umbral']) {
+      expect(cuentaComoVisto({ resultado, visto_at: hace(0) }, AHORA)).toBe(true)
+    }
+  })
+  it(`un error reciente NO es visto (se reintenta); pasados ${DIAS_REINTENTO_ERROR} días se abandona`, () => {
+    expect(cuentaComoVisto({ resultado: 'error', visto_at: hace(1) }, AHORA)).toBe(false)
+    expect(cuentaComoVisto({ resultado: 'error', visto_at: hace(DIAS_REINTENTO_ERROR - 0.5) }, AHORA)).toBe(false)
+    expect(cuentaComoVisto({ resultado: 'error', visto_at: hace(DIAS_REINTENTO_ERROR + 0.5) }, AHORA)).toBe(true)
+  })
+  it('vistos() filtra con esa regla', async () => {
+    const { sb } = sbFalso({
+      select: [
+        { ig_shortcode: 'A', resultado: 'publicado', visto_at: hace(0) },
+        { ig_shortcode: 'B', resultado: 'error', visto_at: hace(2) },
+        { ig_shortcode: 'C', resultado: 'error', visto_at: hace(30) },
+      ],
+    })
+    expect([...(await vistos(['A', 'B', 'C'], sb, AHORA))].sort()).toEqual(['A', 'C'])
+  })
+  it('un error repetido NO renueva visto_at (el plazo corre desde el primero)', async () => {
+    const { sb, ops } = sbFalso({ maybeSingle: { resultado: 'error' } })
+    await marcarVisto({ shortcode: 'B', cuenta: 'ana', multiplicador: 4, resultado: 'error', motivo: 'otra vez', runId: 'r2' }, sb)
+    const upd = ops.find((o) => o.op === 'update')?.arg as Record<string, unknown>
+    expect(upd).toEqual({ motivo: 'otra vez', run_id: 'r2' })
+    expect(ops.some((o) => o.op === 'upsert')).toBe(false)
+  })
+  it('el primer error sí se escribe con visto_at', async () => {
+    const { sb, ops } = sbFalso({ maybeSingle: null })
+    await marcarVisto({ shortcode: 'B', cuenta: 'ana', multiplicador: 4, resultado: 'error', motivo: 'x', runId: 'r1' }, sb)
+    const up = ops.find((o) => o.op === 'upsert')?.arg as Record<string, unknown>
+    expect(up.resultado).toBe('error')
+    expect(typeof up.visto_at).toBe('string')
+  })
+})
+
+describe('semanaPublicada', () => {
+  it('el 80 % es solo inmobiliario_ar; otro país va con los otros formatos', async () => {
+    const { sb, ops } = sbFalso({})
+    await semanaPublicada(new Date('2026-11-28T12:00:00Z'), sb)
+    const ins = ops.filter((o) => o.op === 'in').map((o) => o.args[1])
+    expect(ins).toEqual([['inmobiliario_ar'], ['inmobiliario_otro_pais', 'formato_otro_rubro']])
   })
 })

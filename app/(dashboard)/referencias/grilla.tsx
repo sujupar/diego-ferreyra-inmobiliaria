@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Eye, Heart, MessageCircle, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import type { VideoRefConUrls as VideoRef } from '@/lib/video-refs/repo'
 import { textoAlerta, textoUltima, type EstadoRadar } from '@/lib/video-refs/estado-radar'
+import { estabilizarUrls, type CacheUrls } from '@/lib/video-refs/urls-estables'
 import Detalle from './detalle'
 
 type Rango = 'hoy' | 'semana' | 'todas'
@@ -122,13 +123,15 @@ export default function Grilla() {
   const [tema, setTema] = useState('')
   const [archivo, setArchivo] = useState(false)
   const [radar, setRadar] = useState<EstadoRadar | null>(null)
+  // Primera URL firmada de cada archivo: el refresco cada 8 s no reinicia el video ni rebaja portadas.
+  const urls = useRef<CacheUrls>(new Map())
 
   const cargar = useCallback(async () => {
     try {
       const r = await fetch(archivo ? '/api/video-refs?archivo=1' : '/api/video-refs')
       const d = await r.json()
       if (!r.ok || d.error) throw new Error(d.error || 'No se pudieron cargar las referencias')
-      setRefs(d.refs ?? [])
+      setRefs(estabilizarUrls((d.refs ?? []) as VideoRef[], urls.current))
       setRadar(d.radar ?? null)
       setError(null)
     } catch (e) {

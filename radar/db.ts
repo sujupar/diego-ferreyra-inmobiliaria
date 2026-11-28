@@ -293,6 +293,20 @@ export async function actualizarCuenta(
   falla(`no se pudo actualizar @${usuario}`, error)
 }
 
+/**
+ * Una revisión que FALLÓ (perfil privado, forma inesperada, red) igual cuenta como revisión:
+ * se corre `ultima_revision_at` y suma `veces_revisada`. Sin esto, la cuenta rota quedaba
+ * primera en la cola para siempre. La regla de desactivación (`estado.activa`) la decide
+ * `estadoTrasRevision`, que nunca apaga una semilla.
+ */
+export async function anotarFalloCuenta(usuario: string, estado: EstadoCuenta, sb: SupabaseClient = sb0()): Promise<void> {
+  const { error } = await sb
+    .from('radar_cuentas')
+    .update({ veces_revisada: estado.vecesRevisada, ultima_revision_at: new Date().toISOString(), activa: estado.activa })
+    .eq('usuario', sinArroba(usuario))
+  falla(`no se pudo anotar la falla de @${usuario}`, error)
+}
+
 export async function marcarCuentaInmobiliaria(usuario: string, sb: SupabaseClient = sb0()): Promise<void> {
   const { error } = await sb.from('radar_cuentas').update({ rubro: 'inmobiliario' }).eq('usuario', sinArroba(usuario))
   falla(`no se pudo marcar @${usuario} como inmobiliaria`, error)
@@ -318,12 +332,29 @@ export async function busquedasDeHoy(n: number, avanzar: boolean, sb: SupabaseCl
 
 // ---------- vistos ----------
 
-export async function vistos(shortcodes: string[], sb: SupabaseClient = sb0()): Promise<Set<string>> {
+/**
+ * Un reel que falló (`error`) se reintenta en las corridas siguientes durante este plazo,
+ * contado desde el PRIMER error. Una caída pasajera (Claude sin cupo, Supabase, la red) no
+ * pierde el reel para siempre; uno roto de verdad se abandona tras ~7 reintentos diarios.
+ */
+export const DIAS_REINTENTO_ERROR = 7
+
+/** ¿Esta fila de radar_vistos cuenta como "ya visto"? Puro: se prueba sin base. */
+export function cuentaComoVisto(f: { resultado: string | null; visto_at: string | null }, ahora: Date): boolean {
+  if (f.resultado !== 'error') return true
+  const t = f.visto_at ? Date.parse(f.visto_at) : NaN
+  if (!Number.isFinite(t)) return false
+  return ahora.getTime() - t > DIAS_REINTENTO_ERROR * 86_400_000
+}
+
+export async function vistos(shortcodes: string[], sb: SupabaseClient = sb0(), ahora: Date = new Date()): Promise<Set<string>> {
   const out = new Set<string>()
   for (const lote of lotes([...new Set(shortcodes)])) {
-    const { data, error } = await sb.from('radar_vistos').select('ig_shortcode').in('ig_shortcode', lote)
+    const { data, error } = await sb.from('radar_vistos').select('ig_shortcode, resultado, visto_at').in('ig_shortcode', lote)
     falla('no se pudo leer radar_vistos', error)
-    for (const f of (data ?? []) as Array<{ ig_shortcode: string }>) out.add(f.ig_shortcode)
+    for (const f of (data ?? []) as Array<{ ig_shortcode: string; resultado: string | null; visto_at: string | null }>) {
+      if (cuentaComoVisto(f, ahora)) out.add(f.ig_shortcode)
+    }
   }
   return out
 }
@@ -334,6 +365,19 @@ export async function marcarVisto(
   v: { shortcode: string; cuenta: string; multiplicador: number | null; resultado: ResultadoVisto; motivo: string | null; runId: string },
   sb: SupabaseClient = sb0(),
 ): Promise<void> {
+  if (v.resultado === 'error') {
+    // Un error repetido NO renueva visto_at: el plazo de reintento corre desde el primero.
+    const { data: previo, error: e0 } = await sb.from('radar_vistos').select('resultado').eq('ig_shortcode', v.shortcode).maybeSingle()
+    falla(`no se pudo leer ${v.shortcode} en radar_vistos`, e0)
+    if ((previo as { resultado?: string } | null)?.resultado === 'error') {
+      const { error: e1 } = await sb
+        .from('radar_vistos')
+        .update({ motivo: v.motivo?.slice(0, 500) ?? null, run_id: v.runId })
+        .eq('ig_shortcode', v.shortcode)
+      falla(`no se pudo marcar ${v.shortcode} como visto`, e1)
+      return
+    }
+  }
   const { error } = await sb.from('radar_vistos').upsert(
     {
       ig_shortcode: v.shortcode,
@@ -351,7 +395,11 @@ export async function marcarVisto(
 
 // ---------- video_refs ----------
 
-/** Publicadas por el radar en los últimos 7 días, separadas para la regla 80/20. */
+/**
+ * Publicadas por el radar en los últimos 7 días, separadas para la regla 80/20.
+ * El 80 % es contenido inmobiliario ARGENTINO: `inmobiliario_otro_pais` cuenta en el 20 %
+ * junto con `formato_otro_rubro` (misma regla que `mezcla.ts`).
+ */
 export async function semanaPublicada(ahora: Date = new Date(), sb: SupabaseClient = sb0()): Promise<{ inmobiliarias: number; otras: number }> {
   const desde = new Date(ahora.getTime() - 7 * 86_400_000).toISOString()
   const contar = async (categorias: string[]) => {
@@ -365,8 +413,8 @@ export async function semanaPublicada(ahora: Date = new Date(), sb: SupabaseClie
     return count ?? 0
   }
   return {
-    inmobiliarias: await contar(['inmobiliario_ar', 'inmobiliario_otro_pais']),
-    otras: await contar(['formato_otro_rubro']),
+    inmobiliarias: await contar(['inmobiliario_ar']),
+    otras: await contar(['inmobiliario_otro_pais', 'formato_otro_rubro']),
   }
 }
 

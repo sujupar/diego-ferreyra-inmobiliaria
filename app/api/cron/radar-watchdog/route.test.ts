@@ -4,18 +4,25 @@ const sendEmail = vi.fn()
 vi.mock('@/lib/email/resend-client', () => ({ sendEmail: (...a: unknown[]) => sendEmail(...a) }))
 
 let corridas: { ultima: unknown; ultimaOk: unknown } = { ultima: null, ultimaOk: null }
-vi.mock('@/lib/video-refs/corridas', () => ({ leerCorridas: async () => corridas }))
+let errorLectura: Error | null = null
+vi.mock('@/lib/video-refs/corridas', () => ({
+  leerCorridas: async () => {
+    if (errorLectura) throw errorLectura
+    return corridas
+  },
+}))
 
 // Base falsa: tablas en memoria, solo lo que usa la ruta.
 const db = {
   radarCount: 1,
+  errorCount: null as { message: string } | null,
   config: new Map<string, unknown>(),
   notificadas: new Map<string, string>(),
 }
 function from(tabla: string) {
   return {
     select: (_c?: string, o?: { head?: boolean }) => {
-      if (tabla === 'radar_corridas' && o?.head) return Promise.resolve({ count: db.radarCount, error: null })
+      if (tabla === 'radar_corridas' && o?.head) return Promise.resolve({ count: db.errorCount ? null : db.radarCount, error: db.errorCount })
       return {
         eq: (_k: string, clave: string) => ({
           maybeSingle: async () => {
@@ -46,6 +53,8 @@ const frenada = {
 beforeEach(() => {
   sendEmail.mockReset().mockResolvedValue({ ok: true })
   db.radarCount = 1
+  db.errorCount = null
+  errorLectura = null
   db.config.clear()
   db.notificadas.clear()
   corridas = { ultima: null, ultimaOk: null }
@@ -114,5 +123,29 @@ describe('radar-watchdog', () => {
     corridas = { ultima: ok, ultimaOk: ok }
     await POST(req())
     expect(sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('el aviso ignora el modo prueba de los mails', async () => {
+    corridas = { ultima: frenada, ultimaOk: null }
+    await POST(req())
+    expect(sendEmail.mock.calls[0][0].ignorarModoPrueba).toBe(true)
+  })
+
+  it('si no se pueden leer las corridas: 500, sin mail y sin marca', async () => {
+    errorLectura = new Error('no se pudieron leer las corridas del radar: timeout')
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await POST(req())
+    expect(res.status).toBe(500)
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(db.config.has('ultimo_aviso_atraso')).toBe(false)
+  })
+
+  it('si falla el conteo de corridas (¿no instalado?): 500, sin mail y sin marca', async () => {
+    db.errorCount = { message: 'timeout' }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await POST(req())
+    expect(res.status).toBe(500)
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(db.config.has('ultimo_aviso_atraso')).toBe(false)
   })
 })

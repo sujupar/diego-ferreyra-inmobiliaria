@@ -19,6 +19,8 @@ export const maxDuration = 30
  *  - atrasado / sin_corridas: no hay corrida a la que marcar, así que se guarda cuándo se
  *    avisó en `radar_config('ultimo_aviso_atraso')` y se vuelve a avisar recién a las 24 h.
  * La marca se escribe SOLO si el mail salió: si falló, la próxima hora reintenta.
+ * Un error al LEER (corridas, conteo, último aviso) responde 500 sin mandar mail ni escribir
+ * la marca: no se avisa de un atraso que puede no existir.
  *
  * Auth: header `x-cron-secret` == env CRON_SECRET o cron_config('send_report') (el mismo
  * secreto que reusan los demás jobs).
@@ -74,7 +76,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     // Radar todavía no instalado (nunca hubo ninguna corrida, ni siquiera fallida): no se
     // avisa, sería un mail por algo que todavía no se configuró.
     if (estado.alerta === 'sin_corridas') {
-      const { count } = await db.from('radar_corridas').select('id', { count: 'exact', head: true })
+      const { count, error: errCount } = await db.from('radar_corridas').select('id', { count: 'exact', head: true })
+      // Sin poder contar no se sabe si es "no instalado" o "nunca corrió": 500, sin mail ni marca.
+      if (errCount) throw new Error(`no se pudo contar radar_corridas: ${errCount.message}`)
       if (!count) return NextResponse.json({ ok: true, alerta: 'sin_corridas', avisado: false, motivo: 'radar no instalado' })
     }
 
@@ -83,7 +87,8 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (porCorrida) {
       if (!ultima || ultima.notificada_at) return NextResponse.json({ ok: true, alerta: estado.alerta, avisado: false, motivo: 'ya avisado' })
     } else {
-      const { data } = await db.from('radar_config').select('valor').eq('clave', CLAVE_AVISO_ATRASO).maybeSingle()
+      const { data, error: errAviso } = await db.from('radar_config').select('valor').eq('clave', CLAVE_AVISO_ATRASO).maybeSingle()
+      if (errAviso) throw new Error(`no se pudo leer ${CLAVE_AVISO_ATRASO}: ${errAviso.message}`)
       const ultimoAviso = (data as { valor?: string | null } | null)?.valor
       if (ultimoAviso && ahora.getTime() - new Date(ultimoAviso).getTime() < REPETIR_ATRASO_MS) {
         return NextResponse.json({ ok: true, alerta: estado.alerta, avisado: false, motivo: 'ya avisado' })
@@ -104,6 +109,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         '<p style="color:#888">Este aviso se manda una sola vez por problema.</p>',
       ].join('\n'),
       idempotent: false,
+      // Un aviso operativo para Julián: el modo prueba de los mails de clientes no lo desvía.
+      ignorarModoPrueba: true,
     })
     if (!r.ok) return NextResponse.json({ ok: true, alerta: estado.alerta, avisado: false, motivo: 'no salió el mail' })
 

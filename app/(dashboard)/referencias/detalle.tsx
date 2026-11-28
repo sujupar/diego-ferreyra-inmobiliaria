@@ -100,7 +100,7 @@ export default function Detalle({
                 <div className={cn('relative aspect-[9/14] w-full rounded-lg overflow-hidden bg-muted', !r.portada_url && !r.video_url && 'bg-slate-300')}>
                   {r.video_url ? (
                     <video
-                      key={r.video_url} src={r.video_url} poster={r.portada_url ?? undefined}
+                      key={r.id} src={r.video_url} poster={r.portada_url ?? undefined}
                       controls playsInline preload="metadata" className="absolute inset-0 size-full object-contain bg-black"
                     />
                   ) : (

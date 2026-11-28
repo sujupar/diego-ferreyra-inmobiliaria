@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import type { CuentaARevisar } from './db'
-import { candadoArchivo, correr, estadoTrasRevision, MAX_CLASIFICACIONES, MAX_CUENTAS_NUEVAS, MENSAJE_SESION, type ClienteIG, type DbRadar, type Deps } from './correr'
+import { candadoArchivo, correr, estadoTrasRevision, MAX_CLASIFICACIONES, MAX_CUENTAS_NUEVAS, MENSAJE_IA, MENSAJE_SESION, UMBRAL_FALLAS_IA, type ClienteIG, type DbRadar, type Deps } from './correr'
 import { BloqueoInstagram } from './instagram/bloqueo'
 import type { Analisis, Clasificacion, ConfigRadar, CuentaPerfil, ReelCrudo } from './tipos'
 
@@ -83,6 +83,7 @@ function armar(o: {
     cuentasConocidas: vi.fn<DbRadar['cuentasConocidas']>(async () => new Set<string>()),
     registrarCuentas: vi.fn<DbRadar['registrarCuentas']>(async () => undefined),
     actualizarCuenta: vi.fn<DbRadar['actualizarCuenta']>(async () => undefined),
+    anotarFalloCuenta: vi.fn<DbRadar['anotarFalloCuenta']>(async () => undefined),
     marcarCuentaInmobiliaria: vi.fn<DbRadar['marcarCuentaInmobiliaria']>(async () => undefined),
     busquedasDeHoy: vi.fn<DbRadar['busquedasDeHoy']>(async () => [] as string[]),
     vistos: vi.fn<DbRadar['vistos']>(async () => new Set(o.vistos ?? [])),
@@ -339,6 +340,79 @@ describe('correr', () => {
     })
     await correr(OPTS, deps)
     expect(db.actualizarCuenta).toHaveBeenCalledWith('ana', expect.anything(), expect.anything(), { vecesRevisada: 4, destacados: 0, activa: false })
+  })
+})
+
+describe('correr: fallas de la IA y de cuentas', () => {
+  const muchos = { ana: ['V1', 'V2', 'V3'], beto: ['V4', 'V5'] }
+
+  it(`cortacircuito: ${UMBRAL_FALLAS_IA} fallas seguidas de clasificar cortan la clasificación y no se publica nada`, async () => {
+    const { deps, db, d } = armar({ reels: muchos })
+    d.clasificar.mockRejectedValue(new Error('claude: exit 1'))
+    await correr(OPTS, deps)
+    expect(d.clasificar).toHaveBeenCalledTimes(UMBRAL_FALLAS_IA)
+    expect(db.upsertVideoRef).not.toHaveBeenCalled()
+    // Solo se marcan error los que fallaron; los demás quedan para la próxima corrida.
+    expect(db.marcarVisto).toHaveBeenCalledTimes(UMBRAL_FALLAS_IA)
+  })
+
+  it('si hubo candidatos y TODAS las llamadas a la IA fallaron, cierra error en el paso "ia" (avisa el vigilante)', async () => {
+    const { deps, db, d } = armar({ reels: muchos })
+    d.clasificar.mockRejectedValue(new Error('claude: exit 1'))
+    const r = await correr(OPTS, deps)
+    expect(r.estado).toBe('error')
+    expect(db.cerrarCorrida).toHaveBeenCalledWith('run-1', 'error', 'ia', expect.anything(), expect.stringContaining(MENSAJE_IA))
+  })
+
+  it('una falla pasajera de la IA no corta nada: parcial con el resto publicado', async () => {
+    const { deps, db, d } = armar({ reels: muchos })
+    d.clasificar.mockRejectedValueOnce(new Error('timeout'))
+    const r = await correr(OPTS, deps)
+    expect(r.estado).toBe('parcial')
+    expect(d.clasificar).toHaveBeenCalledTimes(5)
+    expect(db.upsertVideoRef).toHaveBeenCalledTimes(4)
+  })
+
+  it('analizar falla 3 veces seguidas: la publicación se corta (los demás quedan para mañana)', async () => {
+    const { deps, db, d } = armar({ reels: muchos })
+    d.analizar.mockRejectedValue(new Error('claude: límite'))
+    const r = await correr(OPTS, deps)
+    expect(d.analizar).toHaveBeenCalledTimes(UMBRAL_FALLAS_IA)
+    expect(d.bajarYSubir).toHaveBeenCalledTimes(UMBRAL_FALLAS_IA)
+    expect(db.upsertVideoRef).not.toHaveBeenCalled()
+    // clasificar sí anduvo: no es "IA muerta", es parcial.
+    expect(r.estado).toBe('parcial')
+  })
+
+  it('si marcarCuentaInmobiliaria falla, el reel se publica igual', async () => {
+    const { deps, db } = armar({ cuentas: [cuenta('ana', { origen: 'explorar', rubro: 'otro' })], reels: { ana: ['V1'] } })
+    db.marcarCuentaInmobiliaria.mockRejectedValue(new Error('se cayó Supabase'))
+    const r = await correr(OPTS, deps)
+    expect(r).toEqual({ estado: 'ok', publicadas: 1 })
+  })
+
+  it('una cuenta que falla igual cuenta como revisada (no queda primera en la cola)', async () => {
+    const { deps, db, cliente } = armar({ cuentas: [cuenta('ana', { origen: 'busqueda', rubro: 'otro', vecesRevisada: 1 })] })
+    cliente.perfil.mockRejectedValueOnce(new Error('forma inesperada'))
+    await correr(OPTS, deps)
+    expect(db.anotarFalloCuenta).toHaveBeenCalledWith('ana', { vecesRevisada: 2, destacados: 0, activa: true })
+  })
+
+  it('una descubierta que falla por cuarta vez sin destacados se desactiva; una semilla nunca', async () => {
+    const { deps, db, cliente } = armar({
+      cuentas: [cuenta('ana', { origen: 'explorar', rubro: 'otro', vecesRevisada: 3 }), cuenta('semi', { vecesRevisada: 9 })],
+    })
+    cliente.perfil.mockRejectedValue(new Error('forma inesperada'))
+    await correr(OPTS, deps)
+    expect(db.anotarFalloCuenta).toHaveBeenCalledWith('ana', { vecesRevisada: 4, destacados: 0, activa: false })
+    expect(db.anotarFalloCuenta).toHaveBeenCalledWith('semi', { vecesRevisada: 10, destacados: 0, activa: true })
+  })
+
+  it('en seco una cuenta que falla no escribe nada', async () => {
+    const { deps, db, cliente } = armar({ cuentas: [cuenta('ana')] })
+    cliente.perfil.mockRejectedValueOnce(new Error('x'))
+    await correr({ ...OPTS, seco: true }, deps)
+    expect(db.anotarFalloCuenta).not.toHaveBeenCalled()
   })
 })
 

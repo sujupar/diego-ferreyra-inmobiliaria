@@ -13,7 +13,7 @@ function ap(categoria: Categoria, puntaje = 8, multiplicador = 5): Aprobado {
   return { shortcode: `s${n}`, multiplicador, clas: { categoria, tema: 'otro', puntaje, razon: '' } }
 }
 const lote = (c: Categoria, cant: number) => Array.from({ length: cant }, () => ap(c))
-const esInmob = (a: Aprobado) => a.clas.categoria.startsWith('inmobiliario')
+const esInmob = (a: Aprobado) => a.clas.categoria === 'inmobiliario_ar'
 
 describe('elegirPublicables', () => {
   it('12 inmobiliarios + 5 otros, semana vacía: 10 en total, 1 o 2 otros', () => {
@@ -47,12 +47,23 @@ describe('elegirPublicables', () => {
     expect(r.filter(esInmob)).toHaveLength(1)
   })
 
-  it('ordena por multiplicador*puntaje y desempata a favor de inmobiliario_ar', () => {
-    const otro = ap('inmobiliario_otro_pais', 8, 5)
-    const ar = ap('inmobiliario_ar', 8, 5)
-    const fuerte = ap('inmobiliario_otro_pais', 9, 9)
-    const r = elegirPublicables([otro, ar, fuerte], { inmobiliarias: 0, otras: 0 }, cfg)
-    expect(r.map((a) => a.shortcode)).toEqual([fuerte.shortcode, ar.shortcode, otro.shortcode])
+  it('ordena por multiplicador*puntaje dentro de cada grupo', () => {
+    const debil = ap('inmobiliario_ar', 6, 5)
+    const fuerte = ap('inmobiliario_ar', 9, 9)
+    const medio = ap('inmobiliario_ar', 8, 5)
+    const r = elegirPublicables([debil, fuerte, medio], { inmobiliarias: 0, otras: 0 }, cfg)
+    expect(r.map((a) => a.shortcode)).toEqual([fuerte.shortcode, medio.shortcode, debil.shortcode])
+  })
+
+  it('inmobiliario_otro_pais va al 20 %, no al 80 %', () => {
+    // Solo extranjeros: sin argentino no se publica nada.
+    expect(elegirPublicables(lote('inmobiliario_otro_pais', 5), { inmobiliarias: 0, otras: 0 }, cfg)).toHaveLength(0)
+    // 12 argentinos + 5 extranjeros: los extranjeros compiten por el cupo chico.
+    const r = elegirPublicables([...lote('inmobiliario_ar', 12), ...lote('inmobiliario_otro_pais', 5)], { inmobiliarias: 0, otras: 0 }, cfg)
+    const extranjeros = r.filter((a) => a.clas.categoria === 'inmobiliario_otro_pais').length
+    expect(r).toHaveLength(10)
+    expect(extranjeros).toBeGreaterThanOrEqual(1)
+    expect(extranjeros).toBeLessThanOrEqual(2)
   })
 
   it('con semana cargada y el tope diario recortando, la proporción semanal real no pasa 20 %', () => {

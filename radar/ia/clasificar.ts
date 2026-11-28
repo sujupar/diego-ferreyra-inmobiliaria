@@ -82,7 +82,8 @@ export function parsearClasificacion(texto: string): Clasificacion {
   return {
     categoria: o.categoria as Categoria,
     tema: o.tema as TemaCategoria,
-    puntaje,
+    // La columna es smallint: un 7.5 del modelo se redondea a entero (sigue en 0–10).
+    puntaje: Math.round(puntaje),
     razon: o.razon,
   }
 }

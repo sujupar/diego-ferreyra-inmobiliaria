@@ -6,6 +6,7 @@ vi.mock('@/lib/auth/get-user', () => ({ getUser: () => getUser() }))
 const calls: { table: string; eq: [string, unknown][] }[] = []
 const signed = vi.fn()
 let corridas: unknown[] = []
+let errorCorridas: { message: string } | null = null
 
 function builder(table: string) {
   const rec = { table, eq: [] as [string, unknown][] }
@@ -19,7 +20,8 @@ function builder(table: string) {
   b.in = () => b
   b.order = () => b
   b.limit = () => b
-  b.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: data(), error: null }).then(res)
+  b.then = (res: (v: unknown) => unknown) =>
+    Promise.resolve(table === 'radar_corridas' && errorCorridas ? { data: null, error: errorCorridas } : { data: data(), error: null }).then(res)
   return b
 }
 vi.mock('@supabase/supabase-js', () => ({
@@ -36,6 +38,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   calls.length = 0
   corridas = []
+  errorCorridas = null
   getUser.mockResolvedValue({ id: 'u1' })
   signed.mockResolvedValue({ data: [{ path: 'a/v.mp4', signedUrl: 'https://s/v.mp4', error: null }], error: null })
 })
@@ -62,5 +65,14 @@ describe('GET /api/video-refs', () => {
     expect(refsCall.eq).toContainEqual(['fuente', 'openclaw'])
     expect(refsCall.eq).not.toContainEqual(['oculta', false])
     expect((await res.json()).radar).toBeNull()
+  })
+  it('si falla la lectura de corridas: radar=null (sin "sin_corridas" falso) y la lista sale igual', async () => {
+    errorCorridas = { message: 'timeout' }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const res = await GET(req())
+    expect(res.status).toBe(200)
+    const d = await res.json()
+    expect(d.radar).toBeNull()
+    expect(d.refs).toHaveLength(1)
   })
 })

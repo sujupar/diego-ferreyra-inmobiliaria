@@ -100,11 +100,11 @@ export class InstagramCliente {
       pendientes.push(
         res.text().then(
           (cuerpo) => {
-            // En GraphQL un 401/403 pelado (sin require_login en el cuerpo) también es sesión caída:
-            // tratarlo como error genérico haría que el que llama siga consultando.
-            const tipo =
-              detectarBloqueo({ url: res.url(), status: res.status(), cuerpo }) ??
-              (res.status() === 401 || res.status() === 403 ? 'login' : null)
+            // Un 401/403 pelado en UNA respuesta GraphQL no prueba que la sesión venció (pasa con
+            // perfiles restringidos): sin URL o cuerpo que confirme el login, es un error de esta
+            // cuenta y la corrida sigue con la próxima. Si la sesión cayó de verdad, la próxima
+            // lectura termina en /accounts/login y eso sí frena todo.
+            const tipo = detectarBloqueo({ url: res.url(), status: res.status(), cuerpo })
             if (tipo) error ??= new BloqueoInstagram(tipo, `Instagram frenó la lectura (${tipo}) en ${nombre}`)
             else if (res.status() !== 200) error ??= new Error(`forma inesperada: ${nombre} (HTTP ${res.status()})`)
             else {

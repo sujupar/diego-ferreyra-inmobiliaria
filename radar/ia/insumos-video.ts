@@ -58,13 +58,27 @@ export function argsWhisper(modelo: string, wav: string, salidaSinExtension: str
   return ['-m', modelo, '-l', 'es', '-nt', '-np', '-otxt', '-of', salidaSinExtension, '-f', wav]
 }
 
-/** Saca las marcas de no-habla de whisper ([Música], [BLANK_AUDIO], (risas)…) y junta espacios. */
+/**
+ * Frases que whisper "alucina" en castellano cuando el audio es solo música o silencio:
+ * vienen de los subtítulos con los que se entrenó, no del reel. Se sacan siempre.
+ */
+const ALUCINACIONES_WHISPER: RegExp[] = [
+  /subt[ií]tulos? (?:realizados? )?por la comunidad de amara\.org[.!]?/gi,
+  /¡?\s*suscr[ií]bete\s*!?/gi,
+  /gracias por ver el video[.!]?/gi,
+  /gracias por ver[.!]?/gi,
+]
+
+/**
+ * Saca las marcas de no-habla de whisper ([Música], [BLANK_AUDIO], (risas)…), las frases
+ * alucinadas sobre audio sin voz y junta espacios. Si no queda habla real, devuelve ''.
+ */
 export function limpiarTranscripcion(texto: string): string {
-  return texto
-    .replace(/\[[^\]\n]*\]/g, ' ')
-    .replace(/\([^)\n]*\)/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  let t = texto.replace(/\[[^\]\n]*\]/g, ' ').replace(/\([^)\n]*\)/g, ' ')
+  for (const re of ALUCINACIONES_WHISPER) t = t.replace(re, ' ')
+  t = t.replace(/\s+/g, ' ').trim()
+  // Lo que queda si solo había alucinaciones: puntuación suelta.
+  return /[\p{L}\p{N}]/u.test(t) ? t : ''
 }
 
 async function duracion(mp4: string, ejecutar: Ejecutar): Promise<number> {
