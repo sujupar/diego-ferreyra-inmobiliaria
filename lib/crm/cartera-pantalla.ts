@@ -33,9 +33,9 @@ export const PERIODOS: { valor: Exclude<FiltrosCartera['entro'], 'rango'>; etiqu
 ]
 
 export const ORDENES: { valor: FiltrosCartera['orden']; etiqueta: string }[] = [
+  { valor: 'nuevos', etiqueta: 'Más nuevos primero' },
   { valor: 'proximo', etiqueta: 'Próximo paso' },
   { valor: 'ultimo', etiqueta: 'Más tiempo sin contacto' },
-  { valor: 'nuevos', etiqueta: 'Más nuevos primero' },
   { valor: 'nombre', etiqueta: 'Nombre (A a Z)' },
 ]
 

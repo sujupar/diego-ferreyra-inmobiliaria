@@ -13,7 +13,7 @@ export const FILTROS_DEFECTO: FiltrosCartera = {
   hasta: '',
   q: '',
   trabado: '',
-  orden: 'proximo',
+  orden: 'nuevos',
   colegas: '',
   ver: '',
 }

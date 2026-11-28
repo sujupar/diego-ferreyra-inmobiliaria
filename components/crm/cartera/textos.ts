@@ -44,18 +44,25 @@ export function metaDeGrupo(clave: ClaveGrupo, tipo: TipoVista): MetaGrupo {
     case 'resto':
       return {
         titulo: 'El resto de las solicitudes y coordinadas',
-        texto: 'Ordenadas por el próximo paso. Al final, las que no tienen nada agendado.',
+        texto: 'En el orden elegido arriba.',
         numero: null,
         conTasacion: false,
       }
     case 'hoy':
       return { titulo: 'Tasaciones de hoy', texto: 'Las que tenés hoy, por hora.', numero: 'neutro', conTasacion: true }
     case 'proximos':
-      return { titulo: 'Con próximo paso', texto: 'Ordenados por fecha.', numero: 'neutro', conTasacion: false }
+      return { titulo: 'Con próximo paso', texto: 'En el orden elegido arriba.', numero: 'neutro', conTasacion: false }
     case 'nada':
       return {
         titulo: 'Sin nada pendiente',
         texto: 'No tienen ninguna tarea ni visita. Poneles un próximo paso o cerrá el proceso.',
+        numero: null,
+        conTasacion: false,
+      }
+    case 'trabados':
+      return {
+        titulo: 'Trabados · más de 30 días sin movimiento',
+        texto: 'Nadie los movió en más de un mes (ni contacto ni tasación). Retomalos o cerralos. Primero el que se movió más recientemente.',
         numero: null,
         conTasacion: false,
       }
