@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getUser } from '@/lib/auth/get-user'
 import type { VideoRef } from '@/lib/video-refs/repo'
-import { calcularEstadoRadar, type FilaCorrida } from '@/lib/video-refs/estado-radar'
+import { calcularEstadoRadar } from '@/lib/video-refs/estado-radar'
+import { leerCorridas } from '@/lib/video-refs/corridas'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,6 @@ function admin() {
 }
 
 const BUCKET = 'video-refs'
-const COLS_CORRIDA = 'inicio, estado, cuentas_revisadas, reels_mirados, publicadas, mensaje'
 
 // GET: referencias de video, la más reciente primero.
 // Sin ?archivo: las del radar visibles. Con ?archivo=1: las de OpenClaw (archivo anterior).
@@ -49,15 +49,8 @@ export async function GET(req: Request) {
 
   let radar = null
   if (!archivo) {
-    const [ult, ok] = await Promise.all([
-      db.from('radar_corridas').select(COLS_CORRIDA).order('inicio', { ascending: false }).limit(1),
-      db.from('radar_corridas').select(COLS_CORRIDA).in('estado', ['ok', 'parcial']).order('inicio', { ascending: false }).limit(1),
-    ])
-    radar = calcularEstadoRadar(
-      ((ok.data ?? [])[0] ?? null) as FilaCorrida | null,
-      ((ult.data ?? [])[0] ?? null) as FilaCorrida | null,
-      new Date(),
-    )
+    const { ultima, ultimaOk } = await leerCorridas(db)
+    radar = calcularEstadoRadar(ultimaOk, ultima, new Date())
   }
 
   return NextResponse.json({ refs, radar })

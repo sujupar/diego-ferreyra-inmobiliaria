@@ -19,6 +19,7 @@ export default defineConfig({
       'radar/**/*.test.ts',
       'lib/video-refs/**/*.test.ts',
       'app/api/video-refs/**/*.test.ts',
+      'app/api/cron/radar-watchdog/**/*.test.ts',
     ],
     exclude: ['**/node_modules/**'],
   },

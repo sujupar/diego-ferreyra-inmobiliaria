@@ -13,6 +13,9 @@ const VOZ = [
   ['CORPUS REAL DE LA VOZ DE DIEGO (transcripciones)', corpus],
 ] as const
 
+// Tope de la transcripción que se le pasa al modelo (alcanza para captar la idea sin inflar el pedido).
+const MAX_TRANSCRIPCION = 2000
+
 function loadVoz(): string {
   return VOZ.map(([titulo, texto]) => `=== ${titulo} ===\n${texto.trim()}`).join('\n\n')
 }
@@ -40,6 +43,9 @@ export async function guionizarReferencia(r: VideoRef): Promise<string> {
     r.por_que ? `Por qué funcionó: ${r.por_que}` : null,
     r.gancho ? `Gancho: ${r.gancho}` : null,
     r.adaptacion_diego ? `Adaptación para Diego: ${r.adaptacion_diego}` : null,
+    r.formato ? `Formato: ${r.formato}` : null,
+    r.comentarios_analisis ? `Qué dicen los comentarios: ${r.comentarios_analisis}` : null,
+    r.transcripcion ? `Transcripción del original: ${r.transcripcion.slice(0, MAX_TRANSCRIPCION)}` : null,
     r.cuenta ? `Cuenta de origen: ${r.cuenta}` : null,
     r.url_video ? `URL del video: ${r.url_video}` : null,
   ]

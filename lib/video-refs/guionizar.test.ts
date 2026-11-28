@@ -75,6 +75,40 @@ describe('guionizarReferencia', () => {
     expect(parsed.systemInstruction.parts[0].text).toContain('REFERENCIA')
   })
 
+  it('una fila vieja (campos nuevos null) arma exactamente el mismo pedido de siempre', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse('x'))
+    vi.stubGlobal('fetch', fetchMock)
+    await guionizarReferencia(ref)
+    const user = JSON.parse(String(fetchMock.mock.calls[0][1].body)).contents[0].parts[0].text as string
+    expect(user).toBe(
+      [
+        'Tema: Cuánto cuesta realmente comprar una propiedad',
+        'Por qué funcionó: Muestra el costo oculto',
+        'Gancho: Nadie te dice esto antes de comprar',
+        'Cuenta de origen: @tapiola',
+        'URL del video: https://example.com/video/1',
+      ].join('\n'),
+    )
+  })
+
+  it('incluye formato y comentarios cuando existen', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse('x'))
+    vi.stubGlobal('fetch', fetchMock)
+    await guionizarReferencia({ ...ref, formato: 'Noticia con foto', comentarios_analisis: 'Piden el link' })
+    const user = JSON.parse(String(fetchMock.mock.calls[0][1].body)).contents[0].parts[0].text as string
+    expect(user).toContain('Formato: Noticia con foto')
+    expect(user).toContain('Qué dicen los comentarios: Piden el link')
+  })
+
+  it('recorta la transcripción a 2.000 caracteres', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse('x'))
+    vi.stubGlobal('fetch', fetchMock)
+    await guionizarReferencia({ ...ref, transcripcion: 'a'.repeat(5000) })
+    const user = JSON.parse(String(fetchMock.mock.calls[0][1].body)).contents[0].parts[0].text as string
+    const linea = user.split('\n').find((l) => l.startsWith('Transcripción del original: '))!
+    expect(linea.length).toBe('Transcripción del original: '.length + 2000)
+  })
+
   it('throw si falta GEMINI_API_KEY', async () => {
     vi.unstubAllEnvs()
     vi.stubEnv('GEMINI_API_KEY', '')
