@@ -401,6 +401,18 @@ describe('correr: fallas de la IA y de cuentas', () => {
     expect(cliente.perfil).toHaveBeenCalledTimes(3)
   })
 
+  it('401 y después un éxito → la cuenta del 401 SÍ se anota; 401 de última también', async () => {
+    const { deps, db, cliente } = armar({ cuentas: [cuenta('a'), cuenta('b'), cuenta('c')] })
+    const perfilOk = cliente.perfil.getMockImplementation()!
+    cliente.perfil
+      .mockRejectedValueOnce(new ErrorHttpInstagram(401, 'x'))
+      .mockImplementationOnce(perfilOk)
+      .mockRejectedValueOnce(new ErrorHttpInstagram(403, 'x'))
+    await correr(OPTS, deps)
+    expect(db.anotarFalloCuenta).toHaveBeenCalledTimes(2)
+    expect(db.anotarFalloCuenta.mock.calls.map((x) => x[0])).toEqual(['a', 'c'])
+  })
+
   it('2 × 401, un éxito y otro 401 → no escala (el éxito reinicia la cuenta)', async () => {
     const { deps, db, cliente } = armar({ cuentas: [cuenta('a'), cuenta('b'), cuenta('c'), cuenta('d')] })
     const perfilOk = cliente.perfil.getMockImplementation()!

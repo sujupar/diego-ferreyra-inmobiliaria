@@ -313,7 +313,24 @@ export async function correr(
     const candidatos: Candidato[] = []
     // Fallas 401/403 seguidas entre cuentas: una sola es un perfil restringido, pero varias
     // seguidas son la sesión del servidor vencida (Instagram contesta 401/403 sin redirigir).
-    let fallasSesionSeguidas = 0
+    // Las de la racha quedan pendientes: si la racha se corta (o la corrida termina) con menos de
+    // 3, eran culpa de la cuenta y se les anota la falla; si llega a 3, no.
+    let pendientes401: CuentaARevisar[] = []
+    const anotarFallo = async (c: CuentaARevisar) => {
+      const estado = estadoTrasRevision(c, { candidatos: [] })
+      log(`@${c.usuario} falló${estado.activa ? '' : ' → se desactiva'}`)
+      if (seco) return
+      try {
+        await db.anotarFalloCuenta(c.usuario, estado)
+      } catch (e2) {
+        log(`@${c.usuario}: no se pudo anotar la falla (${msg(e2)})`)
+      }
+    }
+    const soltarPendientes = async () => {
+      const lista = pendientes401
+      pendientes401 = []
+      for (const p of lista) await anotarFallo(p)
+    }
     for (const [i, c] of cuentas.entries()) {
       if (cont.reels_mirados >= cfg.topeReels) {
         log(`tope de ${cfg.topeReels} reels alcanzado: no se miran más cuentas`)
@@ -323,7 +340,7 @@ export async function correr(
       try {
         const perfil = await cliente.perfil(c.usuario)
         const reels = await cliente.reelsDeCuenta(perfil, cfg.reelsBase)
-        fallasSesionSeguidas = 0
+        await soltarPendientes()
         cont.cuentas_revisadas++
         cont.reels_mirados += reels.length
         const med = medirCuenta(reels, cfg, deps.ahora())
@@ -338,16 +355,15 @@ export async function correr(
       } catch (e) {
         if (e instanceof BloqueoInstagram) throw e
         if (e instanceof ErrorHttpInstagram && (e.status === 401 || e.status === 403)) {
-          fallasSesionSeguidas++
-          if (fallasSesionSeguidas >= 3) {
-            throw new BloqueoInstagram('login', `${fallasSesionSeguidas} cuentas seguidas con HTTP ${e.status}: la sesión del servidor venció`)
+          pendientes401.push(c)
+          if (pendientes401.length >= 3) {
+            throw new BloqueoInstagram('login', `${pendientes401.length} cuentas seguidas con HTTP ${e.status}: la sesión del servidor venció`)
           }
-          // No es culpa de la cuenta: no se anota su falla (así no se desactiva por esto).
           anotar(`@${c.usuario}: ${msg(e)}`)
-          log(`@${c.usuario} falló con HTTP ${e.status} (${fallasSesionSeguidas} seguidas): ${msg(e)}`)
+          log(`@${c.usuario} falló con HTTP ${e.status} (${pendientes401.length} seguidas): ${msg(e)}`)
           continue
         }
-        fallasSesionSeguidas = 0
+        await soltarPendientes()
         anotar(`@${c.usuario}: ${msg(e)}`)
         // La falla cuenta como revisión (sin destacados): corre ultima_revision_at para que la
         // cuenta no quede primera en la cola para siempre, y una descubierta que falla 4 veces
@@ -363,6 +379,7 @@ export async function correr(
         }
       }
     }
+    await soltarPendientes()
     cont.candidatos = candidatos.length
 
     // ---- clasificar ----
