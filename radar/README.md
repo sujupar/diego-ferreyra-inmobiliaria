@@ -103,3 +103,22 @@ Detalles del motor `claude` (`radar/ia/claude-cli.ts`):
 - Se le quita `ANTHROPIC_API_KEY` del entorno para que nunca facture por API sin querer.
 - Las imágenes se copian al directorio como `imagen-01.jpg…` y Claude las mira con `Read`.
 - `RADAR_IA_DEBUG=1` imprime los tokens de arranque (solo números, nunca el prompt).
+
+## Corrida diaria programada (launchd)
+
+```bash
+node --import tsx radar/cli.ts instalar [--rama X]   # por defecto sigue main
+node --import tsx radar/cli.ts desinstalar           # saca la programación; no toca perfil ni .env
+```
+
+`instalar` clona el repo en `~/.radar-referencias/app` (fuera de iCloud), hace `npm ci`
+completo (con devDependencies: `playwright-core` lo es), crea `~/.radar-referencias/.env`
+si falta (solo `NEXT_PUBLIC_SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`, copiadas del
+`.env.local` del checkout, modo 600) y carga el job `ar.inmodf.radar-referencias`
+(todos los días 8:00; si la Mac dormía, launchd lo dispara al despertar; `yaCorrioHoy` evita la doble).
+
+- La rama que sigue el clon está en `~/.radar-referencias/rama`; `correr-diario.sh` hace
+  `git fetch` + `merge --ff-only` de esa rama antes de correr, y `npm ci` solo si cambió `package-lock.json`.
+- La IA usa el CLI `claude` (`~/.local/bin/claude`, plan de Julián); el plist pone un PATH que lo incluye.
+- Logs: `~/.radar-referencias/logs/launchd.log` (lo que ve launchd) y `logs/AAAA-MM-DD.log` (la corrida).
+- Probar sin publicar: `RADAR_TOPE_CUENTAS_PRUEBA=1 ~/.radar-referencias/app/radar/correr-diario.sh --seco --forzar`.

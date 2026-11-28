@@ -3,13 +3,16 @@
 //   node --import tsx radar/cli.ts login               → abre Chrome con ventana para iniciar sesión
 //   node --import tsx radar/cli.ts capturar <usuario>  → lee una cuenta, guarda muestras saneadas y resume
 //   node --import tsx radar/cli.ts correr [--seco] [--forzar] → la corrida diaria (log en ~/.radar-referencias/logs/)
+//   node --import tsx radar/cli.ts instalar [--rama X]  → clon propio + programación diaria 8:00 (launchd)
+//   node --import tsx radar/cli.ts desinstalar          → saca la programación (no toca perfil ni .env)
 //
 // RADAR_TOPE_CUENTAS_PRUEBA=N (solo para probar en vivo): N cuentas, 3 clasificaciones y 2 términos.
 //
 // SOLO LEE: ningún comando da like, comenta, sigue ni publica.
 
 import { execFileSync } from 'node:child_process'
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { format } from 'node:util'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,6 +21,7 @@ import { abrirContexto, pausa, RUTA_BASE, RUTA_PERFIL, tieneSesion } from './ins
 import { sanearMuestra } from './instagram/sanear'
 import { correr, type OpcionesCorrida } from './correr'
 import { diaBA } from './db'
+import { ETIQUETA, extraerEnvRadar, parseRama, renderPlist } from './launchd/plist'
 
 const DIR_FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'instagram', 'fixtures')
 
@@ -157,6 +161,81 @@ async function correrComando(args: string[]): Promise<void> {
   if (r.estado === 'error' || r.estado === 'frenada_por_instagram') process.exitCode = 1
 }
 
+
+const RAIZ_REPO = join(dirname(fileURLToPath(import.meta.url)), '..')
+const RUTA_PLIST = join(homedir(), 'Library', 'LaunchAgents', `${ETIQUETA}.plist`)
+
+function sh(cmd: string, args: string[], cwd?: string, tolerar = false): string {
+  try {
+    return execFileSync(cmd, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (e) {
+    if (tolerar) return ''
+    throw e
+  }
+}
+
+function uid(): number {
+  return process.getuid?.() ?? Number(sh('id', ['-u']).trim())
+}
+
+function desprogramar(): void {
+  // bootout falla si no estaba cargado: es lo esperado en una primera instalación.
+  sh('launchctl', ['bootout', `gui/${uid()}/${ETIQUETA}`], undefined, true)
+}
+
+/** Clon propio fuera de iCloud + .env + plist + launchctl bootstrap. Idempotente. */
+function instalar(args: string[]): void {
+  const rama = parseRama(args)
+  const home = homedir()
+  const app = join(RUTA_BASE, 'app')
+  mkdirSync(join(RUTA_BASE, 'logs'), { recursive: true })
+  writeFileSync(join(RUTA_BASE, 'rama'), rama + '\n')
+
+  if (!existsSync(join(app, '.git'))) {
+    const remoto = sh('git', ['remote', 'get-url', 'origin'], RAIZ_REPO).trim()
+    console.log(`Clonando el repo en ${app} (rama ${rama})…`)
+    sh('git', ['clone', '--branch', rama, remoto, app])
+  } else {
+    console.log(`El clon ya existe: lo llevo a la rama ${rama}.`)
+    sh('git', ['fetch', 'origin', rama], app)
+    sh('git', ['checkout', rama], app)
+    sh('git', ['merge', '--ff-only', `origin/${rama}`], app)
+  }
+
+  console.log('Instalando dependencias (npm ci)…')
+  sh('npm', ['ci'], app)
+  writeFileSync(join(RUTA_BASE, 'lock-hash'), sh('shasum', ['-a', '256', 'package-lock.json'], app).split(' ')[0] + '\n')
+
+  const envRuta = join(RUTA_BASE, '.env')
+  if (existsSync(envRuta)) {
+    console.log('.env: ya existe, no se toca.')
+  } else {
+    const local = join(RAIZ_REPO, '.env.local')
+    const contenido = existsSync(local) ? extraerEnvRadar(readFileSync(local, 'utf8')) : null
+    if (contenido) {
+      writeFileSync(envRuta, contenido, { mode: 0o600 })
+      chmodSync(envRuta, 0o600)
+      console.log('.env: creado con las 2 claves de Supabase del .env.local.')
+    } else {
+      console.log(`⚠ Falta ${envRuta}: crealo con NEXT_PUBLIC_SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY (modo 600).`)
+    }
+  }
+
+  const plantilla = readFileSync(join(app, 'radar', 'launchd', `${ETIQUETA}.plist.tpl`), 'utf8')
+  mkdirSync(dirname(RUTA_PLIST), { recursive: true })
+  writeFileSync(RUTA_PLIST, renderPlist(plantilla, { home }))
+  desprogramar()
+  sh('launchctl', ['bootstrap', `gui/${uid()}`, RUTA_PLIST])
+  console.log(`Instalado: corre todos los días a las 8:00 desde ${app} (rama ${rama}).`)
+  console.log(`Ver: launchctl print gui/${uid()}/${ETIQUETA}`)
+}
+
+function desinstalar(): void {
+  desprogramar()
+  rmSync(RUTA_PLIST, { force: true })
+  console.log('Programación quitada. El perfil, el .env y el clon quedan donde estaban.')
+}
+
 async function main(): Promise<void> {
   const [comando, arg, ...resto] = process.argv.slice(2)
   if (comando === 'login') return login()
@@ -166,8 +245,10 @@ async function main(): Promise<void> {
     if (!Number.isInteger(nReels) || nReels < 1 || nReels > 48) throw new Error('--reels=N tiene que ser un entero entre 1 y 48')
     return capturar(arg.replace(/^@/, ''), resto.includes('--guardar'), nReels)
   }
+  if (comando === 'instalar') return instalar([arg, ...resto].filter(Boolean))
+  if (comando === 'desinstalar') return desinstalar()
   if (comando === 'correr') return correrComando([arg, ...resto].filter(Boolean))
-  console.log('Comandos: login | capturar <usuario> | correr [--seco] [--forzar]')
+  console.log('Comandos: login | capturar <usuario> | correr [--seco] [--forzar] | instalar [--rama X] | desinstalar')
   process.exitCode = 1
 }
 
