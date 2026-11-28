@@ -1,6 +1,6 @@
 // Filtro de relevancia: ¿este reel le sirve a Diego como referencia?
 import type { Categoria, Clasificacion, CuentaPerfil, ReelCrudo, TemaCategoria } from '../tipos'
-import { llamarGemini } from './gemini'
+import { pedirJSON } from './motor'
 
 const CATEGORIAS: readonly Categoria[] = [
   'inmobiliario_ar',
@@ -91,11 +91,12 @@ export async function clasificar(
   comentarios: string[],
   ejemplosNoSirve: string[],
 ): Promise<Clasificacion> {
-  const texto = await llamarGemini({
+  const texto = await pedirJSON({
     system: promptClasificacion(ejemplosNoSirve),
-    partes: [{ text: entradaClasificacion(reel, perfil, comentarios) }],
-    json: true,
-    timeoutMs: 30_000,
+    partes: [{ texto: entradaClasificacion(reel, perfil, comentarios) }],
+    nivel: 'rapido',
+    // Claude por la CLI tarda más que una API (arranque del proceso): margen amplio.
+    timeoutMs: 120_000,
   })
   return parsearClasificacion(texto)
 }

@@ -70,3 +70,32 @@ Respuestas reales de `@toribioachaval` (inmobiliaria de Buenos Aires), saneadas 
 `friendship_status`, likers ni contexto social. Las pruebas de los parsers están fijadas a
 estos archivos. `capturar` escribe por defecto en `~/.radar-referencias/tmp/muestras/`; solo
 con `--guardar` pisa las del repo (y entonces hay que ajustar los valores de las pruebas).
+
+## Motor de IA (`radar/ia/motor.ts`)
+
+Todo pedido a la IA pasa por `pedirJSON` (filtro de relevancia = nivel `rapido`; análisis
+de por qué funcionó = nivel `profundo`). El motor se elige con **una** variable:
+
+| `RADAR_IA` | Qué usa | Requisitos |
+| --- | --- | --- |
+| `claude` (default) | La CLI `claude` (Claude Code) con la **sesión del plan de Julian** | `claude` instalado y con sesión iniciada en la Mac |
+| `gemini` | API de Gemini | `GEMINI_API_KEY` (modelos: `GEMINI_TEXT_MODEL` / `GEMINI_VISION_MODEL`) |
+
+Cualquier otro valor corta con error.
+
+**OJO: con `claude`, cada reel consume el límite del plan de Julian** (no se cobra aparte,
+pero comparte el cupo con su uso diario de Claude). Para pasar a una API cuando el radar ya
+funcione: `RADAR_IA=gemini` + `GEMINI_API_KEY`.
+
+Detalles del motor `claude` (`radar/ia/claude-cli.ts`):
+
+- Binario: `RADAR_CLAUDE_BIN` o `~/.local/bin/claude` (launchd no tiene esa carpeta en el PATH).
+- Modelos: `RADAR_CLAUDE_MODELO_RAPIDO` / `RADAR_CLAUDE_MODELO_PROFUNDO` (default `sonnet`).
+- Corre **aislado** en `~/.radar-referencias/tmp/ia-<uuid>/` (se borra al terminar) con
+  `--system-prompt` propio, `--setting-sources ''`, `--strict-mcp-config`,
+  `--disable-slash-commands`, `--no-session-persistence` y solo la herramienta `Read`.
+  Medido el 2026-11-28: arranca con ~2–3 mil tokens de contexto (sin aislar eran ~28 mil).
+  No se usa `--bare`: en ese modo solo acepta `ANTHROPIC_API_KEY`, no el plan.
+- Se le quita `ANTHROPIC_API_KEY` del entorno para que nunca facture por API sin querer.
+- Las imágenes se copian al directorio como `imagen-01.jpg…` y Claude las mira con `Read`.
+- `RADAR_IA_DEBUG=1` imprime los tokens de arranque (solo números, nunca el prompt).

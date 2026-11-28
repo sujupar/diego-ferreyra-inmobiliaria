@@ -1,4 +1,6 @@
 // Cliente mínimo de Gemini (REST) para el radar. Corre local con tsx, no en Netlify.
+import { readFile } from 'node:fs/promises'
+import type { ParteIA } from './motor'
 
 export type ParteGemini = { text: string } | { inlineData: { mimeType: string; data: string } }
 
@@ -8,6 +10,8 @@ export interface OpcionesGemini {
   json: true
   timeoutMs: number
   temperature?: number
+  /** Si falta, GEMINI_TEXT_MODEL o gemini-2.5-flash. */
+  modelo?: string
 }
 
 interface RespuestaGemini {
@@ -18,7 +22,7 @@ interface RespuestaGemini {
 export async function llamarGemini(opts: OpcionesGemini): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY no configurada')
-  const model = process.env.GEMINI_TEXT_MODEL ?? 'gemini-2.5-flash'
+  const model = opts.modelo ?? process.env.GEMINI_TEXT_MODEL ?? 'gemini-2.5-flash'
 
   let res: Response
   try {
@@ -65,4 +69,19 @@ export async function llamarGemini(opts: OpcionesGemini): Promise<string> {
     throw new Error(`Gemini cortó la respuesta (finishReason=${cand.finishReason})`)
   }
   return text
+}
+
+/** Adaptador para el motor: las imágenes van inline en base64. */
+export async function pedirAGemini(opts: {
+  system: string
+  partes: ParteIA[]
+  modelo: string
+  timeoutMs: number
+}): Promise<string> {
+  const partes: ParteGemini[] = []
+  for (const p of opts.partes) {
+    if ('texto' in p) partes.push({ text: p.texto })
+    else partes.push({ inlineData: { mimeType: 'image/jpeg', data: (await readFile(p.imagen)).toString('base64') } })
+  }
+  return llamarGemini({ system: opts.system, partes, json: true, timeoutMs: opts.timeoutMs, modelo: opts.modelo })
 }
