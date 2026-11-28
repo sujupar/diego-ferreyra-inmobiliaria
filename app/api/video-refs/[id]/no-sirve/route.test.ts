@@ -4,6 +4,7 @@ const getUser = vi.fn()
 vi.mock('@/lib/auth/get-user', () => ({ getUser: () => getUser() }))
 
 let ref: { id: string; cuenta: string | null } | null
+let yaOculta = false
 let cuenta: { descartes_manuales: number } | null
 const updates: { table: string; patch: Record<string, unknown> }[] = []
 
@@ -12,9 +13,10 @@ function builder(table: string) {
   const b: Record<string, unknown> = {}
   b.select = () => b
   b.eq = () => b
+  b.select = () => b
   b.update = (p: Record<string, unknown>) => { patch = p; updates.push({ table, patch: p }); return b }
   b.maybeSingle = () => Promise.resolve({ data: table === 'video_refs' ? ref : cuenta, error: null })
-  b.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: patch ? [{}] : null, error: null }).then(res)
+  b.then = (res: (v: unknown) => unknown) => Promise.resolve({ data: patch ? (table === 'video_refs' && yaOculta ? [] : [{}]) : null, error: null }).then(res)
   return b
 }
 vi.mock('@supabase/supabase-js', () => ({ createClient: () => ({ from: (t: string) => builder(t) }) }))
@@ -25,7 +27,7 @@ const call = (body: unknown = {}) =>
   POST(new Request('http://x', { method: 'POST', body: JSON.stringify(body) }), { params: Promise.resolve({ id: ID }) })
 
 beforeEach(() => {
-  vi.clearAllMocks(); updates.length = 0
+  vi.clearAllMocks(); updates.length = 0; yaOculta = false
   getUser.mockResolvedValue({ id: 'u1' })
   ref = { id: ID, cuenta: '@casa' }
   cuenta = { descartes_manuales: 0 }
@@ -56,5 +58,11 @@ describe('POST no-sirve', () => {
     cuenta = { descartes_manuales: 2 }
     await call()
     expect(updates.find((u) => u.table === 'radar_cuentas')!.patch).toEqual({ descartes_manuales: 3, activa: false })
+  })
+  it('una referencia ya oculta no suma otro descarte', async () => {
+    yaOculta = true
+    const res = await call()
+    expect(res.status).toBe(200)
+    expect(updates.find((u) => u.table === 'radar_cuentas')).toBeUndefined()
   })
 })

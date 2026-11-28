@@ -19,14 +19,21 @@ export type EstadoRadar = {
     mensaje: string | null
   } | null
   alerta: null | 'sin_corridas' | 'atrasado' | 'frenado' | 'error'
+  /** Hay una búsqueda andando ahora (empezó hace menos de 3 h). */
+  buscando: boolean
 }
 
 const LIMITE_ATRASO_MS = 36 * 3_600_000
+const LIMITE_CORRIENDO_MS = 3 * 3_600_000
 const ZONA = 'America/Argentina/Buenos_Aires'
 
 export function calcularEstadoRadar(ultimaOk: FilaCorrida | null, ultima: FilaCorrida | null, ahora: Date): EstadoRadar {
-  if (!ultimaOk && !ultima) return { ultima: null, alerta: 'sin_corridas' }
-  const ref = ultima ?? ultimaOk!
+  const corriendo = ultima?.estado === 'corriendo'
+  const buscando = corriendo && ahora.getTime() - new Date(ultima!.inicio).getTime() < LIMITE_CORRIENDO_MS
+  // Una corrida 'corriendo' no tiene cifras reales: se resume desde la última buena.
+  // Si quedó 'corriendo' hace más de 3 h, se la da por muerta y se ignora.
+  const ref = corriendo ? ultimaOk : (ultima ?? ultimaOk)
+  if (!ref) return { ultima: null, alerta: buscando ? null : 'sin_corridas', buscando }
   const resumen = {
     inicio: ref.inicio,
     estado: ref.estado,
@@ -39,11 +46,10 @@ export function calcularEstadoRadar(ultimaOk: FilaCorrida | null, ultima: FilaCo
   if (ref.estado === 'frenada_por_instagram') alerta = 'frenado'
   else if (ref.estado === 'error') alerta = 'error'
   else {
-    // Última corrida buena (o, si todavía no hay ninguna, la más reciente que haya).
     const base = ultimaOk ?? ref
     if (ahora.getTime() - new Date(base.inicio).getTime() > LIMITE_ATRASO_MS) alerta = 'atrasado'
   }
-  return { ultima: resumen, alerta }
+  return { ultima: resumen, alerta, buscando }
 }
 
 function partes(d: Date) {
@@ -80,7 +86,7 @@ export function textoAlerta(e: EstadoRadar, ahora: Date): string | null {
 }
 
 export function textoUltima(e: EstadoRadar, ahora: Date): string | null {
-  if (!e.ultima) return null
+  if (!e.ultima) return e.buscando ? 'Buscando ahora…' : null
   const u = e.ultima
-  return `Última búsqueda: ${cuandoCorrio(u.inicio, ahora)} · ${u.reels} reels de ${u.cuentas} cuentas · ${u.publicadas} ${u.publicadas === 1 ? 'nueva' : 'nuevas'}`
+  return `Última búsqueda: ${cuandoCorrio(u.inicio, ahora)} · ${u.reels} reels de ${u.cuentas} cuentas · ${u.publicadas} ${u.publicadas === 1 ? 'nueva' : 'nuevas'}${e.buscando ? ' · buscando ahora…' : ''}`
 }

@@ -37,21 +37,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (e1) return NextResponse.json({ error: 'No se pudo completar' }, { status: 500 })
   if (!ref) return NextResponse.json({ error: 'No existe esa referencia' }, { status: 404 })
 
-  const { error: e2 } = await db.from('video_refs')
+  // Solo cuenta si ESTA llamada la ocultó: un reintento no suma otro descarte.
+  const { data: cambiadas, error: e2 } = await db.from('video_refs')
     .update({ oculta: true, no_sirve_at: new Date().toISOString(), no_sirve_motivo: motivo || null })
     .eq('id', id)
+    .eq('oculta', false)
+    .select('id')
   if (e2) return NextResponse.json({ error: 'No se pudo completar' }, { status: 500 })
+  if ((cambiadas ?? []).length === 0) return NextResponse.json({ ok: true, yaOculta: true })
 
   // Descarte a la cuenta (video_refs.cuenta es "@usuario"; radar_cuentas.usuario va sin "@").
   const usuario = (ref.cuenta ?? '').replace(/^@/, '').trim()
   if (usuario) {
     try {
-      const { data: c } = await db.from('radar_cuentas').select('descartes_manuales').eq('usuario', usuario).maybeSingle()
+      const { data: c, error: e3 } = await db.from('radar_cuentas').select('descartes_manuales').eq('usuario', usuario).maybeSingle()
+      if (e3) console.warn('[no-sirve] no se pudo leer la cuenta', e3)
       if (c) {
         const n = (c.descartes_manuales ?? 0) + 1
         const patch: Record<string, unknown> = { descartes_manuales: n }
         if (n >= DESCARTES_PARA_DESACTIVAR) patch.activa = false
-        await db.from('radar_cuentas').update(patch).eq('usuario', usuario)
+        const { error: e4 } = await db.from('radar_cuentas').update(patch).eq('usuario', usuario)
+        if (e4) console.warn('[no-sirve] no se pudo sumar el descarte a la cuenta', e4)
       }
     } catch (e) {
       console.warn('[no-sirve] no se pudo sumar el descarte a la cuenta', e)

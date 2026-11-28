@@ -153,13 +153,13 @@ export default function Grilla() {
       : rango === 'semana' ? Date.now() - 7 * 86_400_000 : 0
     return refs.filter((r) => {
       if (desde && new Date(r.created_at).getTime() < desde) return false
-      if (rubro === 'inmobiliario' && r.categoria !== 'inmobiliario_ar' && r.categoria !== 'inmobiliario_otro_pais') return false
-      if (rubro === 'otros' && r.categoria !== 'formato_otro_rubro') return false
-      if (tema && r.tema_categoria !== tema) return false
+      if (!archivo && rubro === 'inmobiliario' && r.categoria !== 'inmobiliario_ar' && r.categoria !== 'inmobiliario_otro_pais') return false
+      if (!archivo && rubro === 'otros' && r.categoria !== 'formato_otro_rubro') return false
+      if (!archivo && tema && r.tema_categoria !== tema) return false
       if (!needle) return true
       return `${r.cuenta ?? ''} ${r.tema}`.toLowerCase().includes(needle)
     })
-  }, [refs, q, rango, rubro, tema])
+  }, [refs, q, rango, rubro, tema, archivo])
 
   const seleccionada = refs?.find((r) => r.id === selId) ?? null
 
