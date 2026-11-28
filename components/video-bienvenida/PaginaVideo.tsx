@@ -142,7 +142,7 @@ export function PaginaVideo({ codigo, titular, medir, segundosPrevios, testimoni
               {referencias.map((t) => (
                 <div key={t.key} className="flex flex-col gap-2">
                   {c.referencias.miedo[t.key] && (
-                    <p className="m-0 text-center text-[14px] font-bold uppercase tracking-wide text-[#b42318]">
+                    <p className="m-0 text-center text-[14px] font-bold uppercase tracking-wide text-[#b42318] sm:min-h-[2.8em]">
                       {c.referencias.miedo[t.key]}
                     </p>
                   )}
