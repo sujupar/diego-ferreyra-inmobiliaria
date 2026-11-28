@@ -20,3 +20,16 @@ con la cantidad de leads, "Pocos casos" debajo de 20 y cuántos siguen sin llama
 #### Scenario: Solo lectura
 - **WHEN** el dueño mira "Para llamar ahora"
 - **THEN** el bloque dice "Solo lectura", no tiene botones y muestra el teléfono como texto
+
+### Requirement: Sin respuesta tras WhatsApp
+"Sin respuesta tras WhatsApp" SHALL listar las solicitudes abiertas desde el 26/11 a las que
+ya se llamó y se les marcó un WhatsApp en la racha actual, y que no tienen ninguna tarea
+pendiente, ni del proceso ni de la persona. Si no hay ninguna, el bloque no se muestra.
+
+#### Scenario: Fila
+- **WHEN** a Gustavo se lo llamó tres veces sin que atienda y se le marcó el WhatsApp hace 2 días
+- **THEN** se lee "WhatsApp enviado hace 2 días · 3 llamadas sin atender", "Se registró 26 nov · {propiedad}", el teléfono y "Registrar"
+
+#### Scenario: Tiene una tarea
+- **WHEN** a esa persona se le agendó una tarea para el viernes
+- **THEN** no está en "Sin respuesta tras WhatsApp"
