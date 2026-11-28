@@ -12,6 +12,7 @@ export default defineConfig({
     globals: true,
     include: [
       'lib/metrics/tablero/*.test.ts',
+      'components/metrics/tablero/*.test.tsx',
       'lib/metrics/panel/panel.test.ts',
       'lib/metrics/panel/video-cohortes.test.ts',
     ],

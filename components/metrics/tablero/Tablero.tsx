@@ -17,6 +17,7 @@ import { rangoCorto } from './rango-corto'
 import { SeccionTasacion } from './SeccionTasacion'
 import { SeccionCampanias } from './SeccionCampanias'
 import { SeccionConsultas, SeccionPlata } from './SeccionResto'
+import { SeccionLlamadas } from './SeccionLlamadas'
 
 interface Filtros { atajo: Atajo | 'personalizado'; rango: Rango; comparar: ModoComparacion; mes: string }
 
@@ -123,6 +124,7 @@ export function Tablero() {
           <SeccionCampanias t={t} />
           <SeccionConsultas t={t} />
           <SeccionPlata t={t} />
+          <SeccionLlamadas s={t.llamadas} onReintentar={recargar} />
           <p className="text-xs text-muted-foreground">
             Fuera de todos los números: {t.excluidas.pruebas} registros de prueba, {t.excluidas.colegas} colegas y {t.excluidas.repetidas} pedidos repetidos.
             Meta: gasto sin impuestos; USD al dólar blue de cada día.
