@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "types/**/*.ts",
+    "radar/**/*.ts",
+    "lib/video-refs/**/*.ts",
+    "app/api/video-refs/**/*.ts",
+    "app/api/cron/radar-watchdog/**/*.ts",
+    "app/(dashboard)/referencias/**/*.tsx"
+  ]
+}

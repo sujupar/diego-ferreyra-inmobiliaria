@@ -28,6 +28,20 @@ const ref: VideoRef = {
   guion_error: null,
   avisado_at: null,
   creado_por: null,
+  fuente: 'openclaw',
+  ig_shortcode: null,
+  video_storage_path: null,
+  portada_storage_path: null,
+  formato: null,
+  comentarios_analisis: null,
+  transcripcion: null,
+  categoria: null,
+  tema_categoria: null,
+  puntaje: null,
+  oculta: false,
+  no_sirve_motivo: null,
+  no_sirve_at: null,
+  radar_run_id: null,
 }
 
 const okResponse = (text: string, finishReason = 'STOP') => ({
