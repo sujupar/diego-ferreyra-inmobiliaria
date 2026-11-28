@@ -33,5 +33,5 @@ main() {
   return $?
 }
 
-main "$@"
-exit $?
+# Una sola línea: bash no debe leer nada más del archivo cuando main termina.
+main "$@"; exit $?
