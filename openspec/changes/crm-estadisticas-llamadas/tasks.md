@@ -21,9 +21,9 @@ misma sesión. Se trabaja en `~/Dev/crm-cartera`.
 ## 4. Verificación
 - [x] 4.1 Suite, `tsc` de toda la app, `eslint`
 - [x] 4.2 Revisión de código independiente
-- [ ] 4.3 Script de las reglas sobre filas `[TEST]` reales; QA en la vista previa a 390, 1024 y 1280 px como admin (estado real de la sección, resto del Tablero intacto, tiempo de respuesta) y rechazo como coordinación y asesor; 0 errores de consola
+- [x] 4.3 Script de las reglas sobre filas `[TEST]` reales; QA en la vista previa a 390, 1024 y 1280 px como admin (estado real de la sección, resto del Tablero intacto, tiempo de respuesta) y rechazo como coordinación y asesor; 0 errores de consola
 
 ## 5. Cierre
-- [ ] 5.1 Auditoría de cierre; corregir y anotar
+- [x] 5.1 Auditoría de cierre; corregir y anotar
 - [ ] 5.2 Merge con `--rebase`, deploy y humo en producción
 - [ ] 5.3 Limpieza, `CLAUDE.md`, archivar y avisar al dueño
