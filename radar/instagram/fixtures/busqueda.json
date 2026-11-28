@@ -1,0 +1,1260 @@
+{
+  "data": {
+    "xdt_fbsearch__top_serp_graphql": {
+      "edges": [
+        {
+          "node": {
+            "__typename": "XDTTopSerpHeaderUnit"
+          },
+          "cursor": null
+        },
+        {
+          "node": {
+            "__typename": "XDTTopSerpAccountsHCMUnit"
+          },
+          "cursor": null
+        },
+        {
+          "node": {
+            "__typename": "XDTTopSerpHeaderUnit"
+          },
+          "cursor": null
+        },
+        {
+          "node": {
+            "__typename": "XDTTopSerpMediaGridUnit",
+            "items": [
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3953618291538798958",
+                "id": "3953618291538798958_59529499379",
+                "code": "DbeEuOUqClu",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "59529499379",
+                  "username": "onlinecoachai",
+                  "id": "59529499379",
+                  "full_name": "Héctor Suárez | IA para emprendedores",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-19/649689989_17981892974987380_3238193642240302284_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ig_cache_key=GIV7uSZ0yCm3b_I-AMxcqf-1X-AsbmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=RIeHW4FnKgUQ7kNvwG5ZbFh&_nc_oc=Adpm0IMBCkU0OHMpgaz3e3hiGz4We3QN_Roqz9xTym8ylos45ccLrrHUBiOk5qm0yzc&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQVGCXanUJEq6XMP5ohC-oDlhD_dG5jCCl-gU4cuEDYfiQ&oe=6B109177",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1785528261,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1136,
+                      "width": 640,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.71878-15/757851914_926284476413376_5620034966541498888_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=108&_nc_map=urlgen_bucketless&ig_cache_key=Mzk1MzYxODI5MTUzODc5ODk1OA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mcmFtZS5DMyJ9&_nc_ohc=bBpNrfXUd7AQ7kNvwGChmYg&_nc_oc=Adp5Li3zhs82Ma4ryL5cAXhk0UoUXhjH-7BaOkMmwlQ6KQE7BPM3Mmsi7VEFSUxJdqo&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQQlBAAAAA&oh=00_AQV3YIjRzw28OmoQuW_HKGy3PF5J6tApMO8UuQQ2VMhcOg&oe=6B10C748"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "CINE y te mando el prompt completo + la guía paso a paso 👇\n\nLe das a Claude 5 fotos de una propiedad y te devuelve un video con movimiento de cámara, recorrido ordenado desde la fachada y música. Todo desde el mismo chat, con el conector de Higgsfield.\n\nOjo: el plan gratis es limitado. A mí se me acabaron los créditos a mitad y aún así quedó bien.\n\nSígueme para más flujos con IA.\n\n#ClaudeAI #IAparaNegocios #Automatizacion #HerramientasIA #Inmobiliaria"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTUzNjE4MjkxNTM4Nzk4OTU4Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5NHwzOTUzNjE4MjkxNTM4Nzk4OTU4fDY1MDcxOTQ1NjAxfDA5Yzg4MzM1NzA4NGY2MThkYzEyMmRlNDcyZTRkZDExMDM1NmE5NWM3YTYwOGIwNTI0NTQwYzk0YTg3YThhNzUifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 3,
+                "comment_count": 5920,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": true
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "4012058218772630241",
+                "id": "4012058218772630241_21189829634",
+                "code": "DetsbF0IQrh",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "21189829634",
+                  "username": "victorvallejo.ia",
+                  "id": "21189829634",
+                  "full_name": "Víctor Vallejo | IA agency & Lifestyle",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-19/718854586_18113484214709635_3145333907296352608_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=GLrZ2CqDLUMwHlpAAGD5YySGeKYrbmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy45MzMuQzMifQ%3D%3D&_nc_ohc=PWnoxb-q3HYQ7kNvwGJ5JNG&_nc_oc=AdpdWOh3XdAykC2X6uGECz8aXOt6gdN4ll38prgQDiieNaNUc4ggtuh7-rGOciX8s1g&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQWLEupcH3vQQvNWj4y3jXlArxTgdubCApPkmh9cy0OJtw&oe=6B10AC9A",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1792494780,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1136,
+                      "width": 640,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.71878-15/857983357_951024481015660_120627113715433471_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=NDAxMjA1ODIxODc3MjYzMDI0MTE0MzA4MzA3NjkwMjM4MjA%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fdXNlcl9zZWxlY3RlZF90aHVtYm5haWwuQzMifQ%3D%3D&_nc_ohc=RVhbFRH6lHMQ7kNvwHaxMjW&_nc_oc=AdoPC7FBye7ugpxfxYB32EQObDsX9U9TvjfWLuoF-UeA98FiHaDcMQoo_rLGN3qo-Zo&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQ4lBAAAAA&oh=00_AQXRm0aqohleNB2JaOSpm2i5-GMvLS22727SOHZ-gh9JpQ&oe=6B10970F"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Así conseguimos captaciones para una inmobiliaria🏠 \n\nComenta “CASA” y te lo paso para que lo pongas a prueba con tu inmobiliaria"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzA0MDEyMDU4MjE4NzcyNjMwMjQxIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5NHw0MDEyMDU4MjE4NzcyNjMwMjQxfDY1MDcxOTQ1NjAxfGE3MmU3MTZkYWU0ODExOTY2MzQxMTdlZmIzODgwNDFlYTZhMDZjMTNkMzQ2N2VjMGM1MzA1ZjUwNTc5OTQ4MWMifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 1264,
+                "comment_count": 1387,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "4006477040054369946",
+                "id": "4006477040054369946_56672422447",
+                "code": "DeZ3aQFMv6a",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "56672422447",
+                  "username": "yax.media",
+                  "id": "56672422447",
+                  "full_name": "Juan Pereyra | Marketing Inmobiliario",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-19/712484828_18013462529894448_4638162696740041624_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ig_cache_key=GNyndyow6EQTJv8-AJhzqA1mEF5AbmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy45NjguQzMifQ%3D%3D&_nc_ohc=mvUHYJ3ZHgYQ7kNvwEboull&_nc_oc=Adq7IJ59oXEPRuMd8oy6YydjnDQZnRK1jRkp_0H9Mm4bkFjuOcuD5tDRNFbEECO6VHA&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQXEkmdmCPOxvkk-A6_vLsMsxhIKSwEGWNY-ughc1G_C7A&oe=6B109CDC",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1791829335,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 2096,
+                      "width": 1179,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/844301994_18033151790894448_3279901201699802659_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=NDAwNjQ3NzA0MDA1NDM2OTk0NjE4MDMzMTUxNzkzODk0NDQ4.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjExNzkuc2RyLnZpZGVvX3VzZXJfc2VsZWN0ZWRfdGh1bWJuYWlsLkMzIn0%3D&_nc_ohc=29BD5gI4KTsQ7kNvwFTUVg5&_nc_oc=Adp8lYg9NrtFEJG7GKSzcQTIcFyNvyCscK6tVaq4jk8Gq441r8LGDqMwajp_IKtFcxM&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQ4lBAAAAA&oh=00_AQUU2dmPGHIwPvstuisOk910AAIzGfvTTiGMH2dQIo98Qw&oe=6B10AFAC"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Comenta IA⬇️"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 5,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzA0MDA2NDc3MDQwMDU0MzY5OTQ2Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5NXw0MDA2NDc3MDQwMDU0MzY5OTQ2fDY1MDcxOTQ1NjAxfDRjZGVlZjc3OTg3ZWZlYjMwZmE3OTQwZWFjOTVjOTM1NDAwOGM1NzI0MmE3MGZhNTlkNDEyZWYxODI2Y2Y5MDQifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 165,
+                "comment_count": 309,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              }
+            ]
+          },
+          "cursor": null
+        },
+        {
+          "node": {
+            "__typename": "XDTTopSerpMediaGridUnit",
+            "items": [
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3893344059438655636",
+                "id": "3893344059438655636_60831185427",
+                "code": "DYH78tTN-iU",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "60831185427",
+                  "username": "num.inmobiliaria",
+                  "id": "60831185427",
+                  "full_name": "Num Inmobiliaria",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.2885-19/359565811_5826597337441203_3138146553524847309_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=100&_nc_map=urlgen_bucketless&ig_cache_key=GPOJbhWzI4xoQrMUAM0C9__p74wrbkULAAAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy43OTYuQzMifQ%3D%3D&_nc_ohc=GObpXqDeLJcQ7kNvwGKjFx9&_nc_oc=Adq_lzNHc8Zb3qzyhVGIi0wDY2EesJjVI6UyaH0tLbQRvZKRM0qt9xYp69JIC8S_SDE&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQXbeLu8DJpqZBKiNptk4_M9NbhJB2mgzfCyYjva1L5eGQ&oe=6B10ADE3",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1778342887,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1136,
+                      "width": 640,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.71878-15/689107722_982423151030593_4390952835495331781_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=102&_nc_map=urlgen_bucketless&ig_cache_key=Mzg5MzM0NDA1OTQzODY1NTYzNjEzNDUzNDYxNDc1MjU3ODE%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fbmZyYW1lX2NvdmVyX2ZyYW1lLkMzIn0%3D&_nc_ohc=ecFj7IwHwLEQ7kNvwHgLRoZ&_nc_oc=Adr84c5RvyuxlBWOi7HHbhoTUXsad-JDNykkbwJvuHHRnmZQa9nVZGhYS5KOrrsZe1k&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQglBAAAAA&oh=00_AQXL0iwl1dLRFrw098WXg-kWqzQVbiiWgHcG6XiJVdr1Hg&oe=6B10B232"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "📍 Ibsen, Polanco\n• 📐 272m² habitables\n• 🛋️ Totalmente amueblado\n• 🔥 Chimenea de etanol\n• 🖼️ Molduras francesas\n• 🌿 Terraza privada\n• 🍳 Equipamiento Thermador\n• 🍷 Bar con doble altura\n• 💼 Oficina biblioteca\n• 🛏️ Tres recámaras\n• 🚿 Acabados roble blanco\n• 🚪 Puerta blindada\n• 🛡️ Seguridad 24 horas\n• 🚗 Tres estacionamientos\n• 📱 Hogar inteligente\n\n#numinmobiliaria #luxurylifestyle #inmueblesdelujo #cdmx #realestate"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzODkzMzQ0MDU5NDM4NjU1NjM2Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5NXwzODkzMzQ0MDU5NDM4NjU1NjM2fDY1MDcxOTQ1NjAxfDQ1ZTMzZWU3MDU2ZDFkNjI1MWRkMjYwYzc1MWYxMTUxOTc4MTcxMWY5YWM1OGU5NzAzMTZjMGUwOGE4NGJmN2UifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 888,
+                "comment_count": 31,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3873938304215196550",
+                "id": "3873938304215196550_2223727912",
+                "code": "DXC_lzYhqOG",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "2223727912",
+                  "username": "santimadariagaa",
+                  "id": "2223727912",
+                  "full_name": "santiago madariaga🎥",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-19/560308061_18483985555079913_8658175617401373478_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=101&_nc_map=urlgen_bucketless&ig_cache_key=GF2fZSHpQgtBFqtBACZDKN7ZBCh4bmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDQ2LkMzIn0%3D&_nc_ohc=yKNpbhfgCfUQ7kNvwG7OxLg&_nc_oc=Adppav6jDtKDeb7hMRBdjniPwYzv2kmG083Wj5j9oKdxczk5cppdPIEnsLPUEtVPV1Y&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQVtjLBXpcNaJTWuP2jgiRLwT5bkhRcNgBcnUmqWaLkWaA&oe=6B10AD67",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1776029400,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1920,
+                      "width": 1080,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/671284845_18522026236079913_893526702090566644_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ig_cache_key=Mzg3MzkzODMwNDIxNTE5NjU1MDE4NTIyMDI2MjMzMDc5OTEz.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjEwODAuc2RyLnZpZGVvX2RlZmF1bHRfY292ZXJfZnJhbWUuQzMifQ%3D%3D&_nc_ohc=TIrtoqMNRwkQ7kNvwFgUfdh&_nc_oc=AdpFSPQ5HahHLqj4cjOO9Rjygf5pPGVaefEZWdQkeRPqqiTFiicGzVDipFOtixB3KaY&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQQlBAAAAA&oh=00_AQUwRf4ak3yF1noQWo62elKKaZfR2oczo9-w47ztRxzmZw&oe=6B10A3C9"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Si hacés contenido para real estate (o estás en eso), ésto te puede ahorrar BANDA de tiempo\n\nSubí un tutorial completo a YouTube donde te muestro paso a paso cómo hacer este estilo de videos que seguro te cruzaste alguna vez en redes\n\nEl proceso COMPLETO:\n– Cómo pensar el video ANTES de grabar\n– Qué tipo de tomas hacer para que después todo tenga sentido\n– Y obvio toda la edición en After Effects\n\nToda la info en español y gratis ;)\n\nLink en mi perfil😁\n.\n#ia #realestate #inmobiliaria #realestateeditor #aftereffects"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzODczOTM4MzA0MjE1MTk2NTUwIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5NXwzODczOTM4MzA0MjE1MTk2NTUwfDY1MDcxOTQ1NjAxfDk5ZTc3NGM1NzQ3ZmQzOTYxMzgxNzdlOGUwNDFjOWQ5ZGExNmVhNmY4ZjA3ODAyZjM0ZWNiN2RlYmNjOTc4MTgifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 198,
+                "comment_count": 18,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3960700700192032106",
+                "id": "3960700700192032106_6255335844",
+                "code": "Db3PE1YlkVq",
+                "media_type": 8,
+                "original_width": 1080,
+                "original_height": 1350,
+                "user": {
+                  "pk": "6255335844",
+                  "username": "joseastudillo.branding",
+                  "id": "6255335844",
+                  "full_name": "José Astudillo | Branding Inmobiliario",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-19/926586175_18377800438215845_1845730090032967140_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=106&_nc_map=urlgen_bucketless&ig_cache_key=GD_VOjeldN8ag0pBAOQtqt_8WZ0ZbmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDQ3LkMzIn0%3D&_nc_ohc=RKHB7s0KkHoQ7kNvwE0rEw8&_nc_oc=AdrOAb-W4vfAaGhCEIjTwzi32Q_NZ9dmNjU304oVpB2Iys3FvbVSOAODu1mLW5A6sXQ&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQUjQYcYWVNEJCaTLLb5zniHlsu2a1jIQt3bIhgXw1ySdA&oe=6B10B9F9",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1786372338,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1350,
+                      "width": 1080,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/768420702_18362683855215845_3205584166823103859_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=100&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2MDcwMDEyNzIyNTk2MDA2MQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTA4MC5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=OEcbVJ8CR6IQ7kNvwGP-etY&_nc_oc=AdrXXrx8lFinR1yNCMxEMtpvWapf5iq0Q3oCwb4MNCFGj36lmYGBdQAiRDNwqRJIz9I&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQIlBAAAAA&oh=00_AQWo2K8CF9Lao0mWSmxoECYslOUu7IfRN0EHSTe5Qe_0Uw&oe=6B10C280"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Un buen reel puede empezar con una buena idea.\n\nPero si los primeros segundos no consiguen que alguien quiera seguir mirando, probablemente lo perderás.\n\nPor eso preparé estos 50 ganchos para que no tengas que quedarte pensando cómo empezar tu próximo reel inmobiliario.\n\nHay ideas para compradores, vendedores, inversión, propiedades y situaciones que tus clientes realmente viven.\n\nSi quieres la lista completa para tenerla a mano, comenta GANCHOS y te la envío por DM 👇🏻\n\n#marketinginmobiliario #asesorinmobiliario #inmobiliaria #contenidoinmobiliario #redessociales"
+                },
+                "is_dash_eligible": null,
+                "number_of_qualities": null,
+                "has_audio": null,
+                "carousel_media_count": 7,
+                "carousel_media": [
+                  {
+                    "id": "3960700127225960061_6255335844",
+                    "pk": "3960700127225960061",
+                    "media_type": 1,
+                    "original_height": 1350,
+                    "original_width": 1080,
+                    "image_versions2": {
+                      "candidates": [
+                        {
+                          "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/768420702_18362683855215845_3205584166823103859_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=100&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2MDcwMDEyNzIyNTk2MDA2MQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTA4MC5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=OEcbVJ8CR6IQ7kNvwGP-etY&_nc_oc=AdrXXrx8lFinR1yNCMxEMtpvWapf5iq0Q3oCwb4MNCFGj36lmYGBdQAiRDNwqRJIz9I&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQIlBAAAAA&oh=00_AQWo2K8CF9Lao0mWSmxoECYslOUu7IfRN0EHSTe5Qe_0Uw&oe=6B10C280",
+                          "height": 1350,
+                          "width": 1080
+                        }
+                      ]
+                    },
+                    "is_dash_eligible": null,
+                    "number_of_qualities": null
+                  },
+                  {
+                    "id": "3960700128450688502_6255335844",
+                    "pk": "3960700128450688502",
+                    "media_type": 1,
+                    "original_height": 1350,
+                    "original_width": 1080,
+                    "image_versions2": {
+                      "candidates": [
+                        {
+                          "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/771925853_18362683858215845_4977621934021257142_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=108&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2MDcwMDEyODQ1MDY4ODUwMg%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTA4MC5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=bBD4KXTqUTkQ7kNvwGC5Te_&_nc_oc=AdrzYugLK6cSlhI-2MqthMlofHCK-neQpq8ehErAcmkZqpW1_jDTAQiLbUc3QBEPlvg&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQIlBAAAAA&oh=00_AQURuuw9VypbFhbIE9ISBNgNi_fFbii4sswEBh-FZh2gvg&oe=6B109D64",
+                          "height": 1350,
+                          "width": 1080
+                        }
+                      ]
+                    },
+                    "is_dash_eligible": null,
+                    "number_of_qualities": null
+                  },
+                  {
+                    "id": "3960700128593388733_6255335844",
+                    "pk": "3960700128593388733",
+                    "media_type": 1,
+                    "original_height": 1350,
+                    "original_width": 1080,
+                    "image_versions2": {
+                      "candidates": [
+                        {
+                          "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-15/770962796_18362683876215845_5489751073455919289_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2MDcwMDEyODU5MzM4ODczMw%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTA4MC5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=uD7X5WkQcRkQ7kNvwEtD196&_nc_oc=AdoYr6caKHSKget479MbU8VWW1IifVRmNwkVtM0oiVxfGQ8f5Sd1zfgur7QBn21ypmA&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQIlBAAAAA&oh=00_AQV-KstklcC15w1XsWeIwxvAiG_2hWNXTJCk9tTd14vEaQ&oe=6B1093ED",
+                          "height": 1350,
+                          "width": 1080
+                        }
+                      ]
+                    },
+                    "is_dash_eligible": null,
+                    "number_of_qualities": null
+                  },
+                  {
+                    "id": "3960700129968923346_6255335844",
+                    "pk": "3960700129968923346",
+                    "media_type": 1,
+                    "original_height": 1350,
+                    "original_width": 1080,
+                    "image_versions2": {
+                      "candidates": [
+                        {
+                          "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/771925977_18362683861215845_7298893405187836804_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=108&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2MDcwMDEyOTk2ODkyMzM0Ng%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTA4MC5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=MXhKtzyPBDsQ7kNvwErpOAb&_nc_oc=AdoV8f94uF74pFIp_AkaZ53SdYQ-WT0L58rfnsdsTo4-_VagXy5Jf4YcCGe4rsnSDH0&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQIlBAAAAA&oh=00_AQWrqGHopXP2114e0J3ekG4S8ywgmlrBrgya-lmTSm7HWw&oe=6B109295",
+                          "height": 1350,
+                          "width": 1080
+                        }
+                      ]
+                    },
+                    "is_dash_eligible": null,
+                    "number_of_qualities": null
+                  },
+                  {
+                    "id": "3960700130312936925_6255335844",
+                    "pk": "3960700130312936925",
+                    "media_type": 1,
+                    "original_height": 1350,
+                    "original_width": 1080,
+                    "image_versions2": {
+                      "candidates": [
+                        {
+                          "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/771757420_18362683879215845_5486360837211341801_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2MDcwMDEzMDMxMjkzNjkyNQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTA4MC5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=hWvFV4NYI20Q7kNvwH_lkg4&_nc_oc=AdpY4THHYs7SG_IR96IJ_qjBdkSKlztfSzIvg9KziAwcT0NwATVw-Mf6AEv5HeBQeBY&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQIlBAAAAA&oh=00_AQWi51qlxL1s81w-eQ9__OM-jK42uxkhogzDkcLaZ51hbg&oe=6B10B7EF",
+                          "height": 1350,
+                          "width": 1080
+                        }
+                      ]
+                    },
+                    "is_dash_eligible": null,
+                    "number_of_qualities": null
+                  },
+                  {
+                    "id": "3960700132477263988_6255335844",
+                    "pk": "3960700132477263988",
+                    "media_type": 1,
+                    "original_height": 1350,
+                    "original_width": 1080,
+                    "image_versions2": {
+                      "candidates": [
+                        {
+                          "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-15/768303794_18362683888215845_6749838666475568904_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2MDcwMDEzMjQ3NzI2Mzk4OA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTA4MC5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=VXS8NWBCk80Q7kNvwE0GSM8&_nc_oc=AdqnzWX6mPBkXKRPIxCRAWrEcfb1mPiB18z92BUZ4AsIK2msDDirirCsrvMM52HcQBk&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQIlBAAAAA&oh=00_AQXT-xrSYzlq61a-QzrbIFljRLsEgvLGnnOnUwlZdNs7Iw&oe=6B10BDBE",
+                          "height": 1350,
+                          "width": 1080
+                        }
+                      ]
+                    },
+                    "is_dash_eligible": null,
+                    "number_of_qualities": null
+                  },
+                  {
+                    "id": "3960700132737343701_6255335844",
+                    "pk": "3960700132737343701",
+                    "media_type": 1,
+                    "original_height": 1350,
+                    "original_width": 1080,
+                    "image_versions2": {
+                      "candidates": [
+                        {
+                          "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-15/772093102_18362683897215845_3093001363289049946_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2MDcwMDEzMjczNzM0MzcwMQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTA4MC5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=A3TPdsM5R38Q7kNvwFa-55l&_nc_oc=Adqo1ZdUkcgPHaW26Eu1yasbf_GO1DBqrSzOE1rrWEqGhsLDXvtPeH30CCaDyaXt6UM&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQIlBAAAAA&oh=00_AQW5Vdcc2rvguhBbveAoZs8fX2e9V_py6PydYb_X9FJilg&oe=6B10C170",
+                          "height": 1350,
+                          "width": 1080
+                        }
+                      ]
+                    },
+                    "is_dash_eligible": null,
+                    "number_of_qualities": null
+                  }
+                ],
+                "accessibility_caption": "Photo by José Astudillo | Branding Inmobiliario on August 10, 2026.",
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTYwNzAwNzAwMTkyMDMyMTA2Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5NnwzOTYwNzAwNzAwMTkyMDMyMTA2fDY1MDcxOTQ1NjAxfDg0MmI4ZDM5NjAyNGFlODFlMjhkZWI3MWUyMzZiYThkYjQ5NmM1ZTkxMzUzOGE1NjczYTM3MmVkNzgzYjU1MDMifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 1741,
+                "comment_count": 763,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              }
+            ]
+          },
+          "cursor": null
+        },
+        {
+          "node": {
+            "__typename": "XDTTopSerpMediaGridUnit",
+            "items": [
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "4038498744674968920",
+                "id": "4038498744674968920_79775745254",
+                "code": "DgLoTYeNmVY",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "79775745254",
+                  "username": "coucoustudiomx",
+                  "id": "79775745254",
+                  "full_name": "Coucou Estudio Creativo",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-19/605858850_17844976575657255_1442911843681189494_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ig_cache_key=GCKsHCQnNdFh6WU-AHY_0kytQAYUbmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy41MDAuQzMifQ%3D%3D&_nc_ohc=VYQ6Xhi0L1gQ7kNvwHs6eVl&_nc_oc=Adrq5V8RTERiM3qDJEAFFFnpxroJpmz65jfRrZ3yduG_ViB1oOWLxEfeoIw82PM3tDM&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQVF3NexNjqlEVhWGHpj_2dFsQLVPGOs7wcnlk0fVZiqhw&oe=6B10A63E",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1795646674,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1280,
+                      "width": 720,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-15/928358569_17913368991657255_6233098964306791590_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ig_cache_key=NDAzODQ5ODc0NDY3NDk2ODkyMDE3OTEzMzY4OTg4NjU3MjU1.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjcyMC5zZHIudmlkZW9fdXNlcl91cGxvYWRlZF90aHVtYm5haWwuQzMifQ%3D%3D&_nc_ohc=2-4TX5I9DW0Q7kNvwG9MOHa&_nc_oc=AdpyogKAlgWFvJIfcbTu0ZN3zXeQ6ElC5Pn0zMcihhviJ-20Hjzw4rL31PrNegdRYAU&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQwlBAAAAA&oh=00_AQUFrBU9pHRS1cuoF2wh0hx9InEYuP7eVuZV1DpZqTMM5g&oe=6B1092C7"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "¿Quién dijo que una inmobiliaria solo puede publicar tours de casas/depas y poner el precio? 👀\n\nTus redes pueden comunicar mucho más que las propiedades que tienes disponibles.\n\nPuedes crear contenido que conecte con futuros compradores, resuelva dudas, genere confianza y haga que más personas te consideren cuando estén listas para invertir.\n\n¿De qué negocio te gustaría que hablara en el siguiente episodio? 👀\n\nsocialmediamarketingstrategy creaciondecontenido agenciademarketing inmobiliaria bienesraices\n\n.\n.\n.\n\n[ marketing inmobiliario, redes sociales para inmobiliarias, marketing para bienes raíces, estrategia digital inmobiliaria, contenido para inmobiliarias, branding inmobiliario, agentes inmobiliarios, venta de propiedades ]"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzA0MDM4NDk4NzQ0Njc0OTY4OTIwIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5Nnw0MDM4NDk4NzQ0Njc0OTY4OTIwfDY1MDcxOTQ1NjAxfDhmNTdmYTQ4MDU4Y2Q1OTVmODQwNDA3N2ZhYjQ3ZTliZDNkMzg0ZWI2MjQ2NDgwNTM0OTgzMzFlNGM5OWQ4NmQifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 3,
+                "comment_count": 10,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": true
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "4024532352541121696",
+                "id": "4024532352541121696_48543398530",
+                "code": "DfaAtoMR9yg",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "48543398530",
+                  "username": "theainmobiliaria",
+                  "id": "48543398530",
+                  "full_name": "Thea Inmobiliaria",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-19/728868046_18038521859622531_4609002044906071260_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=102&_nc_map=urlgen_bucketless&ig_cache_key=GM6kcSuDRren8BVAANzkrLfwdvY-bmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy43MzUuQzMifQ%3D%3D&_nc_ohc=ZHdJ72f12ugQ7kNvwGTyKGv&_nc_oc=Adrqt9AZHLfg2PjoGkR1jVyWYm4Ul6F3LDD4sHxTW8LkFyUFvFGeZkIUizX1n4Uahnw&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQV2aD8lJc5tz8vOQkpp6OYoD39dy-lfSdiqWq_q9-74Pw&oe=6B10C6ED",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1793991110,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 2096,
+                      "width": 1179,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-15/885832354_18071428763622531_7687778449364073644_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=107&_nc_map=urlgen_bucketless&ig_cache_key=NDAyNDUzMjM1MjU0MTEyMTY5NjE4MDcxNDI4NzYwNjIyNTMx.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjExNzkuc2RyLnZpZGVvX3VzZXJfc2VsZWN0ZWRfdGh1bWJuYWlsLkMzIn0%3D&_nc_ohc=XRxXbRtaK_QQ7kNvwGfOrP3&_nc_oc=Adp7dJJo1q8upW3e-OVIjKBROL-tP_t-dNAKKAcZjv2sixfu4SnAX-ZdPpntqpl5nAU&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQ4lBAAAAA&oh=00_AQWdIQvPpxbJRPAZwXRRJ3NyBUUfx3Zw5p8fXVqAb4rjag&oe=6B10ADF0"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Tu casa tiene un precio emocional y un valor de mercado. Solo uno la vende. 🏡\n\nAsí tasamos en Thea 👇\n\n📐 Superficie homologada: no todos los metros valen igual. El cubierto cuenta al 100 % y el semicubierto, por lo general, a la mitad.\n\n🏘️ Método comparativo: casas parecidas de tu zona que se vendieron hace poco (vendidas, no publicadas). Las homogeneizamos por superficie, ubicación, antigüedad y estado.\n\n🧱 Costo de reposición: terreno + lo que costaría construirla hoy − el desgaste (método Ross-Heidecke: edad, vida útil y estado de conservación).\n\n📊 Valor de mercado: los dos métodos se controlan entre sí y después ajustamos por demanda, acceso a crédito y tiempo de venta.\n\nSalir con el precio emocional es tener la casa meses publicada y terminar bajándola igual. Tasar con criterio no es tasar barato: es tasar bien.\n\n¿Estás por vender? Comentá TASACIÓN y te la hacemos con este método 👇\nY mandáselo a alguien que está por poner el cartel.\n\nLos números del video son un ejemplo ilustrativo.\n\n📍 Paraná, Entre Ríos · Thea Inmobiliaria · Mat. N.º 1862"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzA0MDI0NTMyMzUyNTQxMTIxNjk2Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5Nnw0MDI0NTMyMzUyNTQxMTIxNjk2fDY1MDcxOTQ1NjAxfDBlYTIzZjAwMzY4MmQ2YjgyNDE3YjIxZTBkYzkyYzIxMDIyYjgwMGYyZGMyMGU4YWYzMmExZWMwZGRlMDM0NjAifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 4022,
+                "comment_count": 238,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3512018250088722680",
+                "id": "3512018250088722680_3158482736",
+                "code": "DC9Mf2xOjD4",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "3158482736",
+                  "username": "dizaconsultoresinmobiliarios",
+                  "id": "3158482736",
+                  "full_name": "DIZA Consultores",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-19/623095778_18437848186106737_4287139180646555066_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=111&_nc_map=urlgen_bucketless&ig_cache_key=GOKvIyVxM44PIIFBALrdGN1e_n47bmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=LYUMrY8bIdUQ7kNvwHiA4hC&_nc_oc=AdopvKRb91bDMen4kVAX3SkZhtbMtgDEK33mGQCkE-D7FZGDjtb_ljir1hWoDewWHAE&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQWboqz59glP4deK2qrH3eqPsCmO0O_1lAwCaI-TV5ksrQ&oe=6B10989B",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1732885200,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1136,
+                      "width": 640,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.71878-15/468828267_2324385504627512_8170761528565249156_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=103&_nc_map=urlgen_bucketless&ig_cache_key=MzUxMjAxODI1MDA4ODcyMjY4MA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mcmFtZS5DMyJ9&_nc_ohc=8X1ETWy6ygsQ7kNvwHZC5dT&_nc_oc=AdoxT73gm0hXMTPldErE7Acgit-rxT8SnXcjke3dlPfqfL7D8y-nBYwUL7V6-aLfN_k&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQQlBAAAAA&oh=00_AQVDW5FA3qj7U4Ey5Yl6DUE21kK8gzbR3oP440nhM6HR8Q&oe=6B109448"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Y tú, ¿lo aceptarías? 🤔🏠\n.\n.\n.\n.\n.\n#deeamhome #luxury #navidad #luxury #madrid #barriosalamanca #realestate #mexico #venezuela"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzNTEyMDE4MjUwMDg4NzIyNjgwIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5N3wzNTEyMDE4MjUwMDg4NzIyNjgwfDY1MDcxOTQ1NjAxfDI3ZWM3MGE0NmJmNGJjYzg5NWYyYjZiMDBjNGM3ZTIzOGI2ZmY2OGI1ZWMwYjJiMGUwNWE5NDY0ZTIzMTA0MjgifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 170795,
+                "comment_count": 6968,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              }
+            ]
+          },
+          "cursor": null
+        },
+        {
+          "node": {
+            "__typename": "XDTTopSerpMediaGridUnit",
+            "items": [
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3815408792218033384",
+                "id": "3815408792218033384_34715937918",
+                "code": "DTzDhTlDtzo",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "34715937918",
+                  "username": "inmobiliaria_franc",
+                  "id": "34715937918",
+                  "full_name": "Inmobiliaria Franco",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.2885-19/485618098_575372862223010_6058088214337765897_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ig_cache_key=GLLx8Ryi8hBvTAsCAAlClUEipxJUbkULAAAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy45NjQuQzMifQ%3D%3D&_nc_ohc=C4ZzNXmW2bcQ7kNvwE0zdoJ&_nc_oc=AdoE-iC6sZjIOy0rCpSxsEcNa5uIYrVn2VpWkmitRHGE7J8mGfCCjQ7nuqubbLpBp5w&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQVgOaMSOOcR3Qd1WEiY1Uy04Cnmoj3x2wkXDuthuAgDEw&oe=6B10B232",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1769052317,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1280,
+                      "width": 720,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/619298483_18086548649153919_4204302667082090547_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=100&_nc_map=urlgen_bucketless&ig_cache_key=MzgxNTQwODc5MjIxODAzMzM4NDE4MDg2NTQ4NjQzMTUzOTE5.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjcyMC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mcmFtZS5DMyJ9&_nc_ohc=6SUiP8-BTyUQ7kNvwErK7KE&_nc_oc=AdrGYzQQW79BvSGPJirnslJfpf0raa0lVTLv0CFKmuCviT7vlr_vaiTR5bOD-Kmtgow&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQQlBAAAAA&oh=00_AQVYVQ_BrZgtJ-X5rZoBeJg-_H_f0XnmAB_-DG0jStsVYg&oe=6B10A546"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Agenda tu cita 🤳🏻 ya sabes a quien llamar 😉\n\n📱📱 3781173992\n\n#lujo #inmobiliaria #casapropria"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzODE1NDA4NzkyMjE4MDMzMzg0Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5N3wzODE1NDA4NzkyMjE4MDMzMzg0fDY1MDcxOTQ1NjAxfDgxOGVhZWU3ZDlmYTI0ZjRiNzExNjI3YTg5NGNlMWU0ZTIyNjdiZDc1YzM3NzFjN2E5ZGQwNDdiYWY1M2FjNTEifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 1508,
+                "comment_count": 46,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3977529961432462595",
+                "id": "3977529961432462595_69662180304",
+                "code": "DczBm0Sp7UD",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "69662180304",
+                  "username": "darenapropiedades",
+                  "id": "69662180304",
+                  "full_name": "Darena Propiedades",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-19/896132692_17957076705324305_1387022890576060611_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=GFTmaTURrTm63cs-AMMgH2D4sT8TbmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=_ewmQNZrUC0Q7kNvwGS-zq7&_nc_oc=AdorIeJUrDXd727idyhksrcepTeL5eLN1W-i3Wrfk5bgbs_qd0sAhEZFl_jl1-n7Pmw&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQVZ8JlzzfhFcb77-vtk6Ys6iorDuUrPWkK58M2WSVEtlA&oe=6B10A048",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1788378668,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1280,
+                      "width": 720,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/792158500_17944736904324305_8868084733539347257_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=105&_nc_map=urlgen_bucketless&ig_cache_key=Mzk3NzUyOTk2MTQzMjQ2MjU5NTE3OTQ0NzM2ODk4MzI0MzA1.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjcyMC5zZHIudmlkZW9fdXNlcl9zZWxlY3RlZF90aHVtYm5haWwuQzMifQ%3D%3D&_nc_ohc=zKo-qJDOXKUQ7kNvwFydk5Q&_nc_oc=Ado6WBkYQEUfdlA-5YYAw0c_6VcAc9lKW2kRkFAMro3tbbI570KsaR_Bk6gPtbQfIgg&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQ4lBAAAAA&oh=00_AQUJUV4UJf2r7qMzpViIiUtPuEDgKSpbvSgWVKurfnXOZg&oe=6B10A158"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Esto fue solo un adelanto…\nseguinos para ver el tour completo. ✨🏙️\n\n#puertomadero #departamento #inmobiliaria #fyp #realestate"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTc3NTI5OTYxNDMyNDYyNTk1Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5N3wzOTc3NTI5OTYxNDMyNDYyNTk1fDY1MDcxOTQ1NjAxfDE3NTExNTI0YWRmODYyMmJmZjExZWJmYTFhOThlODA4MjBkMDA5ODNiZTVkMzFlNzhhOTA1ZjZhZDAyMTNjNmIifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 437,
+                "comment_count": 6,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3836286623587864542",
+                "id": "3836286623587864542_77936332736",
+                "code": "DU9OlvPiY_e",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "77936332736",
+                  "username": "docs.realty",
+                  "id": "77936332736",
+                  "full_name": "DOCS Realty",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-19/716270537_17881235982596737_7118626061216983209_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=100&_nc_map=urlgen_bucketless&ig_cache_key=GMlrsSqBOuOu44Y-AKkorcOvcMpibmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=8R5UfmqmBPsQ7kNvwHXBlsc&_nc_oc=AdrfTOFp7WEvdEaau8Ij3VMhaiTVJTub_1uJ5gT_WvqQ7jI0Em-QdK18qIPIGHzYnpo&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQW-z85i414xxjpjwo4zLsW36iRQAZFuxL6PAy3pKsjvxA&oe=6B1094DA",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1771541069,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1280,
+                      "width": 720,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/628925080_17862764265596737_4793484609800938915_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=103&_nc_map=urlgen_bucketless&ig_cache_key=MzgzNjI4NjYyMzU4Nzg2NDU0MjE3ODYyNzY0MjU2NTk2NzM3.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjcyMC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mcmFtZS5DMyJ9&_nc_ohc=ShPYCpIAoskQ7kNvwHKgin1&_nc_oc=AdrjLvxz4QuLB1FoBC0lagb2vzA28AHzhhwz1MF1wsqiVOrjUwA7dD8dXXqZgTubvqk&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQQlBAAAAA&oh=00_AQUpjshVfmqI4_AuRKjTMWT3QDW9lnCg2ZZEkPLpJQAskw&oe=6B10C50C"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "🏙️ Iconiq Arribeños · Núñez\n\nUn proyecto que combina diseño contemporáneo con la impronta de la marca danesa BoConcept, luminosidad y espacios exteriores reales en una de las mejores zonas de Núñez.\n\nUnidades de 1, 2 y 3 dormitorios, todas con balcón o terraza.\nArquitectura pensada para vivir con amplitud y buena escala.\n\nAmenities que acompañan el día a día:\n✔️ SUM\n✔️ Gym\n✔️ Piscina\n✔️ Terraza y parrillas\n✔️ Espacios para chicos\n✔️ Laundry\n\n⏳ Entrega estimada: 36 meses\n💰 Últimas unidades disponibles 100% financiadas\n\n📍Arribeños 3425 · CABA\n\n📲 Escribinos y lo analizamos juntos.\n\n*Martillero responsable Dylan Yoel Cohen, matricula N* 9834 de CUCICBA"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzODM2Mjg2NjIzNTg3ODY0NTQyIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5N3wzODM2Mjg2NjIzNTg3ODY0NTQyfDY1MDcxOTQ1NjAxfDUwNWZjYjFhNjQwZTM4NTFmMTM4ZGM4YWQ2MjkxM2NkZDVjOWQxNWI5YzBmMjdlNzRiOTY1YjAxMGZiZWU4NDcifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 2632,
+                "comment_count": 21,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              }
+            ]
+          },
+          "cursor": null
+        },
+        {
+          "node": {
+            "__typename": "XDTTopSerpMediaGridUnit",
+            "items": [
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3981259070785999759",
+                "id": "3981259070785999759_77212513888",
+                "code": "DdARggBAFOP",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "77212513888",
+                  "username": "miguelrenzaabogado",
+                  "id": "77212513888",
+                  "full_name": "Miguel Renza | Abogado",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-19/670877516_17878417056569889_1161062137297862573_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=102&_nc_map=urlgen_bucketless&ig_cache_key=GEzH-Cchms1ZU4Q-AK1-y7-c6xwQbmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=1yYTLcCJWJEQ7kNvwG4DGX0&_nc_oc=AdrlP9ngTfpb7rWJTCY2wu2rk2X3lrbQs3wlBIn0pgsYr_iXxYffKe4jvXVXYD4UYB0&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQUm4lIRZM2zpepCho03sOdqXT6FBmE444dzlh7bbId0Dg&oe=6B10BA5F",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1788823971,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1280,
+                      "width": 720,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-15/799777786_17901775806569889_938971867057944326_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ig_cache_key=Mzk4MTI1OTA3MDc4NTk5OTc1OTE3OTAxNzc1ODAzNTY5ODg5.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjcyMC5zZHIudmlkZW9fdXNlcl9zZWxlY3RlZF90aHVtYm5haWwuQzMifQ%3D%3D&_nc_ohc=UTSNi_SjgDgQ7kNvwFq5Z4B&_nc_oc=AdogapHBS3aThHhdNkg7W-JXNr_h1xfUm11k3j7ry_bx2PUZKEd9IT2XC9zKWsrjeeQ&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQ4lBAAAAA&oh=00_AQUUDTrMzv5WSTvuhP7IbxrdK48SCQnBhBsFWgi9cPc_pw&oe=6B109DEF"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Puedes perder millones…\nsolo por no saber quién paga qué.\n\nComente CASA y le envío gratis mi Guía Inmobiliaria 2026 con los documentos, costos e impuestos que debe revisar antes de firmar cualquier cosa📃🏠"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 8,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTgxMjU5MDcwNzg1OTk5NzU5Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5N3wzOTgxMjU5MDcwNzg1OTk5NzU5fDY1MDcxOTQ1NjAxfDNkODM2ZDU1MWU2ZDEwMWZjM2RjNzVlMTgzOGJlMjU1ZWExMjM1ODAyYTk3NDFiZGE2OWE4ODI3MzFmNDZiYzAifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 23106,
+                "comment_count": 7537,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3609329479991423283",
+                "id": "3609329479991423283_54029429881",
+                "code": "DIW6gn8O_Ez",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "54029429881",
+                  "username": "inevita.mx",
+                  "id": "54029429881",
+                  "full_name": "Grupo Inévita",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.2885-19/382567671_663501405750167_7749704024843672278_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=106&_nc_map=urlgen_bucketless&ig_cache_key=GPeEzRaXA5l1c1sCANbaODvAeoxrbkULAAAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=upvitgW4gmYQ7kNvwEENpZm&_nc_oc=Ado3wgk8xehS9FVZ9Qx4XCmMhjlZ3vV23VdWUAmsAz46RZxk2U3xRagrUwsg56qsr_A&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQUYsEjkzF1KrkUD1WiZ0CV9BEQUXPaKrCpmqTmSYXq9Ww&oe=6B1091AF",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1744485670,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1280,
+                      "width": 720,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.75761-15/491442298_17984043218805882_6520698458762443876_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ig_cache_key=MzYwOTMyOTQ3OTk5MTQyMzI4Mw%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjcyMC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mcmFtZS5DMyJ9&_nc_ohc=U9nYItyAuCAQ7kNvwGgWDl4&_nc_oc=AdoLy84IqhSsbpImdAN0ji0rMAQrzYvGq6pjx7h2Ddu32BmX4GZKAcYIlPs9RjJ5Rmo&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQQlBAAAAA&oh=00_AQWrYaBb6jpVkMNQGMjddwe2zop8we2EcU4kE47eIFnBvA&oe=6B10A8E2"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "¿Vas a vender tu propiedad por tu cuenta? 😱\n\nAntes de hacerlo, mira esto.\nHay 3 razones por las que podrías estar perdiendo tiempo y dinero.💸\n\nTe lo explico en el video.\n\n#VenderCasa #VenderDepartamento #Inmobiliaria #DueñosInteligentes #AsesorInmobiliario #TipsInmobiliarios #VentaDePropiedades #BienesRaícesMéxico #PropiedadesEnVenta #InversiónInmobiliaria"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzNjA5MzI5NDc5OTkxNDIzMjgzIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5OHwzNjA5MzI5NDc5OTkxNDIzMjgzfDY1MDcxOTQ1NjAxfDU3MjIwYmZiZjEzMjY3MzM2NjRlY2Q5NzNiMTEyMDYwYWM3MzRmOTc0M2VjMzA3OTUxMzZhMTc5M2QwMjNhM2YifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 174,
+                "comment_count": 10,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "4013731356223500620",
+                "id": "4013731356223500620_971374649",
+                "code": "Dezo2cfjHFM",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "971374649",
+                  "username": "gonzalo_vandam",
+                  "id": "971374649",
+                  "full_name": "Gonzalo López-van Dam",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.2885-19/468826677_598599476155011_3378092586941159664_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=108&_nc_map=urlgen_bucketless&ig_cache_key=GDW68RuDkiNNbCACAPAYAldPZeEubkULAAAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDI0LkMzIn0%3D&_nc_ohc=KUw_CuyaDCwQ7kNvwFeiGka&_nc_oc=AdqiuTuw8UF0uemDTrKCoJ8nVbOBD_HcwTsbPdDe4d-2A55EfjeziX1NBL1H0nndSmU&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQVdbBbWh_03lCAP9lHLiT9vEHkoUi6E69e1sdmlslf64g&oe=6B10B6D6",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1792694176,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1136,
+                      "width": 640,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.71878-15/862227730_2700407593748668_4041051068613711778_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=107&_nc_map=urlgen_bucketless&ig_cache_key=NDAxMzczMTM1NjIyMzUwMDYyMDE4NjQzOTI1NTk2MDQ2NjUw.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fdXNlcl9zZWxlY3RlZF90aHVtYm5haWwuQzMifQ%3D%3D&_nc_ohc=kvE8oV5ft1MQ7kNvwFLxUWb&_nc_oc=AdptRFbOTsdabyCHX4CEC_ie6tK-99ar-Sqe7FmBGaWUYT-Nqz_3k9TonU8vev8t6cA&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQ4lBAAAAA&oh=00_AQXE5g2Jf-E_ip0ZIpj0nsOVrnXmG4qLFKme8iRVHLLKGQ&oe=6B10991F"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Publicar viviendas es 100% necesario, pero no es suficiente para diferenciarte de tu competencia.\n\nPara mí, un buen agente inmobiliario tiene que trabajar tres tipos de contenido:\n\n🔵 Contenido de propiedades: enseñar las viviendas que tienes a la venta.\n🔵 Contenido de valor: compartir tu conocimiento y experiencia sobre el mercado inmobiliario.\n🔵 Contenido personal: mostrar quién eres, cómo trabajas y qué hay detrás del negocio.\n\nPorque enseñar casas demuestra que tienes producto, compartir tu experiencia genera confianza y dejar que la gente te conozca ayuda a crear una conexión que va más allá de una operación.\n\nAl final, no se trata solo de conseguir visitas en redes sociales, se trata de que cuando alguien decida comprar o vender una vivienda, piense en ti y no en tu competencia.\n\n#marketinginmobiliario #agenteinmobiliario #redessociales #marcapersonal #contenidoinmobiliario #inmobiliaria"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzA0MDEzNzMxMzU2MjIzNTAwNjIwIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5OHw0MDEzNzMxMzU2MjIzNTAwNjIwfDY1MDcxOTQ1NjAxfDg4OThkOGZkY2ZjZDJjMjdmNmJjOWFjOTZhNjBkZTFhYzNiMGZmYjU0MzQ1ZWQzODM0MjU0YjE2ZTczMmY1MzgifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 1044,
+                "comment_count": 24,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              }
+            ]
+          },
+          "cursor": null
+        },
+        {
+          "node": {
+            "__typename": "XDTTopSerpMediaGridUnit",
+            "items": [
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3814316429655590255",
+                "id": "3814316429655590255_45731490728",
+                "code": "DTvLJVqjsVv",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "45731490728",
+                  "username": "grupo.terra.mexico",
+                  "id": "45731490728",
+                  "full_name": "TERRA®️",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.2885-19/335703165_9310080515732309_5867486038731096936_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=107&_nc_map=urlgen_bucketless&ig_cache_key=GH1sAhRVc-gJeBMhAGiDIQd3f21RbkULAAAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=qS0BuAEvDQIQ7kNvwHuV0n4&_nc_oc=AdrU_OJvFj3M4NgMxuBWCyFRtmQVPJwujkCdHpEH4uumpnARsd8SKYv62e1dmCVDI2s&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQWbFeenF-P-fxcTetbk17mK8UsHXb1o1bN2KdaNRJHhJA&oe=6B10BA92",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1768922069,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1136,
+                      "width": 640,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.71878-15/619415859_2348662592242602_8454588623433869125_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=108&_nc_map=urlgen_bucketless&ig_cache_key=MzgxNDMxNjQyOTY1NTU5MDI1NTE4MDc4Mzk1NzE0NTIyNzI5.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fbmZyYW1lX2NvdmVyX2ZyYW1lLkMzIn0%3D&_nc_ohc=ZKchxO1d-4IQ7kNvwGJ4hBZ&_nc_oc=Adq6d_6oCQcPhXFm9fMZ82fo8XWk65GoN7qXJub5YHAffGXIgozEpE9Qen6oGvpzUvA&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQglBAAAAA&oh=00_AQUJGx_MA86Lk81k6wcnkk2zaFt4-JUHDohTcW5li86jlw&oe=6B10B601"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "ChatGPT ayúdame con esta venta 😅\n\n#queretaro #inmuebles #terrasiempreterra #inmobiliaria #casas"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 8,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzODE0MzE2NDI5NjU1NTkwMjU1Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5OHwzODE0MzE2NDI5NjU1NTkwMjU1fDY1MDcxOTQ1NjAxfDlhOTdkMTQwZGU1MDlkM2E1YzIzMDZlOWQ4NDQzM2IzNDYxNDZkZTQyNDJiNWFiMTE0YWEyMTI2YTY5YTJmYmIifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 1525,
+                "comment_count": 7,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3950688885430010723",
+                "id": "3950688885430010723_56044638183",
+                "code": "DbTqpwSI8Nj",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "56044638183",
+                  "username": "lioncapitalgroup_",
+                  "id": "56044638183",
+                  "full_name": "Lion Capital Group",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.2885-19/472777023_1325391548471357_1179515438192986263_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=100&_nc_map=urlgen_bucketless&ig_cache_key=GD8BLhw9WG-Eb7UEAJcIlawKe14QbkULAAAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=motXbGrKVO4Q7kNvwEDorzO&_nc_oc=AdpmRTTWVjqUx0icF8migNUVCdK-_pbOIi-9O7js7ff0vzQzzJiYxXTqvveeTwPzTzY&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQUfzDF0TROgLoQ6f3KmKJLZO5xWjm0nJTdQegSefVMrKw&oe=6B109B90",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1785179306,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1600,
+                      "width": 900,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-15/755868046_18014384078870184_7190184592774596867_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=107&_nc_map=urlgen_bucketless&ig_cache_key=Mzk1MDY4ODg4NTQzMDAxMDcyMzE4MDE0Mzg0MDc1ODcwMTg0.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjkwMC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mcmFtZS5DMyJ9&_nc_ohc=_9QRwg59vCoQ7kNvwFwqvtr&_nc_oc=AdrPgGRFB401eaty9soVYjdFTCc4HNhbsGqsl0p4n5KXRrOtXGpufkZxRYb4YZ6CBQk&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQQlBAAAAA&oh=00_AQVbP3qH_RBsDc0n22lO4WtNhmFlo9cy7oH57S7tIxiJYA&oe=6B10AE35"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Luz, diseño y una reforma que habla por sí sola.\n\nAcompáñanos en este house tour y descubre una vivienda en Jesús pensada para quienes buscan entrar a vivir sin renunciar a la calidad, el confort y unas excelentes zonas comunes.\n\n¿Qué espacio te ha gustado más?\n\n#LionCapitalGroup #housetours #valencia #Inmobiliaria #realestate"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTUwNjg4ODg1NDMwMDEwNzIzIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5OHwzOTUwNjg4ODg1NDMwMDEwNzIzfDY1MDcxOTQ1NjAxfGEwMzJjYzQ0YjVjMGVjOTAyMzZmODMyZGIxZGM4MmI5Nzg5ZWFjNTlkZjI0NmJiOGM4YTIwMzFkMTQ2OTU0MjcifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 457,
+                "comment_count": 48,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3871673496682260460",
+                "id": "3871673496682260460_67877097222",
+                "code": "DW68ohACmfs",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "67877097222",
+                  "username": "frantiradobuve",
+                  "id": "67877097222",
+                  "full_name": "Fran Tirado | Inversion Inmobiliaria",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-19/573309711_17907500451257223_8522073182282247795_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=107&_nc_map=urlgen_bucketless&ig_cache_key=GA8DLCKHWzbbxp4-AHPu0EtofER2bmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=yAwN5Htma-QQ7kNvwGqZAyl&_nc_oc=Adqs1Fz_CrzOuUfaiIPguNhi-dnFCl3XbqaOWZdv-XAvbp8olMqPnDRKLTCex2IbMRc&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQUShcKSH-jh8GJhUmGm3GK1ngYYPgoY3Y6igCUOibxeug&oe=6B10AC09",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1775759611,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1136,
+                      "width": 640,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.71878-15/669498026_1260046986335302_2107485793249788193_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=103&_nc_map=urlgen_bucketless&ig_cache_key=Mzg3MTY3MzQ5NjY4MjI2MDQ2MA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mcmFtZS5DMyJ9&_nc_ohc=T4M5g-QOIOUQ7kNvwFLrv-W&_nc_oc=AdrN9h_eDAJ13hxfcdDQF8TyFf8ojU8jrIaAbt849hHwj6oWJiCYOipRqs7aupcGVw8&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQQlBAAAAA&oh=00_AQXB9MJX7VbvbujH-4oHeMhXtrE5GOwJHRbsVkwiIYUZLw&oe=6B109D42"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Toda la información relacionada con el sector inmobiliario que necesita saber para poder hacer negocio, te comparto aquí!\nAsí que sígueme!\n\n#inmobiliaria #inversión #redes"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 6,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzODcxNjczNDk2NjgyMjYwNDYwIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5OHwzODcxNjczNDk2NjgyMjYwNDYwfDY1MDcxOTQ1NjAxfGZkZjRkYmM4YmNmMDUxMTJlZTVjYWQ3NzJjMTY1MDNiMGViMWU1YmUzZTAzZDA1MDYxMDk1YmFiYWYzYThhZjYifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 2042,
+                "comment_count": 150,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              }
+            ]
+          },
+          "cursor": null
+        },
+        {
+          "node": {
+            "__typename": "XDTTopSerpMediaGridUnit",
+            "items": [
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3910146541213261430",
+                "id": "3910146541213261430_59234632239",
+                "code": "DZDoY_4vR52",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "59234632239",
+                  "username": "latour.realestate",
+                  "id": "59234632239",
+                  "full_name": "Delfina Latour",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.2885-19/468512063_1641767590022623_2052628055349583142_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=102&_nc_map=urlgen_bucketless&ig_cache_key=GD-t7BvfzQHOLdUFACbdHE9XZnwcbkULAAAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=bN4vP6-8R3cQ7kNvwFrpi0O&_nc_oc=AdoYWpKj_Z6NFXnAI4ncmupoqinNTd9CKqp6Y4GpD6340RIgOd-IrY03sFIRIEU4BJk&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQUfBW3afu3bS5TkcVqeu7X1bUglXtdoAxLtaAd76Khq_A&oe=6B10B768",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1780346150,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1136,
+                      "width": 640,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.71878-15/709266338_934058599664274_8135667018746566373_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=110&_nc_map=urlgen_bucketless&ig_cache_key=MzkxMDE0NjU0MTIxMzI2MTQzMDEwMTk2MTg0MzM5NDI4ODE%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fbmZyYW1lX2NvdmVyX2ZyYW1lLkMzIn0%3D&_nc_ohc=z_geS5Ne7JsQ7kNvwEP2Ekb&_nc_oc=AdrBEqCOUHt_SNUhuoP7R8clfF96vZDw0q954TGnTUAjgl6NtgE8of8JUNkwvMzMLQc&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQglBAAAAA&oh=00_AQXA6VCDmpWJdaFfgUXuK3wsJVltPuTZE6hinHUysiLf6A&oe=6B10B908"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Contáctanos. \n📞+5491154160981\n.\n.\n.\n.\n.\n#inmobiliaria #realestate #realestateargentina #casaenventa #propiedades"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTEwMTQ2NTQxMjEzMjYxNDMwIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5OXwzOTEwMTQ2NTQxMjEzMjYxNDMwfDY1MDcxOTQ1NjAxfGM3OWRhYzc1YzQ2NTdmZDkyMWI0NzhlNGI4ZWM3MTAxM2QxYzVhOGM2NzU0ODY3YzM3OTk4OGE4ZDFkYmI4YzYifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 3,
+                "comment_count": 10,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": true
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3947834452246567316",
+                "id": "3947834452246567316_62220187136",
+                "code": "DbJhoSONJmU",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "62220187136",
+                  "username": "fernandocontinic",
+                  "id": "62220187136",
+                  "full_name": "Fernando Contini | Inversión Inmobiliaria & Mentor",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.75761-19/495452501_17913208908075137_3031069214127184104_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=104&_nc_map=urlgen_bucketless&ig_cache_key=GFUBiB2B0MD196M-AOhYrBVkhRAqbvEnAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=SvA2aCmNUeAQ7kNvwEpJ7ZM&_nc_oc=AdpHne1vkPoJysqY6WB7xS4Qbt8VaZHWuXutPRXDJtxBQwYdXXHzdIMoKZyQAczL8II&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQVFLpSoAnL5v53zl9neKaESe_pTYt-XDgyKPOMPvdJOig&oe=6B10BAB7",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1784838646,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1280,
+                      "width": 720,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/755207973_17960767959075137_4633883314238028912_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=100&_nc_map=urlgen_bucketless&ig_cache_key=Mzk0NzgzNDQ1MjI0NjU2NzMxNjE3OTYwNzY3OTUzMDc1MTM3.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjcyMC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mcmFtZS5DMyJ9&_nc_ohc=Mo-cw-g-RHMQ7kNvwGY8Ub-&_nc_oc=Ado_6oEHvw0TsjH2gRFmk4URzTXftbiQZYme7a7pyGwdUtePE2YJURi2BFiVTOICttI&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQQlBAAAAA&oh=00_AQWDrinjHSyvkK9kwp9LdtWhrSQG49aiDyRqFRNibjG31Q&oe=6B109E4F"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "No todos los inquilinos son iguales. Elegir bien puede ahorrarte meses de problemas y miles de dólares.\n\nComenta AVA y aprende a encontrar tu primer depa rentable en 10 semanas. 🏠📈"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 4,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTQ3ODM0NDUyMjQ2NTY3MzE2Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5OXwzOTQ3ODM0NDUyMjQ2NTY3MzE2fDY1MDcxOTQ1NjAxfDI1NTE3Mjg5Y2Q1YTA5NDA4NmE1NTA4ZjVjMDBiZmZkYTRlZDM4YWJjYTFlOWZlNDIwOGJiYzhjZDYwNTA1MzcifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 1589,
+                "comment_count": 152,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3923962973672179682",
+                "id": "3923962973672179682_72079854696",
+                "code": "DZ0t4jVhAfi",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "72079854696",
+                  "username": "jonathanblum.miami",
+                  "id": "72079854696",
+                  "full_name": "Jonathan Blum | Miami Real Estate",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-19/524459118_17870561097406697_2385765251283310518_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=100&_nc_map=urlgen_bucketless&ig_cache_key=GG6cQh-p2CU_Ln0-ALZXNhDb8BshbmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy44ODQuQzMifQ%3D%3D&_nc_ohc=7rrCroITvZQQ7kNvwGIj8YB&_nc_oc=AdqcqLqe7yxlIhI3NhAqdBgczTA9rH1W5pshW-f95cVj313vQSUpPxxBqqND_x1A6Cs&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQUsS5VSfb_gt5ekz4WmJ625oJbXJkCFm_lynMRcg2F2zw&oe=6B10BBCB",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1781993207,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1280,
+                      "width": 720,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-15/728855848_17914926678406697_5424314337001137536_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=101&_nc_map=urlgen_bucketless&ig_cache_key=MzkyMzk2Mjk3MzY3MjE3OTY4MjE3OTE0OTI2NjcyNDA2Njk3.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjcyMC5zZHIudmlkZW9fZGVmYXVsdF9jb3Zlcl9mcmFtZS5DMyJ9&_nc_ohc=IU-aNhqkh-EQ7kNvwGDr_KT&_nc_oc=AdqnbOOv3IvEoALVBtFbJ0qCeLl4abI86VxRwF675GFqaD-eNJFjCciGhKAX5V-U5qs&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQQlBAAAAA&oh=00_AQUAzxCMOkBi3dya34azW89xJHnBINQ2OJq-5vsPHOOHYA&oe=6B10993D"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "Vender tu casa rápido y al mejor precio no es cuestión de suerte, sino de pura estrategia. \n\n📊 Mientras muchos solo publican en el MLS y esperan sentados, los que venden rápido dominan el precio, el posicionamiento y la negociación. 🔑🛑 \n\nSi tu propiedad lleva meses congelada en el mercado, es hora de cambiar el plan de juego por completo. 📉🚀 \n\nComenta LISTING y analizamos exactamente qué está frenando tu venta hoy mismo. 📈"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 5,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTIzOTYyOTczNjcyMTc5NjgyIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5OXwzOTIzOTYyOTczNjcyMTc5NjgyfDY1MDcxOTQ1NjAxfDhmNTM1MzU1NGRkZTNmYTZmYWI3MjA5MTZmOTExMDQyYzQ0MzA4NTIyMzhhNGVhMzc4ZTY1N2U0NGY2ODUwYjEifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 350,
+                "comment_count": 69,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              }
+            ]
+          },
+          "cursor": null
+        },
+        {
+          "node": {
+            "__typename": "XDTTopSerpMediaGridUnit",
+            "items": [
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3982564007336699459",
+                "id": "3982564007336699459_7693237814",
+                "code": "DdE6N04j2ZD",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "7693237814",
+                  "username": "canaimainmobiliaria",
+                  "id": "7693237814",
+                  "full_name": "Canaima Inmobiliaria",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.2885-19/262531717_3108555142735096_1093533887565961745_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=107&_nc_map=urlgen_bucketless&ig_cache_key=GIXqpQ-4JAzlNgsLABGaOOZGAy0PbkULAAAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=3zn_u0ZUE3MQ7kNvwGZcM_2&_nc_oc=AdqZRCyYM1nocDMRTIwicqBPqSAqTXxRuzuH9mnpBdTWTJeBXxUyPhY513b9IrCdfW8&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQVlmDsnDpVisFeTC2UqBS_-busoxos_FHaReUXQzSVQzg&oe=6B109614",
+                  "is_verified": false,
+                  "is_private": false
+                },
+                "taken_at": 1788978676,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1136,
+                      "width": 640,
+                      "url": "https://scontent-bog2-1.cdninstagram.com/v/t51.71878-15/801439408_1600253888215894_5130939702648118545_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=102&_nc_map=urlgen_bucketless&ig_cache_key=Mzk4MjU2NDAwNzMzNjY5OTQ1OTE4MzM0NjM1OTY3MjYxODE1.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fZmlyc3RfZnJhbWVfdGh1bWJuYWlsLkMzIn0%3D&_nc_ohc=zGnX114zeCUQ7kNvwEfaVxg&_nc_oc=AdqBpFlEnzhpzSVKoX64A8Os5wgDLskzniiEJ4LyvVHm_-IOxmej_2JawFfiMjekB_I&_nc_zt=23&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQolBAAAAA&oh=00_AQUhebM3R6XRjcrGvvPZ9BnjFBpERRpoWxd3OgT0o6ZBBQ&oe=6B10A327"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "¿Qué pasa si decides trabajar con otra inmobiliaria?\n Nada! Eres libre de trabajar con quien tú quieras...\n(Es broma, no secuestramos clientes)\n En Canaima apostamos por un sector inmobiliario profesional, en el que cada cliente pueda decidir libremente con qué agencia trabajar."
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 8,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTgyNTY0MDA3MzM2Njk5NDU5Iiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODQ5OXwzOTgyNTY0MDA3MzM2Njk5NDU5fDY1MDcxOTQ1NjAxfDgyMDJiMGFmZGZkZDIxOGM3NzJhNTI5NTJjZGE5YThmZWQ1MWJjMWMzZDlkNjgyNzZkNDRjZjU1ZmMyYWM0ODMifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 7326,
+                "comment_count": 402,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3981858482187344202",
+                "id": "3981858482187344202_55031240598",
+                "code": "DdCZzFYpxlK",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "55031240598",
+                  "username": "mariaospino_realestate",
+                  "id": "55031240598",
+                  "full_name": "María A. Ospino Real Estate",
+                  "profile_pic_url": "https://scontent-bog2-1.cdninstagram.com/v/t51.82787-19/747762312_18028582607832599_2938791434143169237_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ig_cache_key=GIjykSwXxiR_5gxAANV6EC09r8gobmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy43NzIuQzMifQ%3D%3D&_nc_ohc=M_ragtn1kasQ7kNvwGYr42v&_nc_oc=AdqtBBbZDMUX8n-ldGL_3xHwbIn0dNZeT5iaGKA_DlwRE-foo7ZtlSw0aqWAdLlPok0&_nc_zt=24&_nc_ht=scontent-bog2-1.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQXjf5YaBXdG_objUIJwfsYaStxBXy1wkbO-t28TNqbEdA&oe=6B109372",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1788894704,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 1136,
+                      "width": 640,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.71878-15/800945383_1967146007577004_4893450018410678276_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=109&_nc_map=urlgen_bucketless&ig_cache_key=Mzk4MTg1ODQ4MjE4NzM0NDIwMg%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fZmlyc3RfZnJhbWVfdGh1bWJuYWlsLkMzIn0%3D&_nc_ohc=B7Hp6-WFf7YQ7kNvwEC4MlM&_nc_oc=Adq2CvL5zuFaoCX1DQ_od2Dwsv4gkvkvL2ksX7WWRBIoUDbjQx_jdc28-6cSM6p5CNE&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQolBAAAAA&oh=00_AQWvhlRYIR78FR2YyT-p3Fr1DCuktqTacFGHfku_x32SLQ&oe=6B10AAA9"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "🏘CASA EN CONJUNTO, LA\nCALLEJA ALTA: $1.600.000.000 COP\n\n📐297 mts2\n🛌4 habitaciones \n💻Estudio y estar de TV\n🛁4 baños\n🍽 Cocina amplia\n🚗 4 parqueaderos cubiertos\n🪴🐶Patio y terraza ( 20 mts)\n⚒Remodelada, ( incluida tuberías hidráulica\ny eléctrica)\nAdministración: $1.050.000\nEstrato 6\n\n📍Conjunto con vigilancia inteligente, todero 8 horas, y vigilancia perimetral con motorizados en todo el barrio. Sector muy seguro y tranquilo, rodeado de parques. A pocas cuadras del CC Unicentro. Vías de acceso, Av 19, Calle 127. \n\n🤳 Escríbenos por WhatsApp ‪+ 57 3175104450\n\n#realestatebogota #fincaraizbogota #venta #inmobiliaria #ventainmueblesbogota"
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 9,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTgxODU4NDgyMTg3MzQ0MjAyIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODUwMHwzOTgxODU4NDgyMTg3MzQ0MjAyfDY1MDcxOTQ1NjAxfGZkNTZjZWRkZmUzYTE3OWM5ZTMyMDUzMjc2NDA0ODhiNDJlZTA2NWQ0MmM3ZGU3Yjc4MjlkZmRlMThhNWU2YTEifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 565,
+                "comment_count": 63,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              },
+              {
+                "__typename": "XDTMediaDict",
+                "pk": "3962993322303228171",
+                "id": "3962993322303228171_72756113870",
+                "code": "Db_YW4HIQkL",
+                "media_type": 2,
+                "original_width": 1080,
+                "original_height": 1920,
+                "user": {
+                  "pk": "72756113870",
+                  "username": "nexestates",
+                  "id": "72756113870",
+                  "full_name": "𝐍𝐞𝐱𝐄𝐬𝐭𝐚𝐭𝐞𝐬 | 𝐑𝐞𝐚𝐥 𝐄𝐬𝐭𝐚𝐭𝐞",
+                  "profile_pic_url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-19/651241888_17894757777425871_2063531244440795052_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=103&_nc_map=urlgen_bucketless&ig_cache_key=GKAp0SbPRar4L5M-AKw30Ne7IqMcbmNDAQAB1501500j-ccb7-5&ccb=7-5&_nc_sid=669407&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy4xMDgwLkMzIn0%3D&_nc_ohc=Wnb7R8x_Ul8Q7kNvwEqzq--&_nc_oc=AdqsR2KbGToKFI2lvOf9SJAg5eTISRjUQIhJbjset-S7OqUEY5SS15yZix7NtC5fuvE&_nc_zt=24&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUCFQIAAAA&oh=00_AQUTdEWvFolRTB1JIz7jBKNz3o-Lm0FtgApVx-019uMOgA&oe=6B10BD5F",
+                  "is_verified": true,
+                  "is_private": false
+                },
+                "taken_at": 1786645743,
+                "image_versions2": {
+                  "candidates": [
+                    {
+                      "height": 2096,
+                      "width": 1179,
+                      "url": "https://scontent-bog2-2.cdninstagram.com/v/t51.82787-15/769691886_17918424762425871_8725851531724529053_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=101&_nc_map=urlgen_bucketless&ig_cache_key=Mzk2Mjk5MzMyMjMwMzIyODE3MTE3OTE4NDI0NzU2NDI1ODcx.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjExNzkuc2RyLnZpZGVvX3VzZXJfc2VsZWN0ZWRfdGh1bWJuYWlsLkMzIn0%3D&_nc_ohc=i7Rbb6UtdCcQ7kNvwHb2_eG&_nc_oc=Adq2YPT27CKkiXMAefZpb1tfN524gNqT59R7NO5bw55R69XzDsa4UPgPn7bTRDXwLuE&_nc_zt=23&_nc_ht=scontent-bog2-2.cdninstagram.com&_nc_gid=DdHtK9wKjmr372vTE9T9QA&_nc_ss=7b7a8&_nc_ct=RQosPBUIFQ4lBAAAAA&oh=00_AQVyS-Vv3sl3khy-BuCIeVk-tUqgxN6OBX-oOQfj1nSzFA&oe=6B10AF2B"
+                    }
+                  ]
+                },
+                "caption": {
+                  "text": "¿Quién paga cada gasto al comprar o vender una vivienda?💰🏡\n\nEscrituras, IBI, plusvalía municipal, tasación, impuesto de transmisiones, certificado energético o los honorarios de la inmobiliaria.. Saber quién debe asumir cada coste puede ahorrarte muchos problemas y dinero.\n\nTe explicamos, de forma sencilla, qué paga el comprador y qué paga el vendedor para que llegues a la firma con toda la información clara.\n\nSi estás pensando en vender tu vivienda, comenta “Venta”y te ayudamos durante todo el proceso."
+                },
+                "is_dash_eligible": 1,
+                "number_of_qualities": 7,
+                "has_audio": true,
+                "carousel_media_count": null,
+                "carousel_media": null,
+                "accessibility_caption": null,
+                "organic_tracking_token": "eyJ2ZXJzaW9uIjo2LCJwYXlsb2FkIjp7ImlzX2FuYWx5dGljc190cmFja2VkIjp0cnVlLCJ1dWlkIjoiQWJCckdOVnhhS1NBbnIzMXZ6UkZPMzAzOTYyOTkzMzIyMzAzMjI4MTcxIiwic2VydmVyX3Rva2VuIjoiMTc5NTg3MjkxODUwMHwzOTYyOTkzMzIyMzAzMjI4MTcxfDY1MDcxOTQ1NjAxfGY3YzlmZDA2OGMwZDVlYmI3NTJkM2E3OWY0N2QyNjRiNDI5OTNkOWFlZmU2ODVhNmI3OTQwYmU4MDU1YWI2MzYifSwic2lnbmF0dXJlIjoiIn0=",
+                "like_count": 14842,
+                "comment_count": 288,
+                "view_count": null,
+                "comments_disabled": null,
+                "like_and_view_counts_disabled": false
+              }
+            ]
+          },
+          "cursor": "eJwBjgFx/hsCXAQaVtqC/sSoqrE/sK3QoIWtsT+WhZ3/9qyxP5rtpNqHrbE/2I7O0bSqsT8YTjE3OTU4NzI5MTcwNDl8YWU1YzZkYTliODNlYTkwMmU4ZWEyNmQ1YzkyNDZmM2Q4MzdjNDhjZDkzY2Y4YTk3NmUyOTdmMDMwM2MyNWY3MAAAGvYZ3KXByvK4id5twquIwq7s2K1vtPqX04Dp7plvqKK/s+ry94dsjI61iJuX/8Jr1JWyiauTnvdtsJWz48PN0ItwwPK+xMG2gdpv8MPRk7b/mL1h0PP20JyFh/NphtS9qqKbg7NuvL/M+PmWnb1qns6CkICCo8Bu5sTfw7+C9ZZkmMXj+OPZ0bNv3pX2qK2llu9pxo2eooKn1dNt2J/TgIii+bpr7Pnoi//j0MNsqOak45Ghw8ltxJ+g2Jri2/Rshpn7iKe39MRulOW4iqvMs8JulqSI8sDbsP9t+tmukv7xnfdtGCRmMTVlYTYzMi00YzY2LTQwZGQtYjVlMC1iY2Y1ZWEwYTY1MzgAFAAA7AfZlQ=="
+        }
+      ],
+      "page_info": {
+        "has_next_page": true,
+        "end_cursor": "eJwBjgFx/hsCXAQaVtqC/sSoqrE/sK3QoIWtsT+WhZ3/9qyxP5rtpNqHrbE/2I7O0bSqsT8YTjE3OTU4NzI5MTcwNDl8YWU1YzZkYTliODNlYTkwMmU4ZWEyNmQ1YzkyNDZmM2Q4MzdjNDhjZDkzY2Y4YTk3NmUyOTdmMDMwM2MyNWY3MAAAGvYZ3KXByvK4id5twquIwq7s2K1vtPqX04Dp7plvqKK/s+ry94dsjI61iJuX/8Jr1JWyiauTnvdtsJWz48PN0ItwwPK+xMG2gdpv8MPRk7b/mL1h0PP20JyFh/NphtS9qqKbg7NuvL/M+PmWnb1qns6CkICCo8Bu5sTfw7+C9ZZkmMXj+OPZ0bNv3pX2qK2llu9pxo2eooKn1dNt2J/TgIii+bpr7Pnoi//j0MNsqOak45Ghw8ltxJ+g2Jri2/Rshpn7iKe39MRulOW4iqvMs8JulqSI8sDbsP9t+tmukv7xnfdtGCRmMTVlYTYzMi00YzY2LTQwZGQtYjVlMC1iY2Y1ZWEwYTY1MzgAFAAA7AfZlQ=="
+      }
+    }
+  },
+  "extensions": {
+    "server_metadata": {
+      "request_start_time_ms": 1795872916853,
+      "time_at_flush_ms": 1795872919064
+    },
+    "is_final": true
+  }
+}

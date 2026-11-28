@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getUser } from '@/lib/auth/get-user'
 import type { VideoRef } from '@/lib/video-refs/repo'
+import { calcularEstadoRadar } from '@/lib/video-refs/estado-radar'
+import { leerCorridas } from '@/lib/video-refs/corridas'
 
 export const dynamic = 'force-dynamic'
 
@@ -15,17 +17,47 @@ function admin() {
   )
 }
 
+const BUCKET = 'video-refs'
+
 // GET: referencias de video, la más reciente primero.
-export async function GET() {
+// Sin ?archivo: las del radar visibles. Con ?archivo=1: las de OpenClaw (archivo anterior).
+export async function GET(req: Request) {
   const user = await getUser()
   if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
 
-  const { data, error } = await admin()
-    .from('video_refs')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(200)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const archivo = new URL(req.url).searchParams.get('archivo') === '1'
+  const db = admin()
 
-  return NextResponse.json({ refs: (data ?? []) as VideoRef[] })
+  let q = db.from('video_refs').select('*').eq('fuente', archivo ? 'openclaw' : 'radar')
+  if (!archivo) q = q.eq('oculta', false)
+  const { data, error } = await q.order('created_at', { ascending: false }).limit(200)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const filas = (data ?? []) as VideoRef[]
+
+  // URLs firmadas (1 h) de video y portada, en un solo llamado.
+  const paths = [...new Set(filas.flatMap((r) => [r.video_storage_path, r.portada_storage_path]).filter((p): p is string => !!p))]
+  const firmas = new Map<string, string>()
+  if (paths.length > 0) {
+    const { data: s } = await db.storage.from(BUCKET).createSignedUrls(paths, 3600)
+    for (const x of s ?? []) if (x.path && x.signedUrl) firmas.set(x.path, x.signedUrl)
+  }
+  const refs = filas.map((r) => ({
+    ...r,
+    video_url: r.video_storage_path ? firmas.get(r.video_storage_path) ?? null : null,
+    portada_url: (r.portada_storage_path ? firmas.get(r.portada_storage_path) : null) ?? r.thumbnail_url,
+  }))
+
+  // Si no se pueden leer las corridas, radar=null (la pantalla esconde el aviso) en vez de un
+  // "sin corridas" falso; la lista de referencias se sirve igual.
+  let radar: ReturnType<typeof calcularEstadoRadar> | null = null
+  if (!archivo) {
+    try {
+      const { ultima, ultimaOk } = await leerCorridas(db)
+      radar = calcularEstadoRadar(ultimaOk, ultima, new Date())
+    } catch (e) {
+      console.error('[video-refs] no se pudo calcular el estado del radar:', e instanceof Error ? e.message : e)
+    }
+  }
+
+  return NextResponse.json({ refs, radar })
 }

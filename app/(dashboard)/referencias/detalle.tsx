@@ -5,7 +5,7 @@ import { Check, Copy, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import type { VideoRef } from '@/lib/video-refs/repo'
+import type { VideoRefConUrls as VideoRef } from '@/lib/video-refs/repo'
 import { MultBadge, compacto, fechaCorta } from './grilla'
 
 const esHttp = (url: string) => /^https?:\/\//i.test(url)
@@ -21,8 +21,33 @@ function Bloque({ titulo, texto }: { titulo: string; texto: string | null }) {
 }
 
 export default function Detalle({
-  ref_: r, onClose, onChanged,
-}: { ref_: VideoRef | null; onClose: () => void; onChanged: () => void }) {
+  ref_: r, onClose, onChanged, permitirDescartar = true,
+}: { ref_: VideoRef | null; onClose: () => void; onChanged: () => void; permitirDescartar?: boolean }) {
+  const [descartando, setDescartando] = useState(false)
+  const [motivo, setMotivo] = useState('')
+  const [ocupado, setOcupado] = useState(false)
+
+  async function noSirve() {
+    if (!r) return
+    setOcupado(true)
+    setErrorLocal(null)
+    try {
+      const res = await fetch(`/api/video-refs/${r.id}/no-sirve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ motivo: motivo.trim() || undefined }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(d.error || 'No se pudo marcar como "No sirve"')
+      setDescartando(false); setMotivo('')
+      onClose(); onChanged()
+    } catch (e) {
+      setErrorLocal(e instanceof Error ? e.message : 'No se pudo marcar como "No sirve"')
+    } finally {
+      setOcupado(false)
+    }
+  }
+
   const [enviando, setEnviando] = useState(false)
   const [errorLocal, setErrorLocal] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -72,16 +97,28 @@ export default function Detalle({
 
             <div className="grid gap-5 md:grid-cols-[240px_1fr]">
               <div className="space-y-3">
-                <div className={cn('relative aspect-[9/14] w-full rounded-lg overflow-hidden bg-muted', !r.thumbnail_url && 'bg-slate-300')}>
-                  {r.thumbnail_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={r.thumbnail_url} alt="" className="absolute inset-0 size-full object-cover" />
+                <div className={cn('relative aspect-[9/14] w-full rounded-lg overflow-hidden bg-muted', !r.portada_url && !r.video_url && 'bg-slate-300')}>
+                  {r.video_url ? (
+                    <video
+                      key={r.id} src={r.video_url} poster={r.portada_url ?? undefined}
+                      controls playsInline preload="metadata" className="absolute inset-0 size-full object-contain bg-black"
+                    />
+                  ) : (
+                    r.portada_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={r.portada_url} alt="" className="absolute inset-0 size-full object-cover" />
+                    )
                   )}
-                  <MultBadge m={r.multiplicador} className="absolute top-2 left-2" />
+                  {!r.video_url && <MultBadge m={r.multiplicador} className="absolute top-2 left-2" />}
                 </div>
-                {(r.vistas !== null || r.likes !== null) && (
+                {r.multiplicador !== null && r.baseline_cuenta && r.cuenta && (
                   <p className="text-xs text-muted-foreground">
-                    {[r.vistas !== null && `${compacto(r.vistas)} vistas`, r.likes !== null && `${compacto(r.likes)} likes`]
+                    ×{String(Number.isInteger(r.multiplicador) ? r.multiplicador : r.multiplicador.toFixed(1)).replace('.', ',')} sobre la base de {r.cuenta} ({r.baseline_cuenta})
+                  </p>
+                )}
+                {(r.vistas !== null || r.likes !== null || r.comentarios !== null) && (
+                  <p className="text-xs text-muted-foreground">
+                    {[r.vistas !== null && `${compacto(r.vistas)} vistas`, r.likes !== null && `${compacto(r.likes)} likes`, r.comentarios !== null && `${compacto(r.comentarios)} comentarios`]
                       .filter(Boolean).join(' · ')}
                   </p>
                 )}
@@ -90,14 +127,16 @@ export default function Detalle({
                     href={r.url_video} target="_blank" rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
                   >
-                    <ExternalLink className="size-3.5" /> Ver original
+                    <ExternalLink className="size-3.5" /> {r.video_url ? 'Ver original en Instagram' : 'Ver en Instagram'}
                   </a>
                 )}
               </div>
 
               <div className="space-y-4 min-w-0">
-                <Bloque titulo="Por qué está acá" texto={r.por_que} />
+                <Bloque titulo="Por qué funcionó" texto={r.por_que} />
                 <Bloque titulo="El gancho" texto={r.gancho} />
+                <Bloque titulo="El formato" texto={r.formato} />
+                <Bloque titulo="Qué dicen los comentarios" texto={r.comentarios_analisis} />
                 <Bloque titulo="Cómo lo haría Diego" texto={r.adaptacion_diego} />
 
                 <div className="border-t pt-4 space-y-3">
@@ -131,6 +170,27 @@ export default function Detalle({
                       {/* Reintento: mejora futura (requiere volver a sin_usar en el servidor). */}
                       <Button disabled variant="outline">Volver a intentar (próximamente)</Button>
                     </>
+                  )}
+                  {permitirDescartar && (
+                    descartando ? (
+                      <div className="space-y-2 rounded-lg border p-3">
+                        <label className="text-sm font-medium" htmlFor="motivo-no-sirve">¿Por qué no sirve? (opcional)</label>
+                        <textarea
+                          id="motivo-no-sirve" value={motivo} onChange={(e) => setMotivo(e.target.value)} maxLength={300} rows={2}
+                          placeholder="Ej: es de otro país y no aplica acá"
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <Button variant="destructive" size="sm" onClick={noSirve} disabled={ocupado}>
+                            {ocupado ? 'Guardando…' : 'Confirmar: no sirve'}
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={() => { setDescartando(false); setMotivo('') }} disabled={ocupado}>Cancelar</Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">La tarjeta se oculta y el radar aprende de esto.</p>
+                      </div>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => setDescartando(true)}>No sirve</Button>
+                    )
                   )}
                   {errorLocal && <p role="alert" className="text-sm text-red-600">{errorLocal}</p>}
                 </div>

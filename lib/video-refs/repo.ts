@@ -27,7 +27,25 @@ export type VideoRef = {
   guion_error: string | null
   avisado_at: string | null
   creado_por: string | null
+  // Radar de Instagram (migración 20261128000001)
+  fuente: 'radar' | 'openclaw'
+  ig_shortcode: string | null
+  video_storage_path: string | null
+  portada_storage_path: string | null
+  formato: string | null
+  comentarios_analisis: string | null
+  transcripcion: string | null
+  categoria: 'inmobiliario_ar' | 'inmobiliario_otro_pais' | 'formato_otro_rubro' | null
+  tema_categoria: 'noticias' | 'impuestos' | 'datos_mercado' | 'creditos' | 'gobierno_normativa' | 'inmobiliarias' | 'otro' | null
+  puntaje: number | null
+  oculta: boolean
+  no_sirve_motivo: string | null
+  no_sirve_at: string | null
+  radar_run_id: string | null
 }
+
+// Lo que devuelve GET /api/video-refs: la fila + URLs firmadas.
+export type VideoRefConUrls = VideoRef & { video_url: string | null; portada_url: string | null }
 
 // service_role: la RLS de video_refs solo da SELECT a `authenticated`.
 function admin() {
