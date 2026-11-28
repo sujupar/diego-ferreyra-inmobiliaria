@@ -6,6 +6,7 @@ import { mkdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from './db'
 
 const execFileP = promisify(execFile)
@@ -17,6 +18,8 @@ const DIAS_RETENCION = 120
 
 const ytdlp = () => process.env.RADAR_YTDLP_BIN ?? '/opt/homebrew/bin/yt-dlp'
 const ffmpeg = () => process.env.RADAR_FFMPEG_BIN ?? '/opt/homebrew/bin/ffmpeg'
+
+export type Correr = (bin: string, args: string[]) => Promise<void>
 
 async function correr(bin: string, args: string[]): Promise<void> {
   try {
@@ -39,9 +42,11 @@ async function correr(bin: string, args: string[]): Promise<void> {
 export async function bajarYSubir(
   shortcode: string,
   cookiesPath: string,
+  deps: { correr?: Correr; sb?: SupabaseClient } = {},
 ): Promise<{ videoPath: string; portadaPath: string | null; mp4Local: string }> {
   if (!RE_SHORTCODE.test(shortcode)) throw new Error(`shortcode inválido: ${JSON.stringify(shortcode)}`)
 
+  const run = deps.correr ?? correr
   const dir = join(homedir(), '.radar-referencias', 'tmp', `medios-${shortcode}`)
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true, mode: 0o700 })
@@ -50,14 +55,14 @@ export async function bajarYSubir(
   const portada = join(dir, 'portada.jpg')
 
   try {
-    await correr(ytdlp(), [
+    await run(ytdlp(), [
       '--cookies', cookiesPath,
       '-f', 'best[ext=mp4]/best',
       '--no-playlist',
       '-o', crudo,
       `https://www.instagram.com/reel/${shortcode}/`,
     ])
-    await correr(ffmpeg(), [
+    await run(ffmpeg(), [
       '-y', '-i', crudo,
       '-vf', "scale='if(gt(iw,ih),1280,-2)':'if(gt(iw,ih),-2,1280)'",
       '-c:v', 'libx264', '-crf', '28', '-preset', 'veryfast',
@@ -65,40 +70,40 @@ export async function bajarYSubir(
       '-movflags', '+faststart',
       comprimido,
     ])
+    rmSync(crudo, { force: true })
+
+    // La portada es accesoria: si falla, el video igual sirve.
+    let hayPortada = true
+    try {
+      await run(ffmpeg(), ['-y', '-ss', '1', '-i', comprimido, '-frames:v', '1', '-q:v', '3', portada])
+      if (statSync(portada).size === 0) hayPortada = false
+    } catch {
+      hayPortada = false
+    }
+
+    const sb = deps.sb ?? supabaseAdmin()
+    const videoPath = `radar/${shortcode}.mp4`
+    const { error: errV } = await sb.storage
+      .from(BUCKET)
+      .upload(videoPath, readFileSync(comprimido), { contentType: 'video/mp4', upsert: true })
+    if (errV) throw new Error(`no se pudo subir el video: ${errV.message}`)
+
+    let portadaPath: string | null = null
+    if (hayPortada) {
+      const ruta = `radar/${shortcode}.jpg`
+      const { error: errP } = await sb.storage
+        .from(BUCKET)
+        .upload(ruta, readFileSync(portada), { contentType: 'image/jpeg', upsert: true })
+      if (errP) console.warn(`[medios] portada no subida (${shortcode}): ${errP.message}`)
+      else portadaPath = ruta
+    }
+    rmSync(portada, { force: true })
+    return { videoPath, portadaPath, mp4Local: comprimido }
   } catch (e) {
+    // Cualquier fallo: no dejar el mp4/jpg en disco (el orquestador nunca recibe mp4Local).
     rmSync(dir, { recursive: true, force: true })
     throw e
   }
-  rmSync(crudo, { force: true })
-
-  // La portada es accesoria: si falla, el video igual sirve.
-  let hayPortada = true
-  try {
-    await correr(ffmpeg(), ['-y', '-ss', '1', '-i', comprimido, '-frames:v', '1', '-q:v', '3', portada])
-    if (statSync(portada).size === 0) hayPortada = false
-  } catch {
-    hayPortada = false
-  }
-
-  const sb = supabaseAdmin()
-  const videoPath = `radar/${shortcode}.mp4`
-  const { error: errV } = await sb.storage
-    .from(BUCKET)
-    .upload(videoPath, readFileSync(comprimido), { contentType: 'video/mp4', upsert: true })
-  if (errV) throw new Error(`no se pudo subir el video: ${errV.message}`)
-
-  let portadaPath: string | null = null
-  if (hayPortada) {
-    const ruta = `radar/${shortcode}.jpg`
-    const { error: errP } = await sb.storage
-      .from(BUCKET)
-      .upload(ruta, readFileSync(portada), { contentType: 'image/jpeg', upsert: true })
-    if (errP) console.warn(`[medios] portada no subida (${shortcode}): ${errP.message}`)
-    else portadaPath = ruta
-  }
-  rmSync(portada, { force: true })
-
-  return { videoPath, portadaPath, mp4Local: comprimido }
 }
 
 // ---------- retención ----------
@@ -126,8 +131,7 @@ export function filasParaLimpiar(filas: FilaRetencion[], ahora: Date = new Date(
 }
 
 /** Borra del Storage los videos que ya no sirven y anula la columna. Devuelve cuántos. */
-export async function limpiarRetencion(): Promise<number> {
-  const sb = supabaseAdmin()
+export async function limpiarRetencion(sb: SupabaseClient = supabaseAdmin()): Promise<number> {
   const { data, error } = await sb
     .from('video_refs')
     .select('id, video_storage_path, oculta, no_sirve_at, estado_uso, created_at')
@@ -139,10 +143,8 @@ export async function limpiarRetencion(): Promise<number> {
   let borradas = 0
   for (let i = 0; i < aBorrar.length; i += 50) {
     const lote = aBorrar.slice(i, i + 50)
-    const rutas = lote.flatMap((f) => {
-      const v = f.video_storage_path as string
-      return [v, v.replace(/\.mp4$/, '.jpg')]
-    })
+    // Solo el video: la portada (jpg) y la fila se conservan.
+    const rutas = lote.map((f) => f.video_storage_path as string)
     const { error: errR } = await sb.storage.from(BUCKET).remove(rutas)
     if (errR) throw new Error(`retención: no se pudo borrar del Storage: ${errR.message}`)
     const { error: errU } = await sb
