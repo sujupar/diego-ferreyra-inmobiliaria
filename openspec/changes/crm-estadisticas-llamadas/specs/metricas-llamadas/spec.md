@@ -93,7 +93,7 @@ agendó", "Atendió · volver a llamar", "Atendió · no le interesa", "Número 
 
 #### Scenario: Reparto
 - **WHEN** hubo 10 llamadas, 6 sin atender y 4 que agendaron
-- **THEN** se lee "No atendió 6 · 60 %", "Atendió y agendó 4 · 40 %" y los otros tres en 0, sobre "10 llamadas", con "Pocos casos"
+- **THEN** se lee "No atendió 6 · 60%", "Atendió y agendó 4 · 40%" y los otros tres en 0, sobre "10 llamadas", con "Pocos casos"
 
 ### Requirement: Solicitudes sin intento registrado
 La sección SHALL mostrar cuántas solicitudes no tienen ninguna llamada ni WhatsApp marcado en
