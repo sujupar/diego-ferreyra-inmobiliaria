@@ -44,6 +44,9 @@ export type VideoRef = {
   radar_run_id: string | null
 }
 
+// Lo que devuelve GET /api/video-refs: la fila + URLs firmadas.
+export type VideoRefConUrls = VideoRef & { video_url: string | null; portada_url: string | null }
+
 // service_role: la RLS de video_refs solo da SELECT a `authenticated`.
 function admin() {
   return createClient(
