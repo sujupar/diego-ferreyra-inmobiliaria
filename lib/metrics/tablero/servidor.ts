@@ -22,6 +22,7 @@ import { cartera, resumenPropiedades, type PropiedadRow } from './propiedades'
 import { elegirMejorMes, mesesCerradosDelAnio, nombreMes, rangoDelMes, tramoEnMes, type CandidatoMes } from './comparacion'
 import { embudoGeneral } from './embudo-general'
 import { nombresDeAnuncios } from './meta-vivo'
+import { seccionLlamadas } from './llamadas'
 import { embudoDeCampania } from '../panel/embudo'
 
 /** Contra qué se compara: los modos del panel, un mes elegido o "el mejor mes". */
@@ -112,7 +113,11 @@ export async function armarTablero(p: ParametrosTablero, ahora = new Date()) {
     } else motivoSinComparar = 'Todavía no hay un mes cerrado este año con datos completos de Meta.'
   } else if (p.comparar === 'mes' && !comp) motivoSinComparar = 'Elegí un mes para comparar.'
 
-  const x = await cargarExtras(d, comp && comp.desde < d.total.desde ? comp.desde : d.total.desde)
+  // La sección de llamadas lee en paralelo con los extras (no suma tiempo) y nunca tira.
+  const [x, llamadas] = await Promise.all([
+    cargarExtras(d, comp && comp.desde < d.total.desde ? comp.desde : d.total.desde),
+    seccionLlamadas(d.sb, todas, d.personas, d.deals, p.rango),
+  ])
   const experimento = await getExperiment('tasacion')
 
   const actual = calcularPeriodo(d, p.rango, 'eventos')
@@ -209,6 +214,7 @@ export async function armarTablero(p: ParametrosTablero, ahora = new Date()) {
     comparacion,
     inversionMeta: { actual: inversionMeta(p.rango), anterior: comp ? inversionMeta(comp) : null },
     tasacion,
+    llamadas,
     campanias,
     registros: { actual: regAct, anterior: regAnt ? { total: regAnt.total, personas: regAnt.personas, porPropiedad: regAnt.porPropiedad.map(r => ({ propiedadId: r.propiedadId, total: r.total })) } : null },
     consultas: { actual: consAct, anterior: consAnt },

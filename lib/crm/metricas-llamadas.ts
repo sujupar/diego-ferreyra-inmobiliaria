@@ -76,19 +76,21 @@ export function mediana(xs: readonly number[]): number | null {
 const promedio = (xs: readonly number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null)
 
 /**
- * Los intentos de una solicitud: los ligados a su proceso, o los de su contacto desde que la
- * solicitud se creó. Sin anulados; por la hora en que ocurrieron y, a igual hora, por cuándo
- * se cargaron.
+ * Los intentos de una solicitud: ocurridos desde que se creó, sin anular, ligados a su proceso
+ * o, sin proceso, de su contacto. Los de otro proceso no (la ficha numera por proceso); una
+ * hora corregida antes del registro tampoco. Por la hora en que ocurrieron y, a igual hora,
+ * por cuándo se cargaron.
  */
 export function intentosDeSolicitud(s: SolicitudMedida, intentos: readonly IntentoMedido[]): IntentoMedido[] {
   const desde = Date.parse(s.creadoEn)
   return intentos
-    .filter((i) => !i.voided_at && (i.deal_id === s.dealId || (!!s.contactId && i.contact_id === s.contactId && Date.parse(i.occurred_at) >= desde)))
+    .filter((i) => !i.voided_at && Date.parse(i.occurred_at) >= desde &&
+      (i.deal_id === s.dealId || (i.deal_id == null && !!s.contactId && i.contact_id === s.contactId)))
     .sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at) || Date.parse(a.created_at) - Date.parse(b.created_at))
 }
 
 function tiempo(pares: { desde: string; hasta: string }[], sinCaso: number): Tiempo {
-  const reloj = pares.map((p) => Math.max(0, (Date.parse(p.hasta) - Date.parse(p.desde)) / 60_000))
+  const reloj = pares.map((p) => (Date.parse(p.hasta) - Date.parse(p.desde)) / 60_000)
   const habiles = pares.map((p) => minutosHabilesEntre(new Date(p.desde), new Date(p.hasta)))
   return {
     n: pares.length, sinCaso,
