@@ -52,7 +52,7 @@ const MUESTRAS: Record<string, string> = {
  * Lee una cuenta con el cliente real, guarda la primera respuesta cruda de cada tipo
  * (saneada) en radar/instagram/fixtures/ e imprime un resumen de lo parseado.
  */
-async function capturar(usuario: string, guardarEnRepo: boolean): Promise<void> {
+async function capturar(usuario: string, guardarEnRepo: boolean, nReels: number): Promise<void> {
   // Por defecto las muestras van FUERA del repo: las pruebas están fijadas a las muestras
   // guardadas, y pisarlas con datos nuevos (más vistas, otros reels) las rompería.
   const destino = guardarEnRepo ? DIR_FIXTURES : join(RUTA_BASE, 'tmp', 'muestras')
@@ -77,7 +77,7 @@ async function capturar(usuario: string, guardarEnRepo: boolean): Promise<void> 
     console.log(`Leyendo @${usuario}…`)
     const perfil = await cliente.perfil(usuario)
     console.log(`  perfil: @${perfil.usuario} (id ${perfil.igUserId}), ${perfil.seguidores ?? '?'} seguidores`)
-    const reels = await cliente.reelsDeCuenta(perfil, 12)
+    const reels = await cliente.reelsDeCuenta(perfil, nReels)
     const primero = reels[0]
     console.log(`  reels: ${reels.length}; el primero ${primero?.shortcode ?? '-'} con ${primero?.vistas ?? '?'} vistas (${primero?.publicadoAt ?? '-'})`)
     const cuentas = await cliente.buscarCuentas('inmobiliaria', 10)
@@ -108,8 +108,10 @@ async function main(): Promise<void> {
   const [comando, arg, ...resto] = process.argv.slice(2)
   if (comando === 'login') return login()
   if (comando === 'capturar') {
-    if (!arg) throw new Error('Uso: node --import tsx radar/cli.ts capturar <usuario> [--guardar]')
-    return capturar(arg.replace(/^@/, ''), resto.includes('--guardar'))
+    if (!arg) throw new Error('Uso: node --import tsx radar/cli.ts capturar <usuario> [--reels=N] [--guardar]')
+    const nReels = Number(resto.find((x) => x.startsWith('--reels='))?.slice('--reels='.length) ?? 12)
+    if (!Number.isInteger(nReels) || nReels < 1 || nReels > 48) throw new Error('--reels=N tiene que ser un entero entre 1 y 48')
+    return capturar(arg.replace(/^@/, ''), resto.includes('--guardar'), nReels)
   }
   console.log('Comandos: login | capturar <usuario>')
   process.exitCode = 1

@@ -25,14 +25,22 @@ import {
   shortcodeAPk,
   type ReelDePestana,
 } from './parsers'
+import { cruzarReels } from './cruce'
 
 const IG = 'https://www.instagram.com'
 const IG_APP_ID = '936619743392459'
 const ASBD_ID = '359341'
 /** Cuánto se espera la respuesta GraphQL de una página antes de darla por perdida. */
 const ESPERA_RESPUESTA_MS = 20_000
+/** Cuánto se espera la página siguiente después de un scroll. */
+const ESPERA_SCROLL_MS = 10_000
 /** Tope de scrolls por página: el radar mira, no recorre cuentas enteras. */
 const MAX_SCROLLS = 4
+/**
+ * La grilla mezcla reels con carruseles y fotos: para fechar 24 reels puede hacer falta
+ * recorrer ~50–60 publicaciones (en la corrida en vivo con 4 scrolls quedaron 4 sin fecha).
+ */
+const MAX_SCROLLS_GRILLA = 6
 /** Reels de la pestaña sin fecha en la grilla que se completan con media/info. */
 const MAX_COMPLETAR = 4
 
@@ -78,6 +86,7 @@ export class InstagramCliente {
     prefijos: string[],
     seguir: (leidas: Array<{ nombre: string; json: unknown }>) => boolean = () => false,
     requeridos: string[] = prefijos,
+    maxScrolls = MAX_SCROLLS,
   ): Promise<Array<{ nombre: string; json: unknown }>> {
     const leidas: Array<{ nombre: string; json: unknown }> = []
     const pendientes: Array<Promise<void>> = []
@@ -91,7 +100,11 @@ export class InstagramCliente {
       pendientes.push(
         res.text().then(
           (cuerpo) => {
-            const tipo = detectarBloqueo({ url: res.url(), status: res.status(), cuerpo })
+            // En GraphQL un 401/403 pelado (sin require_login en el cuerpo) también es sesión caída:
+            // tratarlo como error genérico haría que el que llama siga consultando.
+            const tipo =
+              detectarBloqueo({ url: res.url(), status: res.status(), cuerpo }) ??
+              (res.status() === 401 || res.status() === 403 ? 'login' : null)
             if (tipo) error ??= new BloqueoInstagram(tipo, `Instagram frenó la lectura (${tipo}) en ${nombre}`)
             else if (res.status() !== 200) error ??= new Error(`forma inesperada: ${nombre} (HTTP ${res.status()})`)
             else {
@@ -115,18 +128,30 @@ export class InstagramCliente {
       this.verificarUrl()
       const limite = Date.now() + ESPERA_RESPUESTA_MS
       const faltaAlguno = () => requeridos.some((p) => !leidas.some((l) => l.nombre.startsWith(p)))
-      while (faltaAlguno() && !error && Date.now() < limite) await pausa(500, 500)
+      while (faltaAlguno() && !error && Date.now() < limite) {
+        // Una redirección del lado del cliente a /challenge o /accounts/login pasa DURANTE la espera.
+        this.verificarUrl()
+        await pausa(500, 500)
+      }
       await Promise.all(pendientes)
       if (error) throw error
+      this.verificarUrl()
       if (faltaAlguno()) throw new Error(`forma inesperada: ${url} no trajo ${requeridos.join('/')}`)
-      for (let i = 0; i < MAX_SCROLLS && seguir(leidas); i++) {
+      for (let i = 0; i < maxScrolls && seguir(leidas); i++) {
         const antes = leidas.length
         await this.page.mouse.wheel(0, 2500)
-        await pausaCorta()
+        // Se espera la página siguiente hasta ESPERA_SCROLL_MS: una pausa fija cortaba la
+        // paginación cuando la respuesta tardaba más que la pausa.
+        const limiteScroll = Date.now() + ESPERA_SCROLL_MS
+        while (leidas.length === antes && !error && Date.now() < limiteScroll) {
+          this.verificarUrl()
+          await pausa(500, 500)
+        }
         await Promise.all(pendientes)
         if (error) throw error
         this.verificarUrl()
         if (leidas.length === antes) break // no cargó nada más
+        await pausaCorta()
       }
       await pausaCorta()
       await Promise.all(pendientes)
@@ -243,12 +268,15 @@ export class InstagramCliente {
     }
     const faltan = () => elegidos.filter((r) => !detalle.has(r.shortcode)).length
     if (this.grillaCache?.usuario === usuario) this.grillaCache.respuestas.forEach(sumarGrilla)
+    let paginasGrilla = 0
     if (faltan() > MAX_COMPLETAR) {
       let grillaHayMas = true
       let vistas = 0
+      paginasGrilla = 0
       const alDia = (leidas: Array<{ nombre: string; json: unknown }>) => {
         for (; vistas < leidas.length; vistas++) {
           sumarGrilla(leidas[vistas].json)
+          paginasGrilla++
           grillaHayMas = haySiguientePaginaGrilla(leidas[vistas].json)
         }
       }
@@ -256,7 +284,7 @@ export class InstagramCliente {
         await this.navegarYLeer(`${IG}/${encodeURIComponent(usuario)}/`, ['PolarisProfilePosts'], (leidas) => {
           alDia(leidas)
           return grillaHayMas && faltan() > MAX_COMPLETAR
-        }),
+        }, undefined, MAX_SCROLLS_GRILLA),
       )
     }
     let completados = 0
@@ -267,21 +295,13 @@ export class InstagramCliente {
       if (info) detalle.set(r.shortcode, info)
     }
 
-    const out: ReelCrudo[] = []
-    for (const r of elegidos) {
-      const d = detalle.get(r.shortcode)
-      if (!d) continue
-      out.push({
-        ...d,
-        cuenta: usuario,
-        vistas: r.vistas ?? d.vistas,
-        likes: r.likes ?? d.likes,
-        comentarios: r.comentarios ?? d.comentarios,
-        urlPortada: d.urlPortada ?? r.urlPortada,
-        esReel: true,
-      })
+    const { reels, sinFecha } = cruzarReels(elegidos, detalle, usuario)
+    if (reels.length < n) {
+      console.warn(
+        `[radar] @${usuario}: ${reels.length} de ${n} reels pedidos (pestaña Reels: ${pestana.length}; páginas de grilla leídas: ${paginasGrilla}; sin fecha, descartados: ${sinFecha.length})`,
+      )
     }
-    return out
+    return reels
   }
 
   /** Cuentas que publican sobre `termino` (autores de la búsqueda por palabra de la web). */

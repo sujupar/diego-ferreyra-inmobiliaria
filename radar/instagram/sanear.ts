@@ -4,7 +4,7 @@
 // Claves sobre la cuenta que mira o su relación con la cuenta mirada (likes, guardados,
 // amigos en común, "le gustó a X y otros" — eso sale del círculo social de Julian).
 const CLAVE_PRIVADA =
-  /viewer|friendship_status|has_liked|has_disliked|saved_collection|mutual_followers|top_likers|social_context|csrf|sessionid|ds_user|fbid_v2|^av$|^__user$/i
+  /viewer|friendship_status|has_liked|has_disliked|saved_collection|mutual_followers|top_likers|social_context|csrf|sessionid|ds_user|fbid_v2|^av$|^__user$|rank_token/i
 
 // Claves pesadas que no aportan a las pruebas (manifiestos de video, prefetch).
 const CLAVE_PESADA =

@@ -28,7 +28,7 @@ node --import tsx radar/cli.ts login
 
 # 2. Leer una cuenta con el cliente real, imprimir un resumen y guardar muestras saneadas
 #    (en ~/.radar-referencias/tmp/muestras/, o en el repo con --guardar).
-node --import tsx radar/cli.ts capturar <usuario> [--guardar]
+node --import tsx radar/cli.ts capturar <usuario> [--reels=N] [--guardar]
 ```
 
 ## Cómo lee Instagram (verificado en vivo el 2026-11-28)
