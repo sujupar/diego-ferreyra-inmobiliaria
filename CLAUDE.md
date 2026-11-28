@@ -2777,6 +2777,17 @@ Change archivado en `openspec/changes/archive/2026-11-27-crm-inicio/` (auditorí
 - **Trampa de la hoja del celular (`HojaAgregar`):** al abrirla directo en una vista desde `onOpenAutoFocus`, `flushSync` no llega a dibujarla y el foco quedaba en la página. Se reintenta en el cuadro siguiente. **happy-dom no lo reproduce:** solo se ve en el navegador real.
 - **Teléfonos:** hay guardados como `1155550142` y como `+5491155550142`. Para mostrar, usar `telVisible` (de `components/inicio/Inicio.tsx`), que normaliza los dos.
 
+## CRM — Estadísticas de llamadas en el Tablero (PR #105, 2026-11-28)
+
+- **Dónde:** sección **5** del Tablero de `/metrics` ("Llamadas a las solicitudes"), al final — NO se renumeraron las secciones 1-4 que aprobó el dueño. Solo admin y dueño (`metrics.view`): **la coordinación NO ve Métricas**.
+- **Población:** las MISMAS personas de tasación que el Tablero llama "Solicitudes" (`armarPersonas`: sin pruebas, colegas ni repetidas), creadas desde `INICIO_MEDICION_LLAMADAS` (26/11/2026 21:04:52 AR). Reglas puras en `lib/crm/metricas-llamadas.ts`; armado en `lib/metrics/tablero/llamadas.ts` (una sola lectura extra de `contact_activities`, en paralelo y con su propio try/catch → si falla, la sección dice "No se pudo cargar" y el resto del Tablero sigue).
+- **Qué llamada es de una solicitud:** ocurrida desde que se creó, sin anular, ligada a ese proceso o sin proceso del mismo contacto. **Por proceso, como numera la ficha** — una llamada de otro proceso del contacto NO cuenta. Los WhatsApp del Inbox, plantillas y agente IA NO son intentos (por eso los nombres dicen "llamada" y "registrado").
+- **Nombres honestos (auditoría):** "Atendieron una llamada" (no "contactados") y "Agendaron en una llamada" ≠ "Agendadas" del embudo (que cuenta cualquier vía).
+- **Horas hábiles NUNCA en días:** `duracion` pasa a días de 24 h; un día hábil tiene 9 h. La sección usa `horasHabiles` ("45 h").
+- **QA:** el Tablero excluye a propósito los contactos `[TEST`, así que el estado con llamadas NO se puede ver en la vista previa. Se prueba con `scripts/_qa-llamadas-reglas.ts`-style: casos `[TEST]` dentro de una transacción con ROLLBACK, leyendo con el mismo filtro y corriendo las reglas.
+- **Otra métrica parecida:** el Inicio del dueño tiene "Tiempo medio a la primera llamada" (semana, procesos del embudo, solo promedio). No es la misma población; unificarlas queda para cuando el dueño lo pida.
+- **Al 28/11/2026 no había NINGUNA llamada registrada** en producción: la sección dice "todavía no hay llamadas registradas" hasta que la coordinación registre.
+
 ## Navegador de Claude y usuario de pruebas (2026-09-10)
 
 - **El protocolo de las seis etapas está ARRIBA de todo en este archivo**; la versión narrativa en `docs/proceso-de-desarrollo.md`. Se aplica a todo pedido, por chico que sea.
