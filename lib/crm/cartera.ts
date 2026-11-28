@@ -191,7 +191,7 @@ function cierreDe(p: ProcesoLeido, etapa: EtapaCRM): string | null {
 /**
  * Vencimiento de la tarea de entrada sin fecha de un lead nuevo (D3): si entró en horario
  * laboral, vence en el momento del registro y se dice "Espera hace …"; si entró fuera,
- * vence a las 9:00 del día hábil siguiente (o del mismo día si entró de madrugada). Sin
+ * vence a las 10:00 del día hábil siguiente (o del mismo día si entró antes de las 10). Sin
  * esto, toda solicitud nueva diría "Sin fecha" y quedaría al final, al revés de la urgencia.
  */
 /**

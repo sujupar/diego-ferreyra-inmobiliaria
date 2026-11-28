@@ -102,15 +102,16 @@ describe('posponer', () => {
 })
 
 describe('vencimientoDeEntrada', () => {
-  it('en horario: el momento del registro', () => {
-    expect(vencimientoDeEntrada(ar('2026-11-24', '15:10'))).toEqual({ fecha: '2026-11-24', hora: '15:10' })
+  it('en horario de la coordinación (10 a 14): el momento del registro', () => {
+    expect(vencimientoDeEntrada(ar('2026-11-24', '11:10'))).toEqual({ fecha: '2026-11-24', hora: '11:10' })
   })
-  it('después de hora o fin de semana: día hábil siguiente a las 9:00', () => {
-    expect(vencimientoDeEntrada(ar('2026-11-27', '21:00'))).toEqual({ fecha: '2026-11-30', hora: '09:00' }) // viernes → lunes
-    expect(vencimientoDeEntrada(ar('2026-11-28', '12:00'))).toEqual({ fecha: '2026-11-30', hora: '09:00' }) // sábado
+  it('después del horario o fin de semana: día hábil siguiente a las 10:00', () => {
+    expect(vencimientoDeEntrada(ar('2026-11-24', '15:10'))).toEqual({ fecha: '2026-11-25', hora: '10:00' })
+    expect(vencimientoDeEntrada(ar('2026-11-27', '21:00'))).toEqual({ fecha: '2026-11-30', hora: '10:00' }) // viernes → lunes
+    expect(vencimientoDeEntrada(ar('2026-11-28', '12:00'))).toEqual({ fecha: '2026-11-30', hora: '10:00' }) // sábado
   })
-  it('antes de las 9 de un día hábil: ese mismo día a las 9:00', () => {
-    expect(vencimientoDeEntrada(ar('2026-11-24', '07:30'))).toEqual({ fecha: '2026-11-24', hora: '09:00' })
+  it('antes de las 10 de un día hábil: ese mismo día a las 10:00', () => {
+    expect(vencimientoDeEntrada(ar('2026-11-24', '07:30'))).toEqual({ fecha: '2026-11-24', hora: '10:00' })
   })
 })
 

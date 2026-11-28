@@ -2,7 +2,7 @@
 // posponer y el vencimiento de la tarea de entrada de un lead (crm-tareas-y-campanita, D1).
 // Puro: todo en hora de Argentina con `horario-laboral`, nunca con `toISOString()` para días.
 
-import { enArgentina, esDiaHabil, HORARIO_LABORAL, instanteDesdeAR, siguienteDiaHabil } from '@/lib/crm/horario-laboral'
+import { enArgentina, enHorarioOProximo, instanteDesdeAR } from '@/lib/crm/horario-laboral'
 import { vencimientoDeTarea } from '@/lib/crm/tareas-ficha'
 
 export const TIPOS_TAREA = ['llamada', 'mensaje', 'visita', 'documentacion', 'otro'] as const
@@ -71,11 +71,18 @@ export function grupoDeTarea(t: ConFecha, ahora: Date): GrupoTarea {
   return t.due_date === enArgentina(ahora).fecha ? 'hoy' : 'proximas'
 }
 
+/**
+ * Desde qué hora suena una tarea "todo el día". NO es el horario de la coordinación (10 a
+ * 14): avisa desde las 9:00, como dice la spec de avisos y "Nueva tarea" (crm-cadencia-paula,
+ * auditoría 2).
+ */
+export const HORA_AVISO_TODO_EL_DIA = '09:00'
+
 /** El instante desde el que la tarea suena: su hora, o las 9:00 de su día si es de todo el día. */
 export function momentoDeAviso(t: ConFecha): Date | null {
   if (!t.due_date) return null
   try {
-    return instanteDesdeAR(t.due_date, t.due_time ? t.due_time.slice(0, 5) : HORARIO_LABORAL.inicio)
+    return instanteDesdeAR(t.due_date, t.due_time ? t.due_time.slice(0, 5) : HORA_AVISO_TODO_EL_DIA)
   } catch {
     return null
   }
@@ -121,19 +128,13 @@ export function validarMomento(fecha: string, hora: string, ahora: Date): string
 }
 
 /**
- * Cuándo vence la tarea de entrada de un lead: el registro si entró en horario hábil
- * (lunes a viernes de 9:00 a 17:59; sin feriados); antes de las 9 de un día hábil, ese día
- * a las 9; si no (desde las 18:00 o en fin de semana), el día hábil siguiente a las 9.
- * La misma regla que usa la cartera para las tareas de entrada viejas, sin fecha.
+ * Cuándo vence la tarea de entrada de un lead: el registro si entró en el horario de la
+ * coordinación (lunes a viernes de 10:00 a 13:59; sin feriados); antes de las 10 de un día
+ * hábil, ese día a las 10; si no, el día hábil siguiente a las 10. Es `enHorarioOProximo`,
+ * la misma regla que el WhatsApp de la cadencia. También la usa la cartera para las tareas
+ * de entrada viejas, sin fecha.
  */
-export function vencimientoDeEntrada(registro: Date): { fecha: string; hora: string } {
-  const { fecha, hora } = partes(registro)
-  if (esDiaHabil(fecha)) {
-    if (hora < HORARIO_LABORAL.inicio) return { fecha, hora: HORARIO_LABORAL.inicio }
-    if (hora < HORARIO_LABORAL.fin) return { fecha, hora }
-  }
-  return siguienteDiaHabil(registro)
-}
+export const vencimientoDeEntrada = enHorarioOProximo
 
 /** Diferencia máxima entre la creación y el vencimiento para leer "Espera hace…". */
 const MARGEN_ESPERA_MS = 5 * 60_000

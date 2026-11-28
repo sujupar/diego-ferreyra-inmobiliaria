@@ -127,11 +127,11 @@ describe('leerInicio', () => {
     m.filas = [fila({})]
     usar({
       deals: [
-        { id: 'l1', created_at: ar('2026-11-30', '09:00').toISOString(), stage: 'request', origin: 'embudo' },
+        { id: 'l1', created_at: ar('2026-11-30', '10:00').toISOString(), stage: 'request', origin: 'embudo' },
         { id: 'l2', created_at: ar('2026-12-01', '09:00').toISOString(), stage: 'scheduled', origin: 'embudo' },
         { id: 'l3', created_at: ar('2026-12-01', '09:00').toISOString(), stage: 'request', origin: 'referido' },
       ],
-      contact_activities: [{ id: 'x', deal_id: 'l1', kind: 'call', voided_at: null, occurred_at: ar('2026-11-30', '10:00').toISOString() }],
+      contact_activities: [{ id: 'x', deal_id: 'l1', kind: 'call', voided_at: null, occurred_at: ar('2026-11-30', '11:00').toISOString() }],
     })
     const r = (await leerInicio({ id: 'u-d', role: 'dueno', nombre: 'Diego' }, AHORA))!
     expect(r.saludo).toBe('Inicio · vista del dueño')

@@ -380,7 +380,7 @@ function Tiempo({ t }: { t: TiempoMedio }) {
         </p>
       )}
       <p className="text-xs text-texto-suave">
-        Leads registrados desde el lunes que ya recibieron su primera llamada. Hábiles: lunes a viernes de 9 a 18.
+        Leads registrados desde el lunes que ya recibieron su primera llamada. Hábiles: lunes a viernes de 10 a 14, el horario de la coordinación.
         {t.sinLlamar > 0 ? ` ${t.sinLlamar === 1 ? 'Otro 1 todavía sin llamar no entra' : `Otros ${t.sinLlamar} todavía sin llamar no entran`} en el promedio.` : ''}
       </p>
     </div>

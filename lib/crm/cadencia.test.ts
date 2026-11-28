@@ -78,8 +78,11 @@ const MAR_12 = '2026-11-24T15:00:00.000Z'
 const MAR_13 = '2026-11-24T16:00:00.000Z'
 const MAR_14 = '2026-11-24T17:00:00.000Z'
 
-const LLAMADA_2_MIERCOLES = { title: 'Llamada 2 a María López', channel: 'call', due_date: '2026-11-25', due_time: '09:00' }
-const WHATSAPP_MIERCOLES = { title: 'Enviar WhatsApp a María López', channel: 'message', due_date: '2026-11-25', due_time: '09:00' }
+// crm-cadencia-paula: la Llamada 1 del martes a la mañana deja la 2 para esa tarde a las
+// 13:30; la 2 deja la 3 para el día hábil siguiente a las 10:00; la 3 pide el WhatsApp ya.
+const LLAMADA_2_MARTES_TARDE = { title: 'Llamada 2 a María López', channel: 'call', due_date: '2026-11-24', due_time: '13:30' }
+const LLAMADA_3_MIERCOLES = { title: 'Llamada 3 a María López', channel: 'call', due_date: '2026-11-25', due_time: '10:00' }
+const whatsappA = (due_date: string, due_time: string) => ({ title: 'Enviar WhatsApp a María López', channel: 'message', due_date, due_time })
 
 const SIN_TAREA = (motivo: DecisionCadencia['motivoSinTarea']) => ({ tarea: null, motivoSinTarea: motivo })
 
@@ -105,10 +108,10 @@ describe('estadoCadencia', () => {
 })
 
 describe('decidirCadencia — una llamada no atendida agenda la siguiente', () => {
-  it('primera no atendida un martes → "Llamada 2" para el miércoles 9:00', () => {
+  it('primera no atendida un martes a las 10:00 → "Llamada 2" para esa tarde a las 13:30', () => {
     expect(decidir([NA(MAR_10)])).toEqual<DecisionCadencia>({
       aplica: true,
-      tarea: LLAMADA_2_MIERCOLES,
+      tarea: LLAMADA_2_MARTES_TARDE,
       motivoSinTarea: null,
       cerrarWhatsapp: false,
       ofrecer: null,
@@ -117,19 +120,19 @@ describe('decidirCadencia — una llamada no atendida agenda la siguiente', () =
 
   it('un asesor en su propio proceso: corre igual (la tarea la asigna quien registra)', () => {
     expect(decidir([NA(MAR_10)], { procesoPropio: true, puedeConvertir: false, puedeCerrar: false })).toMatchObject({
-      tarea: LLAMADA_2_MIERCOLES,
+      tarea: LLAMADA_2_MARTES_TARDE,
     })
   })
 
-  it('viernes 27 → lunes 30', () => {
-    expect(decidir([NA('2026-11-27T15:00:00.000Z')]).tarea).toMatchObject({ due_date: '2026-11-30', due_time: '09:00' })
+  it('a las 12:00 justas ya no es "esa tarde": día hábil siguiente a las 10:00 (viernes 27 → lunes 30)', () => {
+    expect(decidir([NA('2026-11-27T15:00:00.000Z')]).tarea).toMatchObject({ due_date: '2026-11-30', due_time: '10:00' })
   })
 
   it.each([
     ['sábado', '2026-11-28T15:00:00.000Z'],
     ['domingo', '2026-11-29T15:00:00.000Z'],
   ])('%s → lunes 30', (_n, cuando) => {
-    expect(decidir([NA(cuando)]).tarea).toMatchObject({ due_date: '2026-11-30', due_time: '09:00' })
+    expect(decidir([NA(cuando)]).tarea).toMatchObject({ due_date: '2026-11-30', due_time: '10:00' })
   })
 
   it('miércoles → jueves', () => {
@@ -140,8 +143,22 @@ describe('decidirCadencia — una llamada no atendida agenda la siguiente', () =
     expect(decidir([NA('2026-11-25T01:30:00+00:00')]).tarea).toMatchObject({ due_date: '2026-11-25' })
   })
 
-  it('miércoles 00:30 de Argentina → jueves', () => {
-    expect(decidir([NA('2026-11-25T03:30:00.000Z')]).tarea).toMatchObject({ due_date: '2026-11-26' })
+  it('madrugada de un día hábil (miércoles 00:30 de Argentina) → ese miércoles a las 13:30', () => {
+    expect(decidir([NA('2026-11-25T03:30:00.000Z')]).tarea).toMatchObject({ due_date: '2026-11-25', due_time: '13:30' })
+  })
+
+  it('sábado a la mañana → lunes a las 10:00, no "esa tarde"', () => {
+    expect(decidir([NA('2026-11-28T13:30:00.000Z')]).tarea).toMatchObject({ due_date: '2026-11-30', due_time: '10:00' })
+  })
+
+  it('manda la hora de carga: ocurrió a las 11:00 pero se cargó a las 12:30 → día hábil siguiente', () => {
+    expect(decidir([NA(MAR_11, { creado: '2026-11-24T15:30:00.000Z' })]).tarea).toMatchObject({ due_date: '2026-11-25', due_time: '10:00' })
+  })
+
+  it('racha nueva después de atender: la primera no atendida a la mañana → esa tarde, con el número de llamada', () => {
+    expect(decidir([NA('2026-11-23T13:00:00.000Z'), NA('2026-11-23T17:00:00.000Z'), VOLVER('2026-11-23T18:00:00.000Z'), NA('2026-11-24T13:40:00.000Z')]).tarea).toEqual({
+      title: 'Llamada 5 a María López', channel: 'call', due_date: '2026-11-24', due_time: '13:30',
+    })
   })
 
   it('feriado: queda igual para ese día (jueves 24/12 → viernes 25/12)', () => {
@@ -150,7 +167,7 @@ describe('decidirCadencia — una llamada no atendida agenda la siguiente', () =
 
   it('reintento al día siguiente: decide con el momento en que se cargó, no con el de hoy', () => {
     const martes = NA(MAR_10)
-    expect(decidir([martes], { cargadoEn: new Date(martes.created_at) }).tarea).toMatchObject({ due_date: '2026-11-25' })
+    expect(decidir([martes], { cargadoEn: new Date(martes.created_at) }).tarea).toMatchObject({ due_date: '2026-11-24', due_time: '13:30' })
   })
 
   it('el número mostrado no es la racha: la quinta llamada, primera no atendida → "Llamada 6"', () => {
@@ -166,7 +183,7 @@ describe('decidirCadencia — una llamada no atendida agenda la siguiente', () =
   })
 
   it('una anulada no cuenta: cuenta como primera no atendida seguida', () => {
-    expect(decidir([NA(MAR_10, { anulado: true }), NA(MAR_11)]).tarea).toEqual(LLAMADA_2_MIERCOLES)
+    expect(decidir([NA(MAR_10, { anulado: true }), NA(MAR_11)]).tarea).toEqual(LLAMADA_2_MARTES_TARDE)
   })
 
   it('WhatsApp viejo y después atendió: se crea una tarea de llamada', () => {
@@ -177,46 +194,62 @@ describe('decidirCadencia — una llamada no atendida agenda la siguiente', () =
   it('la hora corregida que igual queda última: corre normal', () => {
     const ayer = NA('2026-11-23T15:00:00.000Z')
     const recien = NA(MAR_10, { creado: MAR_1030 })
-    expect(decidir([ayer, recien])).toMatchObject({ aplica: true, tarea: WHATSAPP_MIERCOLES })
+    expect(decidir([ayer, recien])).toMatchObject({ aplica: true, tarea: LLAMADA_3_MIERCOLES })
   })
 
   it('ordena aunque las fechas vengan en distintos formatos de UTC', () => {
     // 10:30−03:00 es 13:30Z: queda DESPUÉS de la de las 13:00Z.
     const primera = NA('2026-11-24T13:00:00+00:00')
     const segunda = NA('2026-11-24T10:30:00-03:00')
-    expect(decidir([primera, segunda])).toMatchObject({ aplica: true, tarea: WHATSAPP_MIERCOLES })
+    expect(decidir([primera, segunda])).toMatchObject({ aplica: true, tarea: LLAMADA_3_MIERCOLES })
   })
 })
 
-describe('decidirCadencia — dos no atendidas seguidas piden un WhatsApp', () => {
-  it('segunda no atendida → "Enviar WhatsApp", de tipo mensaje, y no "Llamada 3"', () => {
-    expect(decidir([NA(MAR_10), NA(MAR_11)])).toEqual<DecisionCadencia>({
+describe('decidirCadencia — tres no atendidas seguidas piden un WhatsApp', () => {
+  it('segunda no atendida → "Llamada 3" para el día hábil siguiente a las 10:00, no WhatsApp', () => {
+    expect(decidir([NA(MAR_10), NA(MAR_11)]).tarea).toEqual(LLAMADA_3_MIERCOLES)
+  })
+
+  it('segunda no atendida de madrugada: igual va al día hábil siguiente (escenario aceptado)', () => {
+    expect(decidir([NA('2026-11-23T20:00:00.000Z'), NA('2026-11-24T10:30:00.000Z')]).tarea).toEqual(LLAMADA_3_MIERCOLES)
+  })
+
+  it('tercera no atendida en horario (10:20) → "Enviar WhatsApp" que vence ya, y no "Llamada 4"', () => {
+    expect(decidir([NA(MAR_10), NA(MAR_11), NA('2026-11-25T13:20:00.000Z')])).toEqual<DecisionCadencia>({
       aplica: true,
-      tarea: WHATSAPP_MIERCOLES,
+      tarea: whatsappA('2026-11-25', '10:20'),
       motivoSinTarea: null,
       cerrarWhatsapp: false,
       ofrecer: null,
     })
   })
 
-  it('tercera con la tarea de WhatsApp de la cadencia pendiente → no crea otra', () => {
-    expect(decidir([NA(MAR_10), NA(MAR_11), NA(MAR_12)], { hayTareaWhatsappDeCadenciaPendiente: true })).toMatchObject(
+  it('tercera fuera de horario (16:00) → WhatsApp el día hábil siguiente a las 10:00', () => {
+    expect(decidir([NA(MAR_10), NA(MAR_11), NA('2026-11-25T19:00:00.000Z')]).tarea).toEqual(whatsappA('2026-11-26', '10:00'))
+  })
+
+  it('tercera antes del horario (8:30) → WhatsApp ese día a las 10:00', () => {
+    expect(decidir([NA(MAR_10), NA(MAR_11), NA('2026-11-25T11:30:00.000Z')]).tarea).toEqual(whatsappA('2026-11-25', '10:00'))
+  })
+
+  it('cuarta con la tarea de WhatsApp de la cadencia pendiente → no crea otra', () => {
+    expect(decidir([NA(MAR_10), NA(MAR_11), NA(MAR_12), NA(MAR_13)], { hayTareaWhatsappDeCadenciaPendiente: true })).toMatchObject(
       SIN_TAREA('whatsapp_ya_pendiente'),
     )
   })
 
   it('la tarea de WhatsApp se completó con el tilde, sin marcar el WhatsApp → crea otra "Enviar WhatsApp"', () => {
-    expect(decidir([NA(MAR_10), NA(MAR_11), NA(MAR_12)], { hayTareaWhatsappDeCadenciaPendiente: false }).tarea).toEqual(
-      WHATSAPP_MIERCOLES,
+    expect(decidir([NA(MAR_10), NA(MAR_11), NA(MAR_12), NA(MAR_13)], { hayTareaWhatsappDeCadenciaPendiente: false }).tarea).toEqual(
+      whatsappA('2026-11-24', '13:00'),
     )
   })
 
-  it('la segunda no atendida decidida dos veces da lo mismo', () => {
-    const historial = [NA(MAR_10), NA(MAR_11)]
-    const evaluado = historial[1]
+  it('la tercera no atendida decidida dos veces da lo mismo', () => {
+    const historial = [NA(MAR_10), NA(MAR_11), NA(MAR_12)]
+    const evaluado = historial[2]
     const primera = decidir(historial)
     // La segunda vez ya existe la tarea que creó ella misma: no cuenta como pendiente.
-    const propia = tarea({ id: 't-propia', channel: 'message', source_activity_id: evaluado.id, created_at: '2026-11-24T14:00:01.000Z' })
+    const propia = tarea({ id: 't-propia', channel: 'message', source_activity_id: evaluado.id, created_at: '2026-11-24T15:00:01.000Z' })
     const hay = hayTareaWhatsappDeCadenciaPendiente([propia], {
       evaluadoId: evaluado.id,
       dealId: 'deal-1',
@@ -309,7 +342,7 @@ describe('decidirCadencia — un intento cargado fuera de orden no mueve tareas'
   it('un intento posterior ANULADO no deja al evaluado fuera de orden', () => {
     const anulada = NA(MAR_1030, { anulado: true })
     const vieja = NA(MAR_10, { creado: MAR_11 })
-    expect(decidir([anulada, vieja])).toMatchObject({ aplica: true, tarea: LLAMADA_2_MIERCOLES })
+    expect(decidir([anulada, vieja])).toMatchObject({ aplica: true, tarea: LLAMADA_2_MARTES_TARDE })
   })
 })
 
@@ -350,7 +383,7 @@ describe('decidirCadencia — qué regla gana cuando se cruzan dos (No atendió)
   })
 
   it('ninguna excepción: primera no atendida, propia, en orden, sin WhatsApp → "Llamada 2"', () => {
-    expect(decidir([NA(MAR_10)]).tarea).toEqual(LLAMADA_2_MIERCOLES)
+    expect(decidir([NA(MAR_10)]).tarea).toEqual(LLAMADA_2_MARTES_TARDE)
   })
 
   // Caso alcanzable: NA, NA (crea WhatsApp), un asesor ajeno registra "Atendió" (no cierra
@@ -386,9 +419,9 @@ describe('decidirCadencia — sin proceso activo y proceso ajeno', () => {
     })
   })
 
-  it('el intento del asesor cuenta en la racha: después la coordinadora → "Enviar WhatsApp"', () => {
+  it('el intento del asesor cuenta en la racha: después la coordinadora → "Llamada 3"', () => {
     const delAsesor = NA(MAR_10)
-    expect(decidir([delAsesor, NA(MAR_11)], { procesoPropio: true })).toMatchObject({ tarea: WHATSAPP_MIERCOLES })
+    expect(decidir([delAsesor, NA(MAR_11)], { procesoPropio: true })).toMatchObject({ tarea: LLAMADA_3_MIERCOLES })
   })
 
   it('"Agendó" de un asesor en un proceso ajeno en Coordinada → `proceso_ya_coordinado`, sin botón', () => {
@@ -511,7 +544,7 @@ describe('decidirCadencia — los resultados que no agendan ofrecen el paso sigu
     it('"No atendió" de la coordinadora reintentado por un asesor: la tarea sigue saliendo (decide quien registró)', () => {
       expect(
         decidir([NA(MAR_10)], { procesoPropio: true, puedeConvertir: false, puedeCerrar: false, puedeAbrir: false }).tarea,
-      ).toEqual(LLAMADA_2_MIERCOLES)
+      ).toEqual(LLAMADA_2_MARTES_TARDE)
     })
   })
 })

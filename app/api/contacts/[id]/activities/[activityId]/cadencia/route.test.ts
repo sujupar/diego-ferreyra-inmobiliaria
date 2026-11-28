@@ -120,7 +120,8 @@ describe('POST …/cadencia — reintento', () => {
     expect(tareasDe(a.id)).toHaveLength(1)
   })
 
-  it('reintento de la segunda "No atendió" que ya había creado su "Enviar WhatsApp" → la misma tarea, motivo en null', async () => {
+  it('reintento de la tercera "No atendió" que ya había creado su "Enviar WhatsApp" → la misma tarea, motivo en null', async () => {
+    await guardada({ created_by: 'coord-1' })
     await guardada({ created_by: 'coord-1' })
     const segunda = await guardada({ created_by: 'coord-1' })
     const r1 = await (await reintentar(segunda.id)).json()

@@ -66,7 +66,7 @@ export function calcularTrabado(filas: FilaCartera[], ahora: Date): Trabado | 'e
 /**
  * "Espera hace 16 h 20 min de reloj · 1 h 40 min hábiles", o solo "Espera hace 28 min" si
  * esperó todo en horario laboral. Es una cuenta distinta del vencimiento de la tarea (la
- * fila dice "Vencida hace 1 h" desde las 9:00): el dueño quiere ver cuánto esperó la persona.
+ * fila dice "Vencida hace 1 h" desde las 10:00): el dueño quiere ver cuánto esperó la persona.
  */
 export function textoEspera(registradoEn: string, ahora: Date): string {
   const desde = new Date(registradoEn)

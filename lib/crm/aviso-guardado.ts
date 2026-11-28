@@ -3,7 +3,7 @@
 // renglones, botones y el texto del toast. Los textos son los de la spec, palabra por
 // palabra. Ninguno nombra «Sin respuesta» del Inicio: ese bloque todavía no existe (D7).
 import type { BloqueCadencia } from '@/lib/supabase/cadencia'
-import { cuandoEs } from './formato-fecha'
+import { paraCuando } from './formato-fecha'
 import type { ResultadoLlamada } from './tipos'
 
 export type IconoLinea = 'agenda' | 'cerrada' | 'flecha' | 'aviso' | 'whatsapp'
@@ -129,7 +129,7 @@ export function armarAviso(e: EntradaAviso): Aviso {
   let fraseTarea = ''
   if (cadencia.tareaCreada) {
     const t = cadencia.tareaCreada
-    fraseTarea = `Se agendó ${tituloCorto(t.title, e.nombreContacto)} para ${cuandoEs(t.due_date, t.due_time, e.ahora)}.`
+    fraseTarea = `Se agendó ${tituloCorto(t.title, e.nombreContacto)} para ${paraCuando(t.due_date, t.due_time, e.ahora)}.`
     lineas.push({ icono: 'agenda', texto: fraseTarea })
   } else if (cadencia.motivoSinTarea && TEXTO_MOTIVO[cadencia.motivoSinTarea]) {
     let texto = TEXTO_MOTIVO[cadencia.motivoSinTarea] as string

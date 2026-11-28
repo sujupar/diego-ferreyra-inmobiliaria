@@ -123,7 +123,7 @@ describe('aplicarCadencia', () => {
       contact_id: 'c-1',
       channel: 'call',
       due_date: '2026-11-26',
-      due_time: '09:00',
+      due_time: '10:00',
       all_day: false,
       source_activity_id: 'act-1',
     })
